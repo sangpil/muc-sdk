@@ -1,0 +1,443 @@
+{
+  "datasets" : {
+    "bare" : {
+      "label" : "맨땅"
+    },
+    "spring" : {
+      "clock" : {
+        "now" : "2060-01-01T00:00:00Z",
+        "tz" : "UTC"
+      },
+      "label" : "봄",
+      "life" : {
+        "derived" : true,
+        "domain" : {
+          "birth" : "2040-01-01",
+          "lifeExpectancy" : 90
+        },
+        "eras" : [
+          {
+            "from" : "2050-01-01",
+            "id" : "ee5c8311-4efc-5c4e-9c14-313d666b319d",
+            "label" : "Era 1",
+            "to" : "2060-01-01"
+          }
+        ],
+        "milestones" : [
+
+        ],
+        "series" : [
+
+        ]
+      },
+      "nextIDs" : {
+        "Watering" : 3
+      },
+      "records" : {
+        "Harvest" : [
+          {
+            "amount" : 100,
+            "id" : "harvest-1",
+            "measure" : {
+              "grams" : 2
+            },
+            "title" : "첫 수확"
+          }
+        ],
+        "Plant" : [
+          {
+            "id" : "plant-1",
+            "kind" : "herb",
+            "name" : "바질",
+            "potId" : "pot-1"
+          }
+        ],
+        "Pot" : [
+          {
+            "glaze" : "청자",
+            "id" : "pot-1",
+            "label" : "창가 화분"
+          }
+        ],
+        "Watering" : [
+          {
+            "at" : "2050-01-01T00:00:00Z",
+            "id" : "watering-1",
+            "method" : "rain"
+          },
+          {
+            "amountMl" : 200,
+            "at" : "2060-01-01T00:00:00Z",
+            "id" : "watering-2",
+            "method" : "can",
+            "plantId" : "plant-1",
+            "potId" : "pot-1"
+          }
+        ]
+      }
+    }
+  },
+  "migrated" : {
+    "sql" : {
+      "tables" : {
+        "plants" : {
+          "id" : {
+            "notNull" : true,
+            "primaryKey" : true,
+            "type" : "text"
+          },
+          "kind" : {
+            "check" : [
+              "herb",
+              "flower",
+              "shrub"
+            ],
+            "notNull" : true,
+            "type" : "text"
+          },
+          "latin" : {
+            "type" : "text"
+          },
+          "name" : {
+            "default" : "''",
+            "notNull" : true,
+            "type" : "text"
+          },
+          "pot_id" : {
+            "onDelete" : "restrict",
+            "references" : "pots",
+            "type" : "text"
+          }
+        },
+        "pots" : {
+          "glaze" : {
+            "default" : "''",
+            "notNull" : true,
+            "type" : "text"
+          },
+          "id" : {
+            "notNull" : true,
+            "primaryKey" : true,
+            "type" : "text"
+          },
+          "label" : {
+            "default" : "''",
+            "notNull" : true,
+            "type" : "text"
+          }
+        },
+        "waterings" : {
+          "amount_ml" : {
+            "type" : "integer"
+          },
+          "at" : {
+            "type" : "timestamptz"
+          },
+          "id" : {
+            "notNull" : true,
+            "primaryKey" : true,
+            "type" : "text"
+          },
+          "method" : {
+            "check" : [
+              "can",
+              "hose",
+              "rain"
+            ],
+            "notNull" : true,
+            "type" : "text"
+          },
+          "plant_id" : {
+            "onDelete" : "set null",
+            "references" : "plants",
+            "type" : "text"
+          },
+          "pot_id" : {
+            "onDelete" : "restrict",
+            "references" : "pots",
+            "type" : "text"
+          }
+        }
+      }
+    },
+    "swift" : {
+      "schemaVersion" : 1
+    }
+  },
+  "schema" : {
+    "entities" : [
+      {
+        "aliases" : [
+          {
+            "doc" : "식물이 심기는 자리",
+            "lens" : "선반 · 목록",
+            "word" : "화분"
+          }
+        ],
+        "doc" : "흙을 담는 그릇",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "default" : "",
+            "doc" : "이름표",
+            "name" : "label",
+            "type" : "text"
+          },
+          {
+            "default" : "",
+            "doc" : "유약 이름",
+            "name" : "glaze",
+            "type" : "text"
+          }
+        ],
+        "label" : "화분",
+        "layer" : "ground",
+        "name" : "Pot",
+        "rules" : [
+          {
+            "check" : {
+              "unique" : [
+                "label"
+              ]
+            },
+            "doc" : "이름표는 겹치지 않는다",
+            "id" : "label-unique"
+          }
+        ],
+        "sql" : {
+          "table" : "pots"
+        },
+        "swift" : {
+          "model" : "Pot"
+        }
+      },
+      {
+        "doc" : "화분에 심긴 것 하나",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "default" : "",
+            "name" : "name",
+            "type" : "text"
+          },
+          {
+            "doc" : "학명",
+            "name" : "latin",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "doc" : "갈래",
+            "name" : "kind",
+            "type" : {
+              "enum" : [
+                "herb",
+                "flower",
+                "shrub"
+              ]
+            }
+          },
+          {
+            "doc" : "심긴 화분",
+            "name" : "potId",
+            "optional" : true,
+            "type" : {
+              "onDelete" : "restrict",
+              "ref" : "Pot"
+            }
+          }
+        ],
+        "label" : "식물",
+        "layer" : "ground",
+        "name" : "Plant",
+        "sql" : {
+          "table" : "plants"
+        }
+      },
+      {
+        "aliases" : [
+          {
+            "lens" : "달력",
+            "word" : "물 주기"
+          }
+        ],
+        "doc" : "물을 준 한 번",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "doc" : "받은 식물",
+            "name" : "plantId",
+            "optional" : true,
+            "type" : {
+              "onDelete" : "setNull",
+              "ref" : "Plant"
+            }
+          },
+          {
+            "doc" : "받은 화분",
+            "name" : "potId",
+            "optional" : true,
+            "type" : {
+              "onDelete" : "restrict",
+              "ref" : "Pot"
+            }
+          },
+          {
+            "default" : "can",
+            "doc" : "주는 법",
+            "name" : "method",
+            "type" : {
+              "enum" : [
+                "can",
+                "hose",
+                "rain"
+              ]
+            }
+          },
+          {
+            "doc" : "양(mL)",
+            "name" : "amountMl",
+            "optional" : true,
+            "type" : "int"
+          },
+          {
+            "doc" : "준 시각",
+            "name" : "at",
+            "optional" : true,
+            "type" : "instant"
+          },
+          {
+            "doc" : "메모 칸",
+            "name" : "note",
+            "optional" : true,
+            "status" : "seam",
+            "type" : "text"
+          }
+        ],
+        "label" : "물 주기",
+        "layer" : "ground",
+        "name" : "Watering",
+        "rules" : [
+          {
+            "check" : {
+              "forbidden" : "amountMl",
+              "when" : {
+                "method" : [
+                  "rain"
+                ]
+              }
+            },
+            "doc" : "빗물은 양을 적지 않는다",
+            "id" : "rain-no-amount"
+          },
+          {
+            "check" : {
+              "sameAs" : {
+                "field" : "potId",
+                "via" : "plantId.potId"
+              }
+            },
+            "doc" : "물 받은 화분은 그 식물의 화분이다",
+            "id" : "pot-of-plant"
+          },
+          {
+            "code" : "Sources/Rules/DailyCap.swift",
+            "doc" : "하루에 준 물의 합은 화분이 받는 양을 넘지 않는다",
+            "id" : "daily-cap"
+          }
+        ],
+        "sql" : {
+          "table" : "waterings"
+        },
+        "swift" : {
+          "model" : "Watering"
+        },
+        "uses" : [
+          "Tagged"
+        ]
+      },
+      {
+        "doc" : "거둔 것 한 번",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "default" : "",
+            "name" : "title",
+            "type" : "text"
+          },
+          {
+            "default" : 0,
+            "doc" : "판 값",
+            "name" : "amount",
+            "type" : "money"
+          },
+          {
+            "name" : "measure",
+            "optional" : true,
+            "type" : {
+              "value" : "Measure"
+            }
+          }
+        ],
+        "label" : "수확",
+        "layer" : "shed",
+        "name" : "Harvest",
+        "sql" : {
+          "table" : "harvests"
+        },
+        "status" : "mock"
+      }
+    ],
+    "layers" : [
+      {
+        "id" : "ground",
+        "label" : "마당"
+      },
+      {
+        "id" : "shed",
+        "label" : "헛간"
+      }
+    ],
+    "name" : "sample",
+    "traits" : [
+      {
+        "doc" : "표 하나 → [표] 절",
+        "fields" : [
+          {
+            "doc" : "null = 표가 없음",
+            "name" : "tagId",
+            "optional" : true,
+            "status" : "unbuilt",
+            "type" : "text"
+          }
+        ],
+        "name" : "Tagged"
+      }
+    ],
+    "values" : [
+      {
+        "fields" : [
+          {
+            "name" : "grams",
+            "optional" : true,
+            "type" : "decimal"
+          }
+        ],
+        "name" : "Measure"
+      }
+    ]
+  },
+  "version" : 4
+}

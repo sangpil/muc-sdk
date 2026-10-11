@@ -1,0 +1,5 @@
+# 미리보기 프로토콜 꼴 지문 — 판마다 한 줄 · 덧붙이기 전용(지난 판의 줄은 고치지 않는다). 정본 Docs/SDK.md §5.
+# <판> <지문> — 지문 = 메시지 종류 · 칸 키 경로와 값의 꼴 · 낱말 서술의 SHA-256 앞 16자(셈 PreviewProtocolShapeTests).
+# 꼴이 바뀌면 판을 올리고(PreviewProtocolVersion.current · 한 판 뒤의 말 PreviewProtocolVersion.previous) 새 판의 줄을 끝에 더한다.
+1 d39e0fd6e30cf260
+2 75969ccc5acc89b9

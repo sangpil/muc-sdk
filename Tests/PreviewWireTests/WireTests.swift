@@ -1,0 +1,59 @@
+import Foundation
+import PreviewProtocol
+import PreviewWire
+import Testing
+
+// 전송 — 소켓 쌍 위의 상주 연결(머리 + 5 MB 몸) · 상대의 죽음 · 공유 메모리 칸 · shm 이름 한계.
+// 경로를 잡지 않는다 — 소켓은 이어진 한 쌍(`socketpair`) · shm 이름은 pid + 난수(시험끼리 · 다른 프로세스와 자리를 다투지 않게).
+
+@Suite struct WireTests {
+    @Test func connectionCarriesFramesWithoutUserCopy() throws {
+        let (a, b) = try UnixSocket.pair()
+        let tx = Connection(fd: a), rx = Connection(fd: b)
+        let n = 780 * 4 * 1688
+        let body = PayloadBuffer(count: n)
+        for i in stride(from: 0, to: n, by: 4096) { body.base.storeBytes(of: UInt8(i / 4096 % 256), toByteOffset: i, as: UInt8.self) }
+        let got = Box()
+        let sem = DispatchSemaphore(value: 0)
+        rx.start(name: "test.read", onInbound: { got.items.append($0); if got.items.count == 3 { sem.signal() } }, onClose: { _ in })
+        let header = FrameHeader(seq: 1, applied: 1, w: 780, h: 1688, stride: 3120, scale: 2, format: .rgba8sRGB, snapFrames: [], ms: 0, payload: .inline(bytes: n))
+        try tx.send(.patch(Patch(seq: 1, edits: [])))
+        try tx.send(.frame(header), payload: body.bytes)
+        try tx.send(.bye(Bye(reason: "끝")))
+        #expect(sem.wait(timeout: .now() + 5) == .success)
+        #expect(got.items.map(\.message.type) == ["patch", "frame", "bye"])
+        let p = try #require(got.items[1].payload)
+        #expect(memcmp(p.base, body.base, n) == 0)
+        // 몸 대부분은 바로 읽기(복사 0) — 머리와 같은 read 로 딸려 온 앞부분만 옮겨진다(256 KB 읽기 버퍼보다 작다)
+        #expect(rx.stats.payloadCopiedBytes < 256 << 10)
+        #expect(rx.stats.payloadAllocs == 1)
+        tx.close(); rx.close()
+    }
+
+    @Test func peerDeathIsSeenAsClose() throws {
+        let (a, b) = try UnixSocket.pair()
+        let rx = Connection(fd: b)
+        let sem = DispatchSemaphore(value: 0)
+        rx.start(name: "test.read", onInbound: { _ in }, onClose: { _ in sem.signal() })
+        Darwin.close(a)
+        #expect(sem.wait(timeout: .now() + 2) == .success)
+    }
+
+    @Test(arguments: [SharedMemoryInfo.Kind.posix, .file])
+    func sharedRegionIsShared(kind: SharedMemoryInfo.Kind) throws {
+        let info = SharedMemoryInfo(kind: kind, name: SharedRegion.name(kind: kind, tag: Int.random(in: 0..<99999)), slotBytes: 4096, slots: 3)
+        let owner = try SharedRegion.create(info)
+        let other = try SharedRegion.open(info)
+        other.slot(2).storeBytes(of: 0xAB, toByteOffset: 7, as: UInt8.self)
+        #expect(owner.slot(2).load(fromByteOffset: 7, as: UInt8.self) == 0xAB)
+        #expect(owner.slot(1) - owner.slot(0) == 4096)
+    }
+
+    @Test func posixNameLimit() {
+        #expect(throws: SharedRegion.Failure.self) {
+            _ = try SharedRegion.create(SharedMemoryInfo(kind: .posix, name: "/" + String(repeating: "x", count: 40), slotBytes: 1, slots: 1))
+        }
+    }
+}
+
+final class Box: @unchecked Sendable { var items: [Inbound] = [] }
