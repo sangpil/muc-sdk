@@ -4,7 +4,8 @@ import ProjectFormat
 
 // 호스트가 `hello` 에 싣는 **프로젝트의 데이터** — 엔진이 프로젝트의 코드를 링크하지 않고 그 값을 받는 자리(정본 `Docs/SDK.md` §2).
 // 값은 전부 프로젝트가 정하고(낱말 · 크기 · 생성물) 엔진은 뜻을 모른 채 받아 쓴다. 칸은 모두 선택이다 — 싣지 않은 호스트(옛 호스트 · 데이터가 없는 프로젝트)면
-// 엔진은 그 칸이 없는 길로 선다.
+// 엔진은 그 칸이 없는 길로 선다. 프로젝트 데이터의 꼴(`IAInfo` · `DeviceFrameInfo` · `CalloutValues`) 안의 칸도 모두 선택이다(빠지면 기본값 · 모르는 칸은 `extra` 로
+// 보존) — 프로젝트가 다듬을 때마다 바뀌는 칸을 필수 칸으로 얼리지 않는다. 자료 안의 꼴은 그 꼴의 판이 가른다(`CalloutValues.version` · IA 문서 `IADoc.version`).
 //
 //   hello.ia            IA 낱말 — 앱이 실제로 여는 화면 · 진입 손의 낱말과 이름 · 탭마다 손 · 옛 낱말 → IA id · 앱에 뷰가 아직 없는 화면
 //   hello.frames        기기 틀 — 틀의 낱말 · 폼팩터 · 크기 · 코너 · 안전영역 · 편집기 기기 틀의 씬 띠
@@ -15,7 +16,7 @@ import ProjectFormat
 
 // MARK: hello.ia
 
-/// IA 낱말 — 프로젝트의 IA 상수(앱 코드)가 정본인 값. 엔진의 화면 지도 · 흐름 · 읽기 검사가 이 값으로 선다.
+/// IA 낱말 — 프로젝트의 IA 상수(앱 코드)가 정본인 값. 엔진의 화면 지도 · 흐름 · 읽기 검사가 이 값으로 선다. 칸은 모두 선택(빠지면 빈 값).
 public struct IAInfo: Codable, Equatable, Sendable {
     /// 진입 손 하나 — IA 문서 `JumpEntry.control` 의 낱말 · 사람이 읽는 이름.
     public struct EntryWord: Codable, Hashable, Sendable {
@@ -24,22 +25,44 @@ public struct IAInfo: Codable, Equatable, Sendable {
         public init(control: String, label: String) { self.control = control; self.label = label }
     }
     /// 앱이 실제로 여는 화면(IA id · 이름 차례).
-    public var appScreens: [String]
+    public var appScreens: [String] = []
     /// 진입 손의 낱말 전부 — 차례 그대로(읽기 검사는 이 목록 밖의 손을 거부한다).
-    public var entryWords: [EntryWord]
+    public var entryWords: [EntryWord] = []
     /// 탭(IA id) → 그 탭에서 앱이 실제로 세우는 손의 낱말.
-    public var entryHands: [String: [String]]
+    public var entryHands: [String: [String]] = [:]
     /// 옛 낱말 → IA id.
-    public var aliases: [String: String]
+    public var aliases: [String: String] = [:]
     /// 앱에 뷰가 아직 없는 화면(IA id · 이름 차례).
-    public var planned: [String]
+    public var planned: [String] = []
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
 
+    /// 빈 값 — 칸은 하나씩 채운다.
+    public init() {}
     public init(appScreens: [String], entryWords: [EntryWord], entryHands: [String: [String]], aliases: [String: String], planned: [String]) {
         self.appScreens = appScreens; self.entryWords = entryWords; self.entryHands = entryHands; self.aliases = aliases; self.planned = planned
     }
 
     /// 진입 손의 낱말(차례 그대로).
     public var controls: [String] { entryWords.map(\.control) }
+
+    enum CodingKeys: String, CodingKey, CaseIterable { case appScreens, entryWords, entryHands, aliases, planned }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        appScreens = try c.decodeIfPresent([String].self, forKey: .appScreens) ?? []
+        entryWords = try c.decodeIfPresent([EntryWord].self, forKey: .entryWords) ?? []
+        entryHands = try c.decodeIfPresent([String: [String]].self, forKey: .entryHands) ?? [:]
+        aliases = try c.decodeIfPresent([String: String].self, forKey: .aliases) ?? [:]
+        planned = try c.decodeIfPresent([String].self, forKey: .planned) ?? []
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(appScreens, forKey: .appScreens); try c.encode(entryWords, forKey: .entryWords); try c.encode(entryHands, forKey: .entryHands)
+        try c.encode(aliases, forKey: .aliases); try c.encode(planned, forKey: .planned)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+    }
 }
 
 // MARK: hello.frames
@@ -54,30 +77,57 @@ public struct DeviceFrameInfo: Codable, Equatable, Sendable {
         public init(name: String, bands: Insets? = nil) { self.name = name; self.bands = bands }
     }
     /// 틀의 낱말(찍기 · 창의 인자 — 프로젝트가 정한다).
-    public var id: String
+    public var id: String = ""
     /// 폼팩터 낱말(`ProjectFormat.FormFactor` — 매니페스트 `platforms` · IA 플랫폼 칸과 한 벌).
-    public var platform: String
+    public var platform: String = ""
     /// 사람이 읽는 이름.
-    public var name: String
+    public var name: String = ""
     /// 기호(SF Symbol 이름).
-    public var symbol: String
-    public var size: Size
+    public var symbol: String = ""
+    public var size = Size(w: 0, h: 0)
     /// 디스플레이 코너(pt).
-    public var corner: Double
-    /// 안전영역 위 · 아래(pt).
-    public var safeTop: Double
-    public var safeBottom: Double
+    public var corner: Double = 0
+    /// 안전영역 위 · 아래(pt) — 없는 기기(맥 창)는 0.
+    public var safeTop: Double = 0
+    public var safeBottom: Double = 0
     /// 편집기 기기 틀이면 그 씬 띠 — nil 이면 편집기 틀이 아니다.
     public var scene: SceneBand?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
 
+    /// 빈 틀 — 칸은 하나씩 채운다.
+    public init() {}
     public init(id: String, platform: String, name: String, symbol: String, size: Size, corner: Double, safeTop: Double, safeBottom: Double,
                 scene: SceneBand? = nil) {
         self.id = id; self.platform = platform; self.name = name; self.symbol = symbol; self.size = size; self.corner = corner
         self.safeTop = safeTop; self.safeBottom = safeBottom; self.scene = scene
     }
 
-    /// 폼팩터(모르는 낱말이면 nil).
-    public var formFactor: FormFactor? { FormFactor(rawValue: platform) }
+    /// 폼팩터 — 낱말 그대로(열린 꼴 · 아는 것인지는 `FormFactor.known` 과 견준다) · 낱말이 비었으면 nil.
+    public var formFactor: FormFactor? { platform.isEmpty ? nil : FormFactor(rawValue: platform) }
+
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, platform, name, symbol, size, corner, safeTop, safeBottom, scene }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        platform = try c.decodeIfPresent(String.self, forKey: .platform) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        symbol = try c.decodeIfPresent(String.self, forKey: .symbol) ?? ""
+        size = try c.decodeIfPresent(Size.self, forKey: .size) ?? Size(w: 0, h: 0)
+        corner = try c.decodeIfPresent(Double.self, forKey: .corner) ?? 0
+        safeTop = try c.decodeIfPresent(Double.self, forKey: .safeTop) ?? 0
+        safeBottom = try c.decodeIfPresent(Double.self, forKey: .safeBottom) ?? 0
+        scene = try c.decodeIfPresent(SceneBand.self, forKey: .scene)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(platform, forKey: .platform); try c.encode(name, forKey: .name); try c.encode(symbol, forKey: .symbol)
+        try c.encode(size, forKey: .size); try c.encode(corner, forKey: .corner); try c.encode(safeTop, forKey: .safeTop); try c.encode(safeBottom, forKey: .safeBottom)
+        try c.encodeIfPresent(scene, forKey: .scene)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+    }
 }
 
 // MARK: hello.tokensBuilt
@@ -106,7 +156,7 @@ public struct BuiltTokens: Codable, Equatable, Sendable {
 
     /// 공급자 둘 + 간격 역할에서 — 호스트는 빌드된 표로 · 엔진은 정본 읽개로 같은 꼴을 세운다(간격 역할은 이름 차례로 세운다).
     public init(scales: any ScaleTokenProvider, layout: [ScaleEntry], colors: any ColorTokenProvider) {
-        self.scales = Dictionary(uniqueKeysWithValues: ScaleKind.allCases.map { k in (k.rawValue, scales.entries(k).map { ScaleEntry(name: $0.name, pt: $0.pt) }) })
+        self.scales = Dictionary(uniqueKeysWithValues: ScaleKind.known.map { k in (k.rawValue, scales.entries(k).map { ScaleEntry(name: $0.name, pt: $0.pt) }) })
         self.layout = layout.sorted { $0.name < $1.name }.map { ScaleEntry(name: $0.name, pt: $0.pt) }
         self.colors = colors.entries().map { e in Role(name: e.name, values: e.values.mapValues(\.hex)) }
         self.themes = colors.themes().map(\.name)
@@ -175,33 +225,41 @@ public struct LayerComposition: Codable, Equatable, Sendable {
 
 /// 구성 칸 하나 — 키 · 종류 · 사람이 읽는 이름 · 고를 값(`choice`) · 기본값 · 도움말 · 보이는 조건 · 기준 칸.
 public struct CompositionField: Codable, Equatable, Sendable {
-    /// 칸 종류 — JSON 꼴과 편집기의 컨트롤을 함께 정한다.
-    public enum Kind: String, Codable, CaseIterable, Sendable {
+    /// 칸 종류 — JSON 꼴과 편집기의 컨트롤을 함께 정한다. 열린 꼴: 아는 종류 여덟(`known`) · 프로젝트가 서술로 더한 종류도 글자 그대로 든다
+    /// (엔진의 일반 편집기는 모르는 종류를 글 칸으로 세운다 · 꼴은 재지 않는다).
+    public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
+        public let rawValue: String
+        public init(rawValue: String) { self.rawValue = rawValue }
         /// 참거짓 — 토글
-        case bool
+        public static let bool = Kind(rawValue: "bool")
         /// 글 한 줄 — 글 칸
-        case text
+        public static let text = Kind(rawValue: "text")
         /// 기호 이름(SF Symbol) 하나 — 기호 칸
-        case symbol
+        public static let symbol = Kind(rawValue: "symbol")
         /// 고르는 낱말 하나(`choices`) — 고르기
-        case choice
+        public static let choice = Kind(rawValue: "choice")
         /// 기호 이름 목록(차례 있음) — 기호 칩 목록
-        case symbols
+        public static let symbols = Kind(rawValue: "symbols")
         /// 기준 칸(`of`)의 값 → 이름 — 이름 표
-        case labels
+        public static let labels = Kind(rawValue: "labels")
         /// 기준 칸(`of`) 목록의 부분 집합 — 켜고 끄기 목록
-        case subset
+        public static let subset = Kind(rawValue: "subset")
         /// 허브 슬롯 화면(IA id) 하나 — 슬롯 고르기
-        case slot
+        public static let slot = Kind(rawValue: "slot")
+        /// 이 SDK 가 아는 종류 — 차례 그대로.
+        public static let known: [Kind] = [.bool, .text, .symbol, .choice, .symbols, .labels, .subset, .slot]
+        public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+        public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
 
-        /// 이 종류의 JSON 꼴인가.
+        /// 이 종류의 JSON 꼴인가 — 모르는 종류는 참(재지 않는다).
         public func accepts(_ v: JSONValue) -> Bool {
-            switch (self, v) {
-            case (.bool, .bool): return true
-            case (.text, .string), (.symbol, .string), (.choice, .string), (.slot, .string): return true
-            case (.symbols, .array(let a)), (.subset, .array(let a)): return a.allSatisfy { if case .string = $0 { true } else { false } }
-            case (.labels, .object(let o)): return o.values.allSatisfy { if case .string = $0 { true } else { false } }
-            default: return false
+            func strings(_ a: [JSONValue]) -> Bool { a.allSatisfy { if case .string = $0 { true } else { false } } }
+            switch self {
+            case .bool: if case .bool = v { return true } else { return false }
+            case .text, .symbol, .choice, .slot: if case .string = v { return true } else { return false }
+            case .symbols, .subset: if case .array(let a) = v { return strings(a) } else { return false }
+            case .labels: if case .object(let o) = v { return strings(Array(o.values)) } else { return false }
+            default: return true
             }
         }
     }
@@ -238,28 +296,36 @@ public struct CompositionField: Codable, Equatable, Sendable {
 /// 콜아웃 층의 **푼 값** — 프로젝트의 콜아웃 안(Style 값)을 호스트가 이번 장의 테마로 푼 것(치수 pt · 색 `#rrggbb[aa]`). 콜아웃 카드는 씬을 읽어 서므로
 /// 엔진(씬 미리보기)이 그리고, 이 값으로 렌더 코어의 콜아웃 값을 칸 대 칸 짓는다. 호스트는 층 보고(`LayerReport.data`)로 낸다.
 public struct CalloutValues: Codable, Equatable, Sendable {
+    /// 이 꼴의 판 — 자료에 `v` 칸으로 실린다(없으면 1 · 지문 밖 자료라 그 꼴의 바뀜은 이 판이 가른다).
+    public static let formatVersion = 1
+    /// 읽은 자료의 판(`v`) — 새로 지은 값은 `formatVersion`.
+    public var version: Int = CalloutValues.formatVersion
     /// 카드 바탕 · 테두리 색 · 테두리 굵기 · 모서리 반경.
-    public var surface: String, line: String
-    public var lineWidth: Double, cornerRadius: Double
+    public var surface: String = "", line: String = ""
+    public var lineWidth: Double = 0, cornerRadius: Double = 0
     /// 안쪽 여백(폭 = 좌우 · 높이 = 위아래) · 줄 사이 · 카드 최대 폭.
-    public var padding: Size
-    public var lineSpacing: Double, maximumWidth: Double
+    public var padding = Size(w: 0, h: 0)
+    public var lineSpacing: Double = 0, maximumWidth: Double = 0
     /// 눈썹 줄 — 글자 크기 · 자간 · 색.
-    public var eyebrowSize: Double, eyebrowTracking: Double, eyebrowColor: String
+    public var eyebrowSize: Double = 0, eyebrowTracking: Double = 0, eyebrowColor: String = ""
     /// 제목 줄 — 글자 크기 · 색.
-    public var titleSize: Double, titleColor: String
+    public var titleSize: Double = 0, titleColor: String = ""
     /// 값 줄 — 글자 크기 · 색.
-    public var valueSize: Double, valueColor: String
+    public var valueSize: Double = 0, valueColor: String = ""
     /// 짚은 점 — 지름 · 색.
-    public var dotDiameter: Double, dotColor: String
+    public var dotDiameter: Double = 0, dotColor: String = ""
     /// 포인터 — 길이 · 굵기.
-    public var pointerLength: Double, pointerWidth: Double
+    public var pointerLength: Double = 0, pointerWidth: Double = 0
     /// 화면 가장자리 · 크롬에서 카드가 비켜서는 최소 거리.
-    public var edgeInset: Double
+    public var edgeInset: Double = 0
     /// 짚은 자리 — 그림 폭 · 높이의 비율(0…1). 프로젝트의 콜아웃 표본이 정한 기본(그 자리에서 씬이 무엇을 읽는지는 엔진이 잰다) ·
-    /// 엔진이 손으로 옮기면 그 값을 쓴다. nil = 싣지 않음(엔진이 가운데를 짚는다). 판 2 안의 선택 칸이다(옛 호스트는 싣지 않는다).
+    /// 엔진이 손으로 옮기면 그 값을 쓴다. nil = 싣지 않음(엔진이 가운데를 짚는다).
     public var anchor: CalloutAnchor?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
 
+    /// 빈 값 — 칸은 하나씩 채운다.
+    public init() {}
     public init(surface: String, line: String, lineWidth: Double, cornerRadius: Double, padding: Size, lineSpacing: Double, maximumWidth: Double,
                 eyebrowSize: Double, eyebrowTracking: Double, eyebrowColor: String, titleSize: Double, titleColor: String,
                 valueSize: Double, valueColor: String, dotDiameter: Double, dotColor: String,
@@ -273,9 +339,43 @@ public struct CalloutValues: Codable, Equatable, Sendable {
         self.anchor = anchor
     }
 
-    /// 층 보고의 자료(JSON) — `LayerReport.data`.
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case version = "v"
+        case surface, line, lineWidth, cornerRadius, padding, lineSpacing, maximumWidth, eyebrowSize, eyebrowTracking, eyebrowColor
+        case titleSize, titleColor, valueSize, valueColor, dotDiameter, dotColor, pointerLength, pointerWidth, edgeInset, anchor
+    }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func d(_ k: CodingKeys) throws -> Double { try c.decodeIfPresent(Double.self, forKey: k) ?? 0 }
+        func t(_ k: CodingKeys) throws -> String { try c.decodeIfPresent(String.self, forKey: k) ?? "" }
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        surface = try t(.surface); line = try t(.line); lineWidth = try d(.lineWidth); cornerRadius = try d(.cornerRadius)
+        padding = try c.decodeIfPresent(Size.self, forKey: .padding) ?? Size(w: 0, h: 0)
+        lineSpacing = try d(.lineSpacing); maximumWidth = try d(.maximumWidth)
+        eyebrowSize = try d(.eyebrowSize); eyebrowTracking = try d(.eyebrowTracking); eyebrowColor = try t(.eyebrowColor)
+        titleSize = try d(.titleSize); titleColor = try t(.titleColor); valueSize = try d(.valueSize); valueColor = try t(.valueColor)
+        dotDiameter = try d(.dotDiameter); dotColor = try t(.dotColor)
+        pointerLength = try d(.pointerLength); pointerWidth = try d(.pointerWidth); edgeInset = try d(.edgeInset)
+        anchor = try c.decodeIfPresent(CalloutAnchor.self, forKey: .anchor)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(version, forKey: .version)
+        try c.encode(surface, forKey: .surface); try c.encode(line, forKey: .line); try c.encode(lineWidth, forKey: .lineWidth); try c.encode(cornerRadius, forKey: .cornerRadius)
+        try c.encode(padding, forKey: .padding); try c.encode(lineSpacing, forKey: .lineSpacing); try c.encode(maximumWidth, forKey: .maximumWidth)
+        try c.encode(eyebrowSize, forKey: .eyebrowSize); try c.encode(eyebrowTracking, forKey: .eyebrowTracking); try c.encode(eyebrowColor, forKey: .eyebrowColor)
+        try c.encode(titleSize, forKey: .titleSize); try c.encode(titleColor, forKey: .titleColor); try c.encode(valueSize, forKey: .valueSize); try c.encode(valueColor, forKey: .valueColor)
+        try c.encode(dotDiameter, forKey: .dotDiameter); try c.encode(dotColor, forKey: .dotColor)
+        try c.encode(pointerLength, forKey: .pointerLength); try c.encode(pointerWidth, forKey: .pointerWidth); try c.encode(edgeInset, forKey: .edgeInset)
+        try c.encodeIfPresent(anchor, forKey: .anchor)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+    }
+
+    /// 층 보고의 자료(JSON) — `LayerReport.data` · 판 칸 `v` 를 싣는다.
     public func data() throws -> JSONValue { try JSONValue.from(self) }
-    /// 층 보고의 자료에서.
+    /// 층 보고의 자료에서(판 칸이 없으면 1).
     public init(data: JSONValue) throws { self = try data.decode(CalloutValues.self) }
 }
 

@@ -11,7 +11,7 @@ import ProjectFormat
 //            따라온다(`Framing.swift`) — 공유 메모리면 칸 번호만 실린다.
 //   시각   : 전부 `PreviewClock`(CLOCK_UPTIME_RAW ns) — 같은 기계의 두 프로세스가 같은 시계를 읽으므로 구간을 프로세스 넘어 뺄 수 있다.
 
-// 판(`PreviewProtocolVersion`) · 맞대기(`ProtocolJudge` — 엔진이 판정자 · N 과 N-1 을 받는다)는 `Negotiation.swift`.
+// 판(`PreviewProtocolVersion`) · 맞대기(`ProtocolJudge` — 엔진이 판정자 · 지금 판과 바닥까지의 옛 판을 받는다)는 `Negotiation.swift`.
 
 public struct Size: Codable, Hashable, Sendable {
     public var w: Double, h: Double
@@ -75,11 +75,18 @@ public struct Insets: Codable, Hashable, Sendable {
 
 /// 공유 메모리 자리 — 엔진이 만들고(호스트가 죽어도 남는다) 호스트가 연다.
 public struct SharedMemoryInfo: Codable, Hashable, Sendable {
-    public enum Kind: String, Codable, CaseIterable, Sendable {
+    /// 전송 종류 — 열린 꼴: 아는 종류 둘(`known`) · 모르는 종류를 받은 호스트는 공유 메모리를 쓰지 않고 소켓으로 보낸다(전송 A).
+    public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
+        public let rawValue: String
+        public init(rawValue: String) { self.rawValue = rawValue }
         /// POSIX `shm_open` — 이름(`/…` · 31바이트 한계)
-        case posix
+        public static let posix = Kind(rawValue: "posix")
         /// `/tmp` 파일 mmap — 경로
-        case file
+        public static let file = Kind(rawValue: "file")
+        /// 이 SDK 가 아는 종류.
+        public static let known: [Kind] = [.posix, .file]
+        public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+        public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
     }
     public var kind: Kind
     public var name: String

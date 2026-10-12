@@ -6,7 +6,7 @@ import PreviewProtocol
 // 상주 연결 하나 — 쓰기는 락 하나로 줄 세우고(`writev` 로 머리 + 몸을 한 번에), 읽기는 전용 스레드가 돈다.
 // 받은 메시지는 그 읽기 스레드에서 `onInbound` 로 넘긴다(어느 큐로 보낼지는 쓰는 쪽이 정한다 — 스레드 홉을 하나라도 덜게).
 // 상대가 죽으면 읽기가 EOF(0)·오류를 보고 `onClose` 를 한 번 부른다 — 엔진의 크래시 감지가 이것이다.
-// 읽고 쓰는 줄은 판 하나의 말(`dialect` — 기본 지금 판)이다. 엔진 쪽은 판정자를 넘겨(`start(judge:)`) 첫 줄(호스트 hello)에서 판을 가르고 그 판의 말로
+// 읽고 쓰는 줄은 판 하나의 말(`dialect` — 판을 적지 않으면 지금 판)이다 · 상대의 판에 없는 메시지는 보내지 않는다(`send` 가 거짓). 엔진 쪽은 판정자를 넘겨(`start(judge:)`) 첫 줄(호스트 hello)에서 판을 가르고 그 판의 말로
 // 갈아 탄다 — 그 hello 를 넘기기 **전에** 갈아 타므로 받는 쪽이 곧장 보내는 답(엔진 hello)부터 호스트의 판으로 나간다. 판이 맞지 않으면 끊고
 // `onClose` 에 `ProtocolMismatch` 를 넘긴다.
 
@@ -31,8 +31,10 @@ public final class Connection: @unchecked Sendable {
     private let dialectLock = NSLock()
     private var _dialect: ProtocolDialect
 
-    /// `dialect` = 처음 읽고 쓰는 판의 말(기본 지금 판 — 호스트는 늘 이것).
-    public init(fd: Int32, dialect: ProtocolDialect = .current) { self.fd = fd; _dialect = dialect }
+    /// 지금 판의 말로 읽고 쓰는 연결(호스트는 늘 이것).
+    public convenience init(fd: Int32) { self.init(fd: fd, dialect: .current) }
+    /// `dialect` = 처음 읽고 쓰는 판의 말.
+    public init(fd: Int32, dialect: ProtocolDialect) { self.fd = fd; _dialect = dialect }
     deinit { close() }
 
     public var stats: WireStats { statsLock.withLock { _stats } }
@@ -41,14 +43,17 @@ public final class Connection: @unchecked Sendable {
     public func resetStats() { statsLock.withLock { _stats = WireStats() } }
 
     /// 메시지 하나(+ inline 프레임 몸). 몸은 복사하지 않고 `writev` 로 커널에 바로 넘긴다.
-    public func send(_ message: Message, payload: UnsafeRawBufferPointer? = nil) throws {
-        let head = try Framing.header(message, dialect: dialect)
+    /// 상대의 판에 없는 메시지(말의 내리는 손이 nil)는 보내지 않고 거짓을 낸다.
+    @discardableResult
+    public func send(_ message: Message, payload: UnsafeRawBufferPointer? = nil) throws -> Bool {
+        guard let head = try Framing.headerIfSpoken(message, dialect: dialect) else { return false }
         precondition((message.inlineBytes ?? 0) == (payload?.count ?? 0), "머리의 inline 길이와 몸이 다르다")
         try writeLock.withLock {
             try head.withUnsafeBytes { h in
                 if let p = payload, p.count > 0 { try writeAll([h, p]) } else { try writeAll([h]) }
             }
         }
+        return true
     }
 
     private func writeAll(_ parts: [UnsafeRawBufferPointer]) throws {

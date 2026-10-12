@@ -19,15 +19,6 @@ public enum UpgradeEffect: Hashable, Sendable {
         return []
     }
 
-    /// 사람 말 낱말 — 「항등」 · 「값 바꿈」 · 「잃음」.
-    public var word: String {
-        switch self {
-        case .identity: "항등"
-        case .valueChange: "값 바꿈"
-        case .lossy: "잃음"
-        }
-    }
-
     /// 기계 낱말 — `identity` · `valueChange` · `lossy`(`--json`).
     public var key: String {
         switch self {
@@ -71,7 +62,7 @@ extension JSONValue {
         case .array(let a): !a.isEmpty
         case .string(let s): !s.isEmpty
         case .object(let o): !o.isEmpty
-        case .bool, .number: true
+        case .bool, .number, .integer: true
         }
     }
 }
@@ -84,7 +75,7 @@ public struct UpgradeChain: Sendable {
     public let oldest: Int
     /// 이 엔진이 읽는 가장 새 판(형식 판 상수를 읽은 값).
     public let newest: Int
-    /// 그 형식의 쓰는 손이 찍는 가장 낮은 판(씬 `SceneFormat.lowestWritten` · 데이터 삶 파일 `IsoDataFormat.life` …) — 업그레이드가 쓰는 판의 바닥.
+    /// 그 형식의 쓰는 손이 찍는 가장 낮은 판(데이터 삶 파일 `IsoDataFormat.life` …) — 업그레이드가 쓰는 판의 바닥.
     /// 업그레이드는 최신까지 쓰지 않는다 — 판이 뒤진 빌더(다른 Mac 의 배포본)가 그 파일을 계속 열게.
     public let writeFloor: Int
     /// 판 간격마다 스텝 하나(차례는 상관없다 — `from` 으로 찾는다).
@@ -92,6 +83,10 @@ public struct UpgradeChain: Sendable {
 
     public init(stampKey: String = "version", oldest: Int, newest: Int, writeFloor: Int, steps: [any UpgradeStep]) {
         self.stampKey = stampKey; self.oldest = oldest; self.newest = newest; self.writeFloor = writeFloor; self.steps = steps
+    }
+    /// 형식의 판 범위 한 벌(`IsoDataFormat.versions` … · 렌더 코어의 형식도 같은 꼴로 낸다)로 — 바닥 · 최신 · 쓰는 바닥 · 판 칸 이름을 글자로 다시 적지 않는다.
+    public init(versions: FormatVersions, steps: [any UpgradeStep]) {
+        self.init(stampKey: versions.stampKey, oldest: versions.oldest, newest: versions.newest, writeFloor: versions.writeFloor, steps: steps)
     }
 
     /// 불변식 위반 — 빈 간격 · 겹친 간격 · 범위 밖 스텝 · 판 차례(옛 판 > 최신 판) · 쓰는 바닥이 범위 밖. 비었으면 선다.
@@ -132,7 +127,7 @@ public struct UpgradeChain: Sendable {
     ///   사슬은 잃는 칸이 남은 문서를 「올린 결과」로 내지 않는다(판 칸만 올라 디코더의 알림이 꺼진 채 조용히 잃는 꼴).
     public func upgrade(_ document: JSONValue) throws -> UpgradeOutcome {
         guard case .object(let top) = document else { throw UpgradeError.notObject }
-        guard case .number(let raw)? = top[stampKey], let version = Int(exactly: raw) else {
+        guard let raw = top[stampKey]?.integerValue, let version = Int(exactly: raw) else {
             throw UpgradeError.unstamped(key: stampKey)
         }
         var doc = document

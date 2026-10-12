@@ -244,6 +244,10 @@ private func writeFixture(_ text: String = fixture) throws -> URL {
         #expect(p.entries(.space) == [ScaleEntry(name: "sm", pt: 6, doc: "작게"), ScaleEntry(name: "md", pt: 8)])
         #expect(p.entries(.radius).map(\.name) == ["card"])
         #expect(p.entries(.type).count == 2)
-        #expect(ScaleKind.allCases.map(\.rawValue) == ["space", "radius", "type"])
+        #expect(ScaleKind.known.map(\.rawValue) == ["space", "radius", "type"])
+        // 열린 종류 — 모르는 종류(새 토큰 종류)는 빈 목록 · 낱말 그대로 왕복
+        let stroke = ScaleKind(rawValue: "stroke")
+        #expect(p.entries(stroke).isEmpty && !ScaleKind.known.contains(stroke))
+        #expect((try? JSONDecoder().decode(ScaleKind.self, from: JSONEncoder().encode(stroke))) == stroke)
     }
 }

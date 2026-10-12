@@ -4,7 +4,7 @@ import Foundation
 /// 같은 자리 · 같은 머리 · 같은 값 채우기를 이 한 벌로 쓴다. Style 값의 **꼴**(화면마다의 `…Style`)은 프로젝트의 것이라 여기 없다 —
 /// 여기는 그 값을 JSON 사전으로만 다룬다.
 ///
-/// 판 칸이 없는 형식이다(`DesignFormat.version`). 칸: `screen` · `name` · `createdAt`(ISO 8601) · `confirmed` · `basedOn` · `style`(값 한 덩이) ·
+/// 판 칸 `version`(맨 위 정수 · 선택 — 없으면 `DesignFormat.version` · `version(_:)`)으로 「이 SDK 보다 새 안」을 가른다. 칸: `screen` · `name` · `createdAt`(ISO 8601) · `confirmed` · `basedOn` · `style`(값 한 덩이) ·
 /// `components`(`ScreenComponent` 배열 · 없으면 키가 안 선다) · 옛 칸 `notes` · `overall`(읽기만).
 public enum DesignFile {
     /// 파일 이름 꼬리.
@@ -40,20 +40,27 @@ public enum DesignFile {
         let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d
     }
 
-    /// 머리 — 배선 다음의 고르기(확정 → 가장 최근 · `IAWiring.rule`)가 읽는 두 칸.
+    /// 안 파일의 판 — 맨 위 정수 칸 `version`(`FormatStamp`) · 칸이 없으면 `DesignFormat.version`(판 칸을 들이기 전의 안 파일).
+    public static func version(_ data: Data) -> Int { FormatStamp.version(data) ?? DesignFormat.version }
+
+    /// 머리 — 배선 다음의 고르기(확정 → 가장 최근 · `IAWiring.rule`)가 읽는 두 칸과 판.
     public struct Head: Sendable, Equatable {
         public let confirmed: Bool
         public let createdAt: Date
-        public init(confirmed: Bool, createdAt: Date) { self.confirmed = confirmed; self.createdAt = createdAt }
+        /// 안 파일의 판(`version(_:)` 과 같은 규칙).
+        public let version: Int
+        /// 판 칸 없는 머리 — 판은 `DesignFormat.version`.
+        public init(confirmed: Bool, createdAt: Date) { self.init(confirmed: confirmed, createdAt: createdAt, version: DesignFormat.version) }
+        public init(confirmed: Bool, createdAt: Date, version: Int) { self.confirmed = confirmed; self.createdAt = createdAt; self.version = version }
     }
 
     /// 머리만 읽는다 — 몸(Style)을 화면의 꼴로 풀지 않는다. 만든 때가 없거나 ISO 8601 이 아니면 nil(그 안은 고르기 후보에서 빠진다) ·
-    /// `confirmed` 가 없으면 거짓.
+    /// `confirmed` 가 없으면 거짓 · 판 칸이 없으면 `DesignFormat.version`.
     public static func head(_ data: Data) -> Head? {
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let stamp = obj["createdAt"] as? String,
               let date = iso8601.date(from: stamp) else { return nil }
-        return Head(confirmed: (obj["confirmed"] as? Bool) ?? false, createdAt: date)
+        return Head(confirmed: (obj["confirmed"] as? Bool) ?? false, createdAt: date, version: version(data))
     }
 
     /// Style 값에 없는 칸을 기본값으로 채운다 — 칸이 늘어도 옛 안 파일이 읽힌다(칸 이름을 바꾸는 것만이 호환을 깬다). 채운 칸의 수를 돌려준다.

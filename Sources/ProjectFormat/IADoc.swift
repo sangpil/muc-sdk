@@ -17,6 +17,8 @@ import Foundation
 //
 // **플랫폼 칸**(IA 하나 + 플랫폼별 틀과 안) — 마디 · 허브의 `platforms` 는 **선택 칸**이다: 없으면 매니페스트(`muc.json` `platforms`)
 // 전부에 선다. 적으면 그 부분집합만. 판 번호는 1 그대로(추가 칸이라 옛 파일이 그대로 읽힌다).
+//
+// **모르는 칸 보존** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다). 같은 판에 칸이 더해져도 옛 엔진이 열어 저장하면 사라지지 않는다.
 
 /// 화면 하나 — 트리의 마디.
 public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
@@ -56,6 +58,8 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 이 화면이 읽는 **데이터** — 모델 파일(`*.isodata`)의 엔티티 이름 목록(`data.reads`). **선택 칸**이다 —
     /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 `mucb data check` 가 잰다.
     public var data: ScreenData?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
 
     public init(id: String, label: String, parent: String? = nil, via: String, source: String, route: String? = nil,
                 mapID: String? = nil, form: Bool = false, states: [String] = [], scenes: String? = nil, chrome: JSONValue? = nil, proposed: Bool = false,
@@ -68,7 +72,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 읽는 엔티티 이름(칸이 없으면 빈 목록).
     public var reads: [String] { data?.reads ?? [] }
 
-    enum CodingKeys: String, CodingKey { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data }
     /// 파일엔 비어 있는 것을 적지 않는다(form=false · states=[] · nil) — 한 마디가 한 덩어리로 읽히게.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -87,7 +91,9 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         proposed = try c.decodeIfPresent(Bool.self, forKey: .proposed) ?? false
         platforms = try c.decodeIfPresent([String].self, forKey: .platforms)
         data = try c.decodeIfPresent(ScreenData.self, forKey: .data)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
     }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(label, forKey: .label)
@@ -102,18 +108,27 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         if proposed { try c.encode(proposed, forKey: .proposed) }
         try c.encodeIfPresent(platforms, forKey: .platforms)
         if let d = data, !d.isEmpty { try c.encode(d, forKey: .data) }
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }
 
 /// 마디의 `data` 칸 — 지금은 `reads`(엔티티 이름 목록) 하나. 비면 칸째 적지 않는다(파일이 뜻 없는 칸을 들지 않게).
 public struct ScreenData: Sendable, Equatable, Codable {
     public var reads: [String]
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
     public init(reads: [String]) { self.reads = reads }
-    public var isEmpty: Bool { reads.isEmpty }
+    public var isEmpty: Bool { reads.isEmpty && extra.isEmpty }
 
     enum CodingKeys: String, CodingKey { case reads }
     public init(from decoder: Decoder) throws {
         reads = try decoder.container(keyedBy: CodingKeys.self).decodeIfPresent([String].self, forKey: .reads) ?? []
+        extra = try ExtraKeys.decode(from: decoder, known: ["reads"])
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(reads, forKey: .reads)
+        try ExtraKeys.encode(extra, to: encoder, known: ["reads"])
     }
 }
 
@@ -129,8 +144,26 @@ public struct ScreenJump: Sendable, Equatable, Codable, Identifiable {
     /// 앱의 진입 — 이 점프를 크롬(또는 씬)의 어느 손이 여나(`JumpEntry`). nil = 앱 크롬에 진입이 없는 점프(근거 글만 있는 점프 · 화면 안 행).
     /// 앱 셸의 메뉴 항목은 이것을 프로젝트의 생성 상수로 읽는다 — 끊으면 앱의 그 항목도 사라진다.
     public var entries: [JumpEntry]?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
     public init(from: String, to: String, label: String, source: String? = nil, entries: [JumpEntry]? = nil) {
         self.from = from; self.to = to; self.label = label; self.source = source; self.entries = entries
+    }
+    enum CodingKeys: String, CodingKey, CaseIterable { case from, to, label, source, entries }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        from = try c.decode(String.self, forKey: .from); to = try c.decode(String.self, forKey: .to)
+        label = try c.decode(String.self, forKey: .label)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
+        entries = try c.decodeIfPresent([JumpEntry].self, forKey: .entries)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(from, forKey: .from); try c.encode(to, forKey: .to); try c.encode(label, forKey: .label)
+        try c.encodeIfPresent(source, forKey: .source); try c.encodeIfPresent(entries, forKey: .entries)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
     public var id: String { "\(from)>\(to)" }
 
@@ -155,7 +188,24 @@ public struct JumpEntry: Sendable, Equatable, Codable {
     public var control: String
     public var title: String?
     public var order: Int?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
     public init(control: String, title: String? = nil, order: Int? = nil) { self.control = control; self.title = title; self.order = order }
+    enum CodingKeys: String, CodingKey, CaseIterable { case control, title, order }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        control = try c.decode(String.self, forKey: .control)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        order = try c.decodeIfPresent(Int.self, forKey: .order)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(control, forKey: .control)
+        try c.encodeIfPresent(title, forKey: .title); try c.encodeIfPresent(order, forKey: .order)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+    }
 }
 
 /// 허브 — 루트 화면을 슬롯으로 드는 내비 부품(탭바 · 사이드바). **탭 순서의 정본은 이 슬롯 차례다**(앱의 탭 차례가 따라온다).
@@ -173,13 +223,31 @@ public struct Hub: Sendable, Equatable, Codable, Identifiable {
     public var kind: Kind
     /// 슬롯 = 탭 루트 화면 코드명(순서대로)
     public var slots: [String]
-    /// 이 허브(내비 틀)가 서는 플랫폼 — **선택 칸** · nil 이면 매니페스트 `platforms` 전부(탭바는 iPhone 틀 · 사이드바는 iPad·Mac 틀이 될 자리).
+    /// 이 허브(내비 틀)가 서는 플랫폼 — **선택 칸** · nil 이면 매니페스트 `platforms` 전부. 어느 플랫폼에 어느 내비 틀이 서는가는 프로젝트가 적는다.
     public var platforms: [String]?
     /// 슬롯마다 **손댄 내비 항목** · 열쇠 = 슬롯 id · **선택 칸** — 항목의 꼴(표시명 · 기호 · 숨김 같은)은 프로젝트가 정하는 칸이라 JSON 그대로 든다.
     /// 차례는 `slots` 가 갖는다(항목 칸에 차례를 또 두지 않는다).
     public var items: [String: JSONValue]?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
     public init(id: String, label: String, kind: Kind, slots: [String], platforms: [String]? = nil, items: [String: JSONValue]? = nil) {
         self.id = id; self.label = label; self.kind = kind; self.slots = slots; self.platforms = platforms; self.items = items
+    }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, kind, slots, platforms, items }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id); label = try c.decode(String.self, forKey: .label)
+        kind = try c.decode(Kind.self, forKey: .kind); slots = try c.decode([String].self, forKey: .slots)
+        platforms = try c.decodeIfPresent([String].self, forKey: .platforms)
+        items = try c.decodeIfPresent([String: JSONValue].self, forKey: .items)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(label, forKey: .label); try c.encode(kind, forKey: .kind); try c.encode(slots, forKey: .slots)
+        try c.encodeIfPresent(platforms, forKey: .platforms); try c.encodeIfPresent(items, forKey: .items)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }
 
@@ -190,8 +258,27 @@ public struct IADoc: Sendable, Equatable, Codable {
     public var nodes: [ScreenNode]
     public var jumps: [ScreenJump]
     public var hubs: [Hub]
-    public init(version: Int = IADoc.currentVersion, nodes: [ScreenNode], jumps: [ScreenJump], hubs: [Hub]) {
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
+    /// 새 문서 — 판은 `IAFormat.version`(기본 인자가 아니라 이 손의 몸이 든다 — 판이 부르는 쪽 목적 코드에 묻지 않게).
+    public init(nodes: [ScreenNode], jumps: [ScreenJump], hubs: [Hub]) { self.init(version: IAFormat.version, nodes: nodes, jumps: jumps, hubs: hubs) }
+    public init(version: Int, nodes: [ScreenNode], jumps: [ScreenJump], hubs: [Hub]) {
         self.version = version; self.nodes = nodes; self.jumps = jumps; self.hubs = hubs
+    }
+    enum CodingKeys: String, CodingKey, CaseIterable { case version, nodes, jumps, hubs }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        nodes = try c.decode([ScreenNode].self, forKey: .nodes)
+        jumps = try c.decode([ScreenJump].self, forKey: .jumps)
+        hubs = try c.decode([Hub].self, forKey: .hubs)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(version, forKey: .version); try c.encode(nodes, forKey: .nodes); try c.encode(jumps, forKey: .jumps); try c.encode(hubs, forKey: .hubs)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 
     public func node(_ id: String) -> ScreenNode? { nodes.first { $0.id == id } }

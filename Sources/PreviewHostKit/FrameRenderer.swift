@@ -43,8 +43,9 @@ public final class FrameRenderer {
         return Frame(image: img, data: data, w: img.width, h: img.height, stride: img.bytesPerRow)
     }
 
-    /// PNG 쓰기 — 호스트의 `shot` · 엔진 쪽 프로젝트 도구(찍기 · 격자 · 창 그림)가 함께 쓰는 한 벌(폴더가 없으면 만든다). 메인 액터 밖에서도 부른다.
-    nonisolated public static func writePNG(_ image: CGImage, to url: URL) throws {
+    /// PNG 쓰기 — 호스트의 `shot` 이 쓴다(SDK 안 손 · 폴더가 없으면 만든다). 메인 액터 밖에서도 부른다.
+    /// 공개 표면이 아니다 — 호스트 밖에서 그림을 파일로 쓰는 손은 쓰는 쪽(엔진의 도구)이 제 것을 든다.
+    nonisolated package static func writePNG(_ image: CGImage, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard let d = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw PreviewHostError.renderFailed("PNG 쓰기 \(url.path)") }
         CGImageDestinationAddImage(d, image, nil)

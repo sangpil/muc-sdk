@@ -16,22 +16,6 @@ public struct ScreenComponent: Codable, Equatable, Hashable, Sendable, Identifia
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case general, isoscene, isomodel
 
-        /// 화면에 보이는 이름.
-        public var label: String {
-            switch self {
-            case .general: "일반"
-            case .isoscene: "씬"
-            case .isomodel: "모델"
-            }
-        }
-        /// SF Symbol.
-        public var symbol: String {
-            switch self {
-            case .general: "square.on.square"
-            case .isoscene: "cube"
-            case .isomodel: "shippingbox"
-            }
-        }
         /// 이 종류가 파일을 원천으로 갖나(전용 편집기가 여는 것 · 앱이 그리는 것).
         public var hasFile: Bool { self != .general }
         /// 파일 확장자.
@@ -58,6 +42,8 @@ public struct ScreenComponent: Codable, Equatable, Hashable, Sendable, Identifia
         public var y: Double
         public var width: Double
         public var height: Double
+        /// 이 SDK 가 모르는 칸(읽은 그대로 되쓴다).
+        public var extra: [String: JSONValue] = [:]
         public init(x: Double, y: Double, width: Double, height: Double) {
             self.x = x; self.y = y; self.width = width; self.height = height
         }
@@ -68,17 +54,23 @@ public struct ScreenComponent: Codable, Equatable, Hashable, Sendable, Identifia
             return Region(x: min(max(x, 0), 1 - w), y: min(max(y, 0), 1 - h), width: w, height: h)
         }
         public var isFull: Bool { clamped == .full }
+
+        enum CodingKeys: String, CodingKey { case x, y, width, height }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            x = try c.decode(Double.self, forKey: .x); y = try c.decode(Double.self, forKey: .y)
+            width = try c.decode(Double.self, forKey: .width); height = try c.decode(Double.self, forKey: .height)
+            extra = try ExtraKeys.decode(from: decoder, known: ScreenComponent.knownRegionKeys)
+        }
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(x, forKey: .x); try c.encode(y, forKey: .y); try c.encode(width, forKey: .width); try c.encode(height, forKey: .height)
+            try ExtraKeys.encode(extra, to: encoder, known: ScreenComponent.knownRegionKeys)
+        }
         /// 이 크기(pt)의 뷰포트에서 차지하는 사각형.
         public func rect(in size: CGSize) -> CGRect {
             let r = clamped
             return CGRect(x: r.x * size.width, y: r.y * size.height, width: r.width * size.width, height: r.height * size.height)
-        }
-        /// 사람이 읽는 한 줄 — 「전체」 ⟂ 「x 0 · y 50 · 100×50 %」.
-        public var summary: String {
-            if isFull { return "전체" }
-            let r = clamped
-            func p(_ v: Double) -> String { "\(Int((v * 100).rounded()))" }
-            return "x \(p(r.x)) · y \(p(r.y)) · \(p(r.width))×\(p(r.height)) %"
         }
     }
 
@@ -93,6 +85,8 @@ public struct ScreenComponent: Codable, Equatable, Hashable, Sendable, Identifia
     public var region: Region?
     /// 일부 영역 씬을 손으로 만지나 — nil · false = 정적(스크롤을 가로채지 않는다). 전체 영역 씬 · 모델에는 뜻이 없다(`isInteractive`).
     public var interactive: Bool?
+    /// 이 SDK 가 모르는 칸(읽은 그대로 되쓴다 — 앱 · 엔진이 열어 저장해도 새 판의 칸이 사라지지 않는다).
+    public var extra: [String: JSONValue] = [:]
 
     public init(id: String, kind: Kind, label: String? = nil, source: String? = nil, region: Region? = nil, interactive: Bool? = nil) {
         self.id = id; self.kind = kind; self.label = label; self.source = source; self.region = region; self.interactive = interactive
@@ -117,6 +111,22 @@ public struct ScreenComponent: Codable, Equatable, Hashable, Sendable, Identifia
     /// 칸 이름 — 이 꼴이 읽는 키(검사기가 모르는 키를 가를 때 · `CodingKeys` 와 한 벌).
     public static let knownKeys: Set<String> = ["id", "kind", "label", "source", "region", "interactive"]
     public static let knownRegionKeys: Set<String> = ["x", "y", "width", "height"]
+
+    enum CodingKeys: String, CodingKey { case id, kind, label, source, region, interactive }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id); kind = try c.decode(Kind.self, forKey: .kind)
+        label = try c.decodeIfPresent(String.self, forKey: .label); source = try c.decodeIfPresent(String.self, forKey: .source)
+        region = try c.decodeIfPresent(Region.self, forKey: .region); interactive = try c.decodeIfPresent(Bool.self, forKey: .interactive)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.knownKeys)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(label, forKey: .label); try c.encodeIfPresent(source, forKey: .source)
+        try c.encodeIfPresent(region, forKey: .region); try c.encodeIfPresent(interactive, forKey: .interactive)
+        try ExtraKeys.encode(extra, to: encoder, known: Self.knownKeys)
+    }
 }
 
 extension ScreenComponent {
@@ -132,7 +142,7 @@ extension ScreenComponent {
     }
 
     /// `components` 칸을 **관대하게** 읽는다 — 앱의 읽기 · 엔진의 도달 목록. 모르는 종류 · 깨진 줄은 건너뛰고(`skipped` 에 까닭) 나머지를 돌려준다.
-    /// 모르는 칸은 `Codable` 이 원래 무시한다. 앞으로 종류가 늘어도 앱이 깨지지 않게 — 검사기(`mucb scene check <안>.design.json`)는 같은 줄을 경고로 알린다.
+    /// 모르는 칸은 `extra` 로 든다(되쓰면 남는다). 앞으로 종류가 늘어도 앱이 깨지지 않게 — 검사기(`mucb scene check <안>.design.json`)는 같은 줄을 경고로 알린다.
     /// - Parameter value: `JSONSerialization` 으로 읽은 `components` 값(배열이 아니면 빈 목록).
     public static func decodeLenient(_ value: Any?) -> (components: [ScreenComponent], skipped: [String]) {
         guard let value else { return ([], []) }

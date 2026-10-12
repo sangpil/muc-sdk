@@ -49,6 +49,29 @@ import Testing
         #expect(owner.slot(1) - owner.slot(0) == 4096)
     }
 
+    /// 상대의 판에 없는 메시지(말의 내리기가 nil)는 보내지 않는다 — `send` 가 거짓 · 뒤의 메시지는 그대로 간다.
+    @Test func aMessageThePeerDoesNotSpeakIsNotSent() throws {
+        let (a, b) = try UnixSocket.pair()
+        let quiet = ProtocolDialect.chain([ProtocolDialect.Step(from: PreviewProtocolVersion.current - 1, lift: { $0 },
+                                                                lower: { $0["type"] as? String == "ack" ? nil : $0 })])
+        let tx = Connection(fd: a, dialect: quiet), rx = Connection(fd: b, dialect: quiet)
+        let got = Box()
+        let sem = DispatchSemaphore(value: 0)
+        rx.start(name: "test.read", onInbound: { got.items.append($0); sem.signal() }, onClose: { _ in })
+        #expect(try tx.send(.ack(Ack(seq: 1, applied: 1, ms: 0))) == false)
+        #expect(try tx.send(.bye(Bye(reason: "끝"))) == true)
+        #expect(sem.wait(timeout: .now() + 2) == .success)
+        #expect(got.items.map(\.message.type) == ["bye"])
+        tx.close(); rx.close()
+    }
+
+    /// 모르는 공유 메모리 종류 — 만들지도 열지도 않고 이름 대고 거절(호스트는 그때 소켓으로 보낸다).
+    @Test func unknownSharedMemoryKindIsRefused() {
+        let info = SharedMemoryInfo(kind: SharedMemoryInfo.Kind(rawValue: "mach"), name: "x", slotBytes: 1, slots: 1)
+        #expect(throws: SharedRegion.Failure.self) { _ = try SharedRegion.open(info) }
+        #expect(!SharedMemoryInfo.Kind.known.contains(info.kind))
+    }
+
     @Test func posixNameLimit() {
         #expect(throws: SharedRegion.Failure.self) {
             _ = try SharedRegion.create(SharedMemoryInfo(kind: .posix, name: "/" + String(repeating: "x", count: 40), slotBytes: 1, slots: 1))

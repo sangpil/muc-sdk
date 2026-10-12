@@ -4,10 +4,9 @@
 //   무엇을 덮나 — 형식의 꼴을 한 번 이상씩: 층 둘 · 엔티티 넷(한 엔티티는 목업) · 공통 필드 묶음 하나 · 값 타입 하나 · 데이터셋 둘(레코드 · 시계 ·
 //     다음 번호 · 삶 블록이 든 벌 ⟂ 라벨만 든 벌) · 열 타입(id · text · int · enum · ref · value · instant · money · decimal) · 참조 onDelete 둘(restrict · setNull) ·
 //     규칙 넷(forbidden + when · sameAs · unique · code) · 별칭 둘 · 상태(목업 엔티티 · 예약 필드 · 미구현 묶음 필드) · CloudKit 경고 하나(필수인데 기본값이
-//     없는 열거) · `migrated`(SQL 사본 · Swift 스키마 판).
+//     없는 열거) · Swift 이름 칸(`swift.model`) · 스키마 판(`revision`).
 //   무엇으로 — 정원 낱말(화분 · 식물 · 물 주기 · 수확)의 중립 모델. 날짜는 2040 년 뒤의 10년 격자(생년 포함) · 수는 둥근 값.
-//   규칙으로 서는 칸 — `migrated.sql` 은 스키마에서 파생한다(목업 엔티티 · 상태가 붙은 필드는 빠진다 · 열 이름 snake · 참조는 대상 표 · 필수 열거는
-//     `check` + `notNull` · 글 기본값 `''`) · 삶 블록 시대의 id 는 레코드 UUID 규약(`IsoDataIDs` — 이름공간 `com.sangpil.isodata/<스키마>`)으로 이
+//   규칙으로 서는 칸 — 삶 블록 시대의 id 는 레코드 UUID 규약(`IsoDataIDs` — 기본 머리 `com.makeusclever.isodata/<스키마>`)으로 이
 //     표본 레코드 하나에서 낸다(다른 출처의 해시가 섞이지 않게).
 //   바이트 — 쓰개(`IsoDataFile.encoded()`)가 쓰는 꼴: 키 정렬 · 들여쓰기 두 칸 · `"키" : 값` · 빈 배열은 빈 줄 하나 · 슬래시를 풀어 쓴다 · 끝 줄바꿈 없음.
 //     시험 `IsoDataFileTests` 가 같은 바이트를 쓰개로 다시 찍어 맞댄다(쓰개의 꼴이 바뀌면 그 시험이 먼저 빨강이다).
@@ -32,7 +31,7 @@ function uuid5(ns, name) {
   const h = b.toString("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
-const recordUUID = (schema, entity, id) => uuid5(uuid5(URL_NS, `com.sangpil.isodata/${schema}`), `${entity}/${id}`);
+const recordUUID = (schema, entity, id) => uuid5(uuid5(URL_NS, `com.makeusclever.isodata/${schema}`), `${entity}/${id}`);
 
 // ── 날짜 격자 — 2040 년 뒤 · 10년 간격 ─────────────────────────────────────────────────────────────
 const year = (y) => `${y}-01-01`;
@@ -43,6 +42,7 @@ const BIRTH = 2040, FIRST = 2050, NOW = 2060;
 const SCHEMA = "sample";
 const schema = {
   name: SCHEMA,
+  revision: 1,
   layers: [{ id: "ground", label: "마당" }, { id: "shed", label: "헛간" }],
   entities: [
     {
@@ -54,7 +54,7 @@ const schema = {
         { name: "glaze", type: "text", default: "", doc: "유약 이름" },
       ],
       rules: [{ id: "label-unique", doc: "이름표는 겹치지 않는다", check: { unique: ["label"] } }],
-      sql: { table: "pots" }, swift: { model: "Pot" },
+      swift: { model: "Pot" },
     },
     {
       name: "Plant", label: "식물", layer: "ground", doc: "화분에 심긴 것 하나",
@@ -65,7 +65,6 @@ const schema = {
         { name: "kind", type: { enum: ["herb", "flower", "shrub"] }, doc: "갈래" },
         { name: "potId", type: { ref: "Pot", onDelete: "restrict" }, optional: true, doc: "심긴 화분" },
       ],
-      sql: { table: "plants" },
     },
     {
       name: "Watering", label: "물 주기", layer: "ground", doc: "물을 준 한 번",
@@ -85,7 +84,7 @@ const schema = {
         { id: "pot-of-plant", doc: "물 받은 화분은 그 식물의 화분이다", check: { sameAs: { field: "potId", via: "plantId.potId" } } },
         { id: "daily-cap", doc: "하루에 준 물의 합은 화분이 받는 양을 넘지 않는다", code: "Sources/Rules/DailyCap.swift" },
       ],
-      sql: { table: "waterings" }, swift: { model: "Watering" },
+      swift: { model: "Watering" },
     },
     {
       name: "Harvest", label: "수확", layer: "shed", status: "mock", doc: "거둔 것 한 번",
@@ -95,7 +94,6 @@ const schema = {
         { name: "amount", type: "money", default: 0, doc: "판 값" },
         { name: "measure", type: { value: "Measure" }, optional: true },
       ],
-      sql: { table: "harvests" },
     },
   ],
   traits: [{ name: "Tagged", doc: "표 하나 → [표] 절", fields: [{ name: "tagId", type: "text", optional: true, status: "unbuilt", doc: "null = 표가 없음" }] }],
@@ -129,30 +127,7 @@ const datasets = {
   bare: { label: "맨땅" },
 };
 
-// ── migrated — 스키마에서 파생 ─────────────────────────────────────────────────────────────────────
-const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
-const tableOf = (name) => schema.entities.find((e) => e.name === name).sql.table;
-const ON_DELETE = { restrict: "restrict", setNull: "set null", cascade: "cascade" };
-const SQL_TYPE = { id: "text", text: "text", int: "integer", instant: "timestamptz" };
-function column(f) {
-  const t = f.type;
-  const c = {};
-  if (t === "id") Object.assign(c, { type: "text", notNull: true, primaryKey: true });
-  else if (typeof t === "string") {
-    if (!SQL_TYPE[t]) throw new Error(`SQL 형 규칙이 없다 — ${t}`);
-    c.type = SQL_TYPE[t];
-  } else if (t.enum) Object.assign(c, { type: "text", check: t.enum });
-  else if (t.ref) Object.assign(c, { type: "text", references: tableOf(t.ref), onDelete: ON_DELETE[t.onDelete] });
-  else throw new Error(`SQL 형 규칙이 없다 — ${JSON.stringify(t)}`);
-  if (t !== "id" && !f.optional) c.notNull = true;
-  if (typeof f.default === "string" && t === "text") c.default = `'${f.default.replace(/'/g, "''")}'`;
-  return c;
-}
-const tables = {};
-for (const e of schema.entities.filter((x) => !x.status)) {
-  tables[e.sql.table] = Object.fromEntries(e.fields.filter((f) => !f.status).map((f) => [snake(f.name), column(f)]));
-}
-const model = { datasets, migrated: { sql: { tables }, swift: { schemaVersion: 1 } }, schema, version: 4 };
+const model = { datasets, schema, version: 4 };
 
 // ── 쓰개의 꼴 ─────────────────────────────────────────────────────────────────────────────────────
 function write(v, ind = "") {

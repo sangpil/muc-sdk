@@ -18,7 +18,7 @@
         "eras" : [
           {
             "from" : "2050-01-01",
-            "id" : "ee5c8311-4efc-5c4e-9c14-313d666b319d",
+            "id" : "28241eae-2497-50f0-b848-aa5eab203910",
             "label" : "Era 1",
             "to" : "2060-01-01"
           }
@@ -77,93 +77,6 @@
       }
     }
   },
-  "migrated" : {
-    "sql" : {
-      "tables" : {
-        "plants" : {
-          "id" : {
-            "notNull" : true,
-            "primaryKey" : true,
-            "type" : "text"
-          },
-          "kind" : {
-            "check" : [
-              "herb",
-              "flower",
-              "shrub"
-            ],
-            "notNull" : true,
-            "type" : "text"
-          },
-          "latin" : {
-            "type" : "text"
-          },
-          "name" : {
-            "default" : "''",
-            "notNull" : true,
-            "type" : "text"
-          },
-          "pot_id" : {
-            "onDelete" : "restrict",
-            "references" : "pots",
-            "type" : "text"
-          }
-        },
-        "pots" : {
-          "glaze" : {
-            "default" : "''",
-            "notNull" : true,
-            "type" : "text"
-          },
-          "id" : {
-            "notNull" : true,
-            "primaryKey" : true,
-            "type" : "text"
-          },
-          "label" : {
-            "default" : "''",
-            "notNull" : true,
-            "type" : "text"
-          }
-        },
-        "waterings" : {
-          "amount_ml" : {
-            "type" : "integer"
-          },
-          "at" : {
-            "type" : "timestamptz"
-          },
-          "id" : {
-            "notNull" : true,
-            "primaryKey" : true,
-            "type" : "text"
-          },
-          "method" : {
-            "check" : [
-              "can",
-              "hose",
-              "rain"
-            ],
-            "notNull" : true,
-            "type" : "text"
-          },
-          "plant_id" : {
-            "onDelete" : "set null",
-            "references" : "plants",
-            "type" : "text"
-          },
-          "pot_id" : {
-            "onDelete" : "restrict",
-            "references" : "pots",
-            "type" : "text"
-          }
-        }
-      }
-    },
-    "swift" : {
-      "schemaVersion" : 1
-    }
-  },
   "schema" : {
     "entities" : [
       {
@@ -207,9 +120,6 @@
             "id" : "label-unique"
           }
         ],
-        "sql" : {
-          "table" : "pots"
-        },
         "swift" : {
           "model" : "Pot"
         }
@@ -255,10 +165,7 @@
         ],
         "label" : "식물",
         "layer" : "ground",
-        "name" : "Plant",
-        "sql" : {
-          "table" : "plants"
-        }
+        "name" : "Plant"
       },
       {
         "aliases" : [
@@ -355,9 +262,6 @@
             "id" : "daily-cap"
           }
         ],
-        "sql" : {
-          "table" : "waterings"
-        },
         "swift" : {
           "model" : "Watering"
         },
@@ -394,9 +298,6 @@
         "label" : "수확",
         "layer" : "shed",
         "name" : "Harvest",
-        "sql" : {
-          "table" : "harvests"
-        },
         "status" : "mock"
       }
     ],
@@ -411,6 +312,7 @@
       }
     ],
     "name" : "sample",
+    "revision" : 1,
     "traits" : [
       {
         "doc" : "표 하나 → [표] 절",

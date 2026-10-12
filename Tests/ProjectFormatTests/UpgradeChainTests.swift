@@ -87,7 +87,6 @@ private struct Probe: UpgradeStep {
     @Test func effectsAndLostFields() {
         #expect(UpgradeEffect.identity.lostFields.isEmpty && UpgradeEffect.valueChange.lostFields.isEmpty)
         #expect(UpgradeEffect.lossy(fields: ["a", "b"]).lostFields == ["a", "b"])
-        #expect([UpgradeEffect.identity, .valueChange, .lossy(fields: [])].map(\.word) == ["항등", "값 바꿈", "잃음"])
         #expect([UpgradeEffect.identity, .valueChange, .lossy(fields: [])].map(\.key) == ["identity", "valueChange", "lossy"])
         let step = Probe(from: 1, effect: .lossy(fields: ["bands", "series", "gone", "note"]))
         #expect(step.lostFields(in: ["bands": [1], "series": [], "note": ""]) == ["bands"])

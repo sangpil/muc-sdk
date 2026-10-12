@@ -6,9 +6,9 @@ import PackageDescription
 // 모듈은 세 갈래다 — **계약**(플랫폼 중립 · iOS 앱도 문다) · **런타임**(macOS 전용 · 미리보기 호스트 · 엔진의 도구가 문다 · 앱은 물지 않는다) · **시험**(시험 타깃만).
 //
 // 계약:
-//   ProjectFormat   : 프로젝트 문서의 형식 — 형식 판 상수(씬 · 모델 · 데이터 · 안 · IA · 배선 — **한 자리**) · 판 읽개(`FormatStamp`) ·
+//   ProjectFormat   : 프로젝트 문서의 형식 — SDK 가 읽고 쓰는 형식의 판 상수(데이터 · 안 · IA — **한 자리**) · 판 읽개(`FormatStamp`) ·
 //                     업그레이드 사슬의 꼴(`UpgradeStep` · `UpgradeChain` — 스텝의 몸은 엔진 쪽 타깃) ·
-//                     `.isodata` 레코드 UUID 규약(`IsoDataIDs`) · `.isodata` 의 꼴과 읽기 규율(`IsoDataFile` · `DataModelFile` · `DataSchema` · 검증 둘 · SQL 절의 꼴) · 안 파일의 꼴(`DesignFile`) · 화면 구성요소(`ScreenComponent`) ·
+//                     `.isodata` 레코드 UUID 규약(`IsoDataIDs`) · `.isodata` 의 꼴과 읽기 규율(`IsoDataFile` · `DataModelFile` · `DataSchema` · 검증 둘 · 모르는 키 보존) · CloudKit 호환 규칙(`CloudKitRules`) · 공유 데이터 모델 칸(`SharedDataModel`) · 안 파일의 꼴(`DesignFile`) · 화면 구성요소(`ScreenComponent`) ·
 //                     배선 고르기(`IAWiring`) · 폼팩터 낱말(`FormFactor`) · JSON 값(`JSONValue`). Foundation · CryptoKit 만(CoreGraphics 값 꼴은 Foundation 이 싣는다).
 //   ScreenMarks     : 화면 요소 표식(`.snapID`) — 프로젝트의 화면 코드가 요소에 이름을 달고, 엔진의 도구가 그 경계를 모은다. SwiftUI 만.
 //                     표식이 앵커 · 탭을 거는 것은 트레이트 `ActiveMarks` ∧ macOS 일 때뿐이다(아래) — 그 밖에서는 값이 0인 빈 모디파이어다.
@@ -24,7 +24,7 @@ import PackageDescription
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
 //   PreviewWire     : 전송 — 유닉스 소켓 상주 연결(`Connection` · `UnixSocket`) · 공유 메모리 칸(`SharedRegion` — POSIX shm ⟂ `/tmp` mmap). 엔진 · 호스트가 함께 문다.
 //   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
-//                     (`ImageRenderer.cgImage` 바이트 그대로 · PNG 쓰기) · 자기 창 모드(`WindowPresenter`) · 프레임 수집(`FrameSink` · `collectFrames`). **프로젝트를 모른다.**
+//                     (`ImageRenderer.cgImage` 바이트 그대로) · 연결 = 세션(듣기 하나에 연결 여럿) · 자기 창 모드 · 프레임 수집(`FrameSink` · `collectFrames`). **프로젝트를 모른다.**
 //
 // 시험(시험 타깃만 문다 — 제품 타깃이 물면 무는 쪽의 경계 게이트가 빨강):
 //   TestScratch     : 시험의 임시 자리 한 벌 — 임시 폴더 · 파일 자리 · 설정 도메인(임시 폴더 안의 plist)을 만들고 끝에 지운다. 엔진 · 프로젝트의 시험이 다 이것만 쓴다

@@ -3,24 +3,28 @@ import PreviewProtocol
 import ProjectFormat
 import Testing
 
-// 판 맞대기 — 판정 표(같은 판 · 한 판 뒤 · 새 판 · 너무 옛 판 · 판 없음) · 첫 줄의 판 읽기(몸을 풀기 전) · 옛 판의 말(줄 올리기 · 내리기 — 정수 그대로) ·
-// 디코더가 첫 줄에서 말을 고른다 · 호스트 쪽 규칙 · 판 1 은 한 판 뒤가 없다 · 문서의 판 글자.
+// 판 맞대기 — 판정 표(같은 판 · 바닥까지의 옛 판 · 새 판 · 바닥 아래 · 판 없음) · 첫 줄의 판 읽기(몸을 풀기 전) · 옛 판의 말(줄 올리기 · 내리기 — 정수 그대로) ·
+// 스텝 사슬(합성 = 직통 · 내리기 nil = 보내지 않음) · 디코더가 첫 줄에서 말을 고른다 · 호스트 쪽 규칙 · 문서의 판 글자.
 
 @Suite struct NegotiationTests {
     static let now = PreviewProtocolVersion.current
-    /// 가짜 다음 판(N+1) — 칸 이름 하나가 바뀌고(`scale` → `pixelScale`) 줄마다 표 `next` 가 붙은 꼴.
+    /// 가짜 다음 판(N+1)의 말 — 칸 이름 하나가 바뀌고(`scale` → `pixelScale`) 줄마다 표 `next` 가 붙은 꼴 · `ack` 는 판 N 에만 있다(N+1 로 내리면 nil).
     static let next = ProtocolDialect(version: now + 1, lift: { line in
         var l = line
         guard l.removeValue(forKey: "next") as? Bool == true else { throw Framing.Failure.badJSON("판 표 없음") }
         if let v = l.removeValue(forKey: "pixelScale") { l["scale"] = v }
         return l
     }, lower: { line in
+        if line["type"] as? String == "ack" { return nil }
         var l = line
         if let v = l.removeValue(forKey: "scale") { l["pixelScale"] = v }
         l["next"] = true
         return l
     })
-    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current])
+    /// 다음 판 엔진 — 제 판(N+1) · 판 N(지금 꼴 그대로) · 판 N-1(스텝 사슬)을 받는다.
+    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v2])
+    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3.
+    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3])
 
     static func hello(_ version: Int?) -> Data {
         var top: [String: Any] = ["type": "hello", "role": "host", "pid": 1, "name": "h"]
@@ -35,33 +39,97 @@ import Testing
         return nil
     }
 
-    @Test func judgeTakesTheSameVersionAndOneBehindOnly() {
+    @Test func judgeTakesEveryVersionFromTheFloor() {
         let e = ProtocolJudge.engine, now = Self.now
         #expect(Self.taken(e.judge(host: now)) == now)
+        #expect(Self.taken(e.judge(host: PreviewProtocolVersion.oldest)) == PreviewProtocolVersion.oldest, "바닥 판은 받는다")
         #expect(Self.refused(e.judge(host: now + 1)) == .hostNewer(host: now + 1, engine: now))
-        #expect(Self.refused(e.judge(host: now - 2)) == .hostTooOld(host: now - 2, engine: now))
+        #expect(Self.refused(e.judge(host: PreviewProtocolVersion.oldest - 1)) == .hostTooOld(host: PreviewProtocolVersion.oldest - 1, engine: now), "바닥 아래는 받지 않는다")
         #expect(Self.refused(e.judge(host: nil)) == .hostTooOld(host: nil, engine: now), "판을 못 읽으면 옛 판으로 본다")
 
         let n = Self.engineNext
         #expect(Self.taken(n.judge(host: now + 1)) == now + 1, "같은 판")
         #expect(Self.taken(n.judge(host: now)) == now, "한 판 뒤 — 그 판의 말")
-        #expect(Self.refused(n.judge(host: now - 1)) == .hostTooOld(host: now - 1, engine: now + 1), "두 판 뒤는 받지 않는다")
+        #expect(Self.taken(n.judge(host: now - 1)) == now - 1, "두 판 뒤도 말이 있으면 받는다(창은 바닥까지)")
+        #expect(Self.refused(n.judge(host: now - 2)) == .hostTooOld(host: now - 2, engine: now + 1), "말이 없는 옛 판")
         #expect(Self.refused(n.judge(host: now + 2)) == .hostNewer(host: now + 2, engine: now + 1))
         let bare = ProtocolJudge(version: now + 1, dialects: [Self.next])
-        #expect(Self.refused(bare.judge(host: now)) == .hostTooOld(host: now, engine: now + 1), "한 판 뒤의 말이 없으면 받지 않는다")
+        #expect(Self.refused(bare.judge(host: now - 1)) == .hostTooOld(host: now - 1, engine: now + 1), "그 판의 말이 없으면 받지 않는다")
     }
 
-    /// 판을 올리는 변경은 한 판 뒤의 말을 함께 낸다 — 이 엔진이 지금 판과 (판 2 부터) 한 판 뒤를 받는다. 판 1 은 한 판 뒤가 없다.
-    @Test func theEngineCarriesTheDialectOfOneVersionBehind() {
+    /// 이 엔진은 바닥(`oldest`)부터 지금 판까지 전부 받는다 — 판마다 말이 하나씩(`previous` = 바닥 … 지금 판 바로 아래).
+    @Test func theEngineCarriesEveryDialectDownToTheFloor() {
         let e = ProtocolJudge.engine
         #expect(e.version == Self.now)
-        #expect(e.dialects[Self.now] != nil)
-        if Self.now > 1 {
-            #expect(e.dialects[Self.now - 1] != nil, "판을 올렸으면 한 판 뒤(N-1)의 말을 `PreviewProtocolVersion.previous` 에 더하라")
-        } else {
-            #expect(PreviewProtocolVersion.previous.isEmpty)
+        #expect(PreviewProtocolVersion.oldest >= 1 && PreviewProtocolVersion.oldest <= Self.now)
+        for v in PreviewProtocolVersion.oldest...Self.now { #expect(e.dialects[v] != nil, "판 \(v) 의 말이 없다 — 스텝을 이어 `previous` 에 더하라") }
+        #expect(PreviewProtocolVersion.previous.map(\.version).sorted() == Array(PreviewProtocolVersion.oldest..<Self.now))
+        #expect(PreviewProtocolVersion.previous.allSatisfy { $0.reaches == Self.now }, "옛 판의 말은 지금 판까지 닿아야 한다(사슬의 마지막 스텝 = 지금 판)")
+        #expect(ProtocolDialect.current.reaches == Self.now && ProtocolDialect.v1.reaches == Self.now)
+        #expect(ProtocolDialect.chain([.v1to2]).reaches == 2, "지금 판에 못 닿는 사슬은 그 판을 적는다")
+    }
+
+    /// 사슬의 차례 — 같은 칸을 건드리는 스텝 둘(1→2: a→b · 2→3: b→c): 올리기는 1→2→3 차례 · 내리기는 3→2→1 거꾸로(차례가 틀리면 칸이 엉뚱한 이름에 남는다).
+    @Test func chainOrderMattersForStepsOnTheSameKey() throws {
+        func rename(_ from: String, _ to: String) -> @Sendable (ProtocolDialect.Line) throws -> ProtocolDialect.Line {
+            { line in var l = line; if let v = l.removeValue(forKey: from) { l[to] = v }; return l }
         }
-        #expect(PreviewProtocolVersion.previous.allSatisfy { $0.version == Self.now - 1 }, "받는 옛 판은 한 판 뒤 하나")
+        let ab = ProtocolDialect.Step(from: 1, lift: rename("a", "b"), lower: rename("b", "a"))
+        let bc = ProtocolDialect.Step(from: 2, lift: rename("b", "c"), lower: rename("c", "b"))
+        let up = try ProtocolDialect.Step.v2to3.lift(try bc.lift(try ab.lift(["a": 1])))
+        #expect(up["c"] as? Int == 1 && up["a"] == nil && up["b"] == nil)
+        let both = ProtocolDialect.chain([ab, bc])
+        #expect(both.version == 1 && both.reaches == 3)
+        // 사슬로 짓은 말의 내리기 — 메시지 줄의 맨 위에 c 를 얹어 내려 a 로 오는지(거꾸로 밟았는지)
+        let line = try #require(try both.encodeIfSpoken(.bye(Bye(reason: "r"))))
+        let top = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+        #expect(top["reason"] as? String == "r")
+        let probe = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: rename("a", "b"), lower: rename("b", "a")),
+                                           ProtocolDialect.Step(from: 2, lift: rename("b", "reason"), lower: rename("reason", "b"))])
+        let lowered = try #require(try probe.encodeIfSpoken(.bye(Bye(reason: "r"))))
+        let down = try #require(try JSONSerialization.jsonObject(with: lowered) as? [String: Any])
+        #expect(down["a"] as? String == "r" && down["reason"] == nil && down["b"] == nil, "내리기는 2→1 다음 1→… 거꾸로")
+        #expect(try probe.decode(try JSONSerialization.data(withJSONObject: down)) == .bye(Bye(reason: "r")), "올리기는 차례대로")
+    }
+
+    /// 스텝 사슬 — 1 → 2 → 3 을 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 판 3 의 메시지로 읽힌다.
+    @Test func chainedStepsEqualTheDirectWalk() throws {
+        let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", ia: IAInfo(appScreens: ["a"], entryWords: [], entryHands: [:], aliases: [:], planned: []),
+                                        frames: [], tokensBuilt: nil))
+        let line = try ProtocolDialect.v1.encode(hello)
+        let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(hello)) as? ProtocolDialect.Line)
+        let two = try #require(try ProtocolDialect.Step.v2to3.lower(native))
+        let walked = try #require(try ProtocolDialect.Step.v1to2.lower(two))
+        let chained = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+        #expect(NSDictionary(dictionary: chained) == NSDictionary(dictionary: walked))
+        guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
+        #expect(back.ia == nil && back.frames == nil, "판 1 은 프로젝트 데이터 칸이 없다")
+        #expect(ProtocolDialect.v1.version == 1 && ProtocolDialect.v2.version == 2)
+    }
+
+    /// 판 3 → 2 내리기 — 이름 없는 조절판 칸에 칸 키를 이름으로 채운다(판 2 는 이름을 필수로 읽는다) · 올리기는 그대로.
+    @Test func loweringToTwoFillsFieldNames() throws {
+        let el = StyleElement(id: "pot", label: "화분", snapPrefix: "pot")
+        let schema = StyleSchema(screen: "s", elements: [el], fields: [StyleField(name: "potGap", kind: .bool, element: el)], defaults: ["potGap": true])
+        let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", screens: [ScreenInfo(name: "s", states: [], style: schema)]))
+        let line = try ProtocolDialect.v2.encode(hello)
+        let top = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+        let field = (((top["screens"] as? [[String: Any]])?.first?["style"] as? [String: Any])?["fields"] as? [[String: Any]])?.first
+        #expect(field?["label"] as? String == "potGap")
+        guard case .hello(let back) = try ProtocolDialect.v2.decode(line) else { Issue.record(); return }
+        #expect(back.screens?.first?.style.fields.first?.label == "potGap", "판 2 의 줄은 이름이 찬 채 읽힌다")
+    }
+
+    /// 내리는 손이 nil 이면 그 판에 없는 메시지 — 줄을 짓지 않는다(`encodeIfSpoken` nil · `encode` 는 `notSpoken`) · 연결은 보내지 않고 거짓.
+    @Test func aMessageTheOlderVersionDoesNotSpeakIsNotSent() throws {
+        let ack = Message.ack(Ack(seq: 1, applied: 1, ms: 0))
+        #expect(try Self.next.encodeIfSpoken(ack) == nil)
+        #expect(try Self.ackless.encodeIfSpoken(ack) == nil, "사슬의 어느 스텝이 nil 이면 nil")
+        #expect(try Self.ackless.encodeIfSpoken(.bye(Bye(reason: "x"))) != nil)
+        #expect(throws: ProtocolDialectError.notSpoken(type: "ack", version: Self.now + 1)) { try Self.next.encode(ack) }
+        #expect(try Framing.headerIfSpoken(ack, dialect: Self.next) == nil)
+        #expect(throws: ProtocolDialectError.self) { try Framing.header(ack, dialect: Self.next) }
+        #expect(try Self.next.encodeIfSpoken(.bye(Bye(reason: "x"))) != nil, "그 판에 있는 메시지는 짓는다")
     }
 
     @Test func readsTheVersionFromTheFirstLineBeforeTheBody() throws {

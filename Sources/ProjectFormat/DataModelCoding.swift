@@ -1,80 +1,94 @@
 import Foundation
 
-// 엔진 SDK `ProjectFormat` — 모델 파일의 형식 계약(꼴 · 인코딩 · 읽기 규율)은 엔진과 프로젝트의 도구 실행물이 같은 한 벌을 문다
-// (SDK 문서 §2). SQL 투영 · 생성 · 울타리는 엔진의 몫이다.
+// 엔진 SDK `ProjectFormat` — 모델 파일의 형식 계약(꼴 · 인코딩 · 읽기 규율)은 엔진과 프로젝트의 도구 실행물이 같은 한 벌을 문다(SDK 문서 §2).
 //
 // 모델 파일 ⟷ JSON 값. 읽기 규율(다른 파일의 주석이 이 번호로 가리킨다):
-//   ① 판을 먼저 읽는다 — 미래 판은 이름 대고 거부(`IsoDataFile.read`).
+//   ① 판을 먼저 읽는다 — 미래 판은 이름 대고 거부(`IsoDataFile.read` · 읽기 전용 창은 `allowingNewer`).
 //   ② 스키마가 먼저 선다 — 틀리면 경로를 대고 파일 전체를 거부(`SchemaValidation`).
-//   ③ 모델 파일 안의 모르는 키는 거부한다 — 더 새 판의 흔적이고, 저장하면 사라진다.
+//   ③ 모르는 키는 **보존하고 알린다** — 그 객체의 꼴이 `extra` 로 들고 쓸 때 되쓴다(아는 하위 객체 안의 모르는 키는 그 키 아래 객체로) ·
+//      경로마다 한 줄(`DataModelFile.unknownKeys`). 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙)도 글자 그대로 든다(경고는 `SchemaValidation.warnings`).
+//      물러난 키(`retired` — 옛 판의 계약 칸)는 알리지 않고 그대로 들고 되쓴다(그 파일이 그 칸을 쓰던 시절의 값).
 //   ④ 레코드 오류는 파일을 거부하지 않는다 — 행 단위로 `issues` 에 싣는다(`RecordValidation`).
 // 쓰기: 빈 `doc` · 빈 `aliases` · 기본값인 칸은 키 자체를 쓰지 않는다(빈 칸은 없는 칸과 같다).
 
 enum DataModelCoding {
 
+    /// 물러난 키 — 판 4 의 계약 칸이었으나 이 SDK 의 계약이 아닌 것(저장 백엔드의 생성 사본 · 그 이름 칸). 읽은 그대로 들고 되쓴다 · 알리지 않는다.
+    static let retiredTop: Set<String> = ["migrated"]
+    static let retiredEntity: Set<String> = ["sql"]
+    static let retiredField: Set<String> = ["sql"]
+
     // MARK: 읽기
 
     static func decode(_ top: [String: JSONValue]) throws -> DataModelFile {
-        var r = Reader(top, path: "")
-        try r.allow(["schema", "datasets", "migrated"])
+        let notes = Notes()
+        let r = Reader(top, path: "", notes: notes)
+        let extra = r.keep(["schema", "datasets"], retired: retiredTop)
         let schema = try decodeSchema(r.object("schema"))
         try SchemaValidation.require(schema)
         var file = DataModelFile(schema: schema)
+        file.extra = extra
         if let datasets = try r.optionalObject("datasets") {
             for name in datasets.fields.keys.sorted() {
                 file.datasets[name] = try decodeDataset(datasets.child(name))
             }
         }
-        if let migrated = try r.optionalObject("migrated") {
-            file.migrated = try decodeMigrated(migrated)
-        }
         let held = RecordValidation.hold(file)
         file = held.file
         file.cuts = held.cuts
         file.issues = RecordValidation.validate(file)
+        file.unknownKeys = notes.lines
         return file
     }
 
     static func decodeSchema(_ r: Reader) throws -> DataSchema {
-        var r = r
-        try r.allow(["name", "layers", "entities", "traits", "values"])
+        let extra = r.keep(["name", "idNamespace", "revision", "layers", "entities", "traits", "values"])
         var schema = DataSchema(name: try r.string("name"))
-        for var l in try r.optionalArray("layers") ?? [] {
-            try l.allow(["id", "label"])
-            schema.layers.append(DataLayer(id: try l.string("id"), label: try l.optionalString("label") ?? ""))
+        schema.extra = extra
+        schema.idNamespace = try r.optionalString("idNamespace")
+        schema.revision = try r.optionalInt("revision")
+        if let v = schema.revision, v < 1 { throw r.error("revision", "스키마 판은 1 이상의 정수다") }
+        for l in try r.optionalArray("layers") ?? [] {
+            let le = l.keep(["id", "label"])
+            var layer = DataLayer(id: try l.string("id"), label: try l.optionalString("label") ?? "")
+            layer.extra = le
+            schema.layers.append(layer)
         }
         for e in try r.optionalArray("entities") ?? [] { schema.entities.append(try decodeEntity(e)) }
-        for var t in try r.optionalArray("traits") ?? [] {
-            try t.allow(["name", "doc", "fields"])
-            schema.traits.append(DataTrait(name: try t.string("name"), doc: try t.optionalString("doc") ?? "",
-                                           fields: try (t.optionalArray("fields") ?? []).map(decodeField)))
+        for t in try r.optionalArray("traits") ?? [] {
+            let te = t.keep(["name", "doc", "fields"])
+            var trait = DataTrait(name: try t.string("name"), doc: try t.optionalString("doc") ?? "",
+                                  fields: try (t.optionalArray("fields") ?? []).map(decodeField))
+            trait.extra = te
+            schema.traits.append(trait)
         }
-        for var v in try r.optionalArray("values") ?? [] {
-            try v.allow(["name", "doc", "fields"])
-            schema.values.append(DataValueType(name: try v.string("name"), doc: try v.optionalString("doc") ?? "",
-                                               fields: try (v.optionalArray("fields") ?? []).map(decodeField)))
+        for v in try r.optionalArray("values") ?? [] {
+            let ve = v.keep(["name", "doc", "fields"])
+            var value = DataValueType(name: try v.string("name"), doc: try v.optionalString("doc") ?? "",
+                                      fields: try (v.optionalArray("fields") ?? []).map(decodeField))
+            value.extra = ve
+            schema.values.append(value)
         }
         return schema
     }
 
     static func decodeEntity(_ r: Reader) throws -> DataEntity {
-        var r = r
-        try r.allow(["name", "label", "layer", "doc", "aliases", "uses", "sql", "swift", "uuidName", "status", "dropNote", "fields", "rules"])
+        var extra = r.keep(["name", "label", "layer", "doc", "aliases", "uses", "swift", "uuidName", "status", "dropNote", "fields", "rules"],
+                           retired: retiredEntity)
         var e = DataEntity(name: try r.string("name"))
         e.label = try r.optionalString("label") ?? ""
         e.layer = try r.optionalString("layer")
         e.doc = try r.optionalString("doc") ?? ""
-        for var a in try r.optionalArray("aliases") ?? [] {
-            try a.allow(["lens", "word", "doc"])
-            e.aliases.append(DataAlias(lens: try a.string("lens"), word: try a.string("word"), doc: try a.optionalString("doc") ?? ""))
+        for a in try r.optionalArray("aliases") ?? [] {
+            let ae = a.keep(["lens", "word", "doc"])
+            var alias = DataAlias(lens: try a.string("lens"), word: try a.string("word"), doc: try a.optionalString("doc") ?? "")
+            alias.extra = ae
+            e.aliases.append(alias)
         }
         e.uses = try r.optionalStrings("uses") ?? []
-        if var sql = try r.optionalObject("sql") {
-            try sql.allow(["table"])
-            e.sqlTable = try sql.optionalString("table")
-        }
-        if var swift = try r.optionalObject("swift") {
-            try swift.allow(["model"])
+        if let swift = try r.optionalObject("swift") {
+            let se = swift.keep(["model"])
+            if !se.isEmpty { extra["swift"] = .object(se) }
             e.swiftModel = try swift.optionalString("model")
         }
         e.uuidName = try r.optionalString("uuidName")
@@ -82,83 +96,82 @@ enum DataModelCoding {
         e.dropNote = try r.optionalString("dropNote") ?? ""
         e.fields = try (r.optionalArray("fields") ?? []).map(decodeField)
         e.rules = try (r.optionalArray("rules") ?? []).map(decodeRule)
+        e.extra = extra
         return e
     }
 
     static func decodeStatus(_ r: Reader) throws -> DataStatus {
         guard let word = try r.optionalString("status") else { return .live }
-        guard let status = DataStatus(rawValue: word) else {
-            throw r.error("status", "모르는 상태 ‘\(word)’ — live · seam · mock · unbuilt · dropped 중 하나")
-        }
-        return status
+        return DataStatus(rawValue: word)
     }
 
     static func decodeField(_ r: Reader) throws -> DataField {
-        var r = r
-        try r.allow(["name", "type", "optional", "default", "doc", "status", "dropNote", "sql", "swift", "renamedFrom"])
+        var extra = r.keep(["name", "type", "optional", "default", "doc", "status", "dropNote", "swift", "renamedFrom"], retired: retiredField)
         let name = try r.string("name")
-        var f = DataField(name: name, type: try decodeType(r.value("type"), path: r.path + ".type", field: name))
+        var typeExtra: JSONValue?
+        var f = DataField(name: name, type: try decodeType(r.value("type"), path: r.at("type"), field: name, notes: r.notes, extra: &typeExtra))
+        if let typeExtra { extra["type"] = typeExtra }
         f.optional = try r.optionalBool("optional") ?? false
         f.default = r.fields["default"]
         f.doc = try r.optionalString("doc") ?? ""
         f.status = try decodeStatus(r)
         f.dropNote = try r.optionalString("dropNote") ?? ""
-        if var sql = try r.optionalObject("sql") {
-            try sql.allow(["column"])
-            f.sqlColumn = try sql.optionalString("column")
-        }
-        if var swift = try r.optionalObject("swift") {
-            try swift.allow(["property"])
+        if let swift = try r.optionalObject("swift") {
+            let se = swift.keep(["property"])
+            if !se.isEmpty { extra["swift"] = .object(se) }
             f.swiftProperty = try swift.optionalString("property")
         }
         f.renamedFrom = try r.optionalString("renamedFrom")
+        f.extra = extra
         return f
     }
 
-    /// 형 — 닫힌 낱말. 모르는 낱말은 필드 이름을 대고 거부한다.
-    static func decodeType(_ value: JSONValue, path: String, field: String) throws -> DataType {
+    /// 형 — 아는 낱말 · 아는 객체 꼴(`enum` · `ref` · `value` · `list`)은 그 규칙대로 · 아는 꼴 안의 모르는 키는 `extra`(형 칸 아래 객체) ·
+    /// 모르는 낱말과 아는 키가 하나도 없는 객체는 `unknown`(그대로 든다). 낱말도 객체도 아니면 필드 이름을 대고 거부한다.
+    static func decodeType(_ value: JSONValue, path: String, field: String, notes: Notes, extra: inout JSONValue?) throws -> DataType {
         switch value {
         case .string(let word):
-            guard let type = DataType.words[word] else {
-                throw IsoDataError.invalid(path: path, reason: "필드 ‘\(field)’ 의 형 ‘\(word)’ 을 모른다")
-            }
-            return type
+            return DataType.words[word] ?? .unknown(value)
         case .object(let o):
-            var r = Reader(o, path: path)
+            let r = Reader(o, path: path, notes: notes)
+            func kept(_ keys: Set<String>) { let k = r.keep(keys); if !k.isEmpty { extra = .object(k) } }
             if o["enum"] != nil {
-                try r.allow(["enum"])
+                kept(["enum"])
                 guard let values = try r.optionalStrings("enum") else { throw r.error("enum", "열거 값 목록이 없다") }
                 return .enumeration(values)
             }
             if o["ref"] != nil {
-                try r.allow(["ref", "onDelete"])
+                kept(["ref", "onDelete"])
                 let word = try r.optionalString("onDelete") ?? DataOnDelete.setNull.rawValue
-                guard let onDelete = DataOnDelete(rawValue: word) else {
-                    throw r.error("onDelete", "삭제 규칙 ‘\(word)’ 을 모른다 — setNull · cascade · restrict 중 하나")
-                }
-                return .ref(try r.string("ref"), onDelete: onDelete)
+                return .ref(try r.string("ref"), onDelete: DataOnDelete(rawValue: word))
             }
             if o["value"] != nil {
-                try r.allow(["value"])
+                kept(["value"])
                 return .value(try r.string("value"))
             }
             if let inner = o["list"] {
-                try r.allow(["list"])
-                return .list(try decodeType(inner, path: path + ".list", field: field))
+                kept(["list"])
+                var innerExtra: JSONValue?
+                let t = try decodeType(inner, path: path + ".list", field: field, notes: notes, extra: &innerExtra)
+                if let innerExtra {
+                    var e: [String: JSONValue] = { if case .object(let x)? = extra { return x } else { return [:] } }()
+                    e["list"] = innerExtra
+                    extra = .object(e)
+                }
+                return .list(t)
             }
-            throw IsoDataError.invalid(path: path, reason: "필드 ‘\(field)’ 의 형 객체는 enum · ref · value · list 중 하나다")
+            return .unknown(value)
         default:
             throw IsoDataError.invalid(path: path, reason: "필드 ‘\(field)’ 의 형은 낱말 또는 객체다")
         }
     }
 
     static func decodeRule(_ r: Reader) throws -> DataRule {
-        var r = r
-        try r.allow(["id", "check", "doc", "code"])
+        var extra = r.keep(["id", "check", "doc", "code"])
         var rule = DataRule(id: try r.string("id"))
         rule.doc = try r.optionalString("doc") ?? ""
         rule.code = try r.optionalString("code")
-        if var c = try r.optionalObject("check") {
+        if let c = try r.optionalObject("check") {
             func when() throws -> [String: [JSONValue]] {
                 guard let w = try c.optionalObject("when") else { return [:] }
                 var out: [String: [JSONValue]] = [:]
@@ -168,33 +181,39 @@ enum DataModelCoding {
                 }
                 return out
             }
+            func kept(_ keys: Set<String>) -> [String: JSONValue] { c.keep(keys) }
+            var checkExtra: [String: JSONValue] = [:]
             if c.fields["required"] != nil {
-                try c.allow(["required", "when"])
+                checkExtra = kept(["required", "when"])
                 rule.check = .required(field: try c.string("required"), when: try when())
             } else if c.fields["forbidden"] != nil {
-                try c.allow(["forbidden", "when"])
+                checkExtra = kept(["forbidden", "when"])
                 rule.check = .forbidden(field: try c.string("forbidden"), when: try when())
             } else if c.fields["unique"] != nil {
-                try c.allow(["unique"])
+                checkExtra = kept(["unique"])
                 rule.check = .unique(try c.optionalStrings("unique") ?? [])
             } else if c.fields["sameAs"] != nil {
-                try c.allow(["sameAs"])
-                var s = try c.object("sameAs")
-                try s.allow(["field", "via"])
+                checkExtra = kept(["sameAs"])
+                let s = try c.object("sameAs")
+                let se = s.keep(["field", "via"])
+                if !se.isEmpty { checkExtra["sameAs"] = .object(se) }
                 rule.check = .sameAs(field: try s.string("field"), via: try s.string("via"))
             } else {
-                throw c.error("", "규칙 낱말은 required · forbidden · unique · sameAs 중 하나다")
+                guard let kind = c.fields.keys.sorted().first else { throw c.error("", "규칙 객체가 비었다") }
+                rule.check = .other(kind: kind, body: c.fields)
             }
+            if !checkExtra.isEmpty { extra["check"] = .object(checkExtra) }
         }
+        rule.extra = extra
         return rule
     }
 
     static func decodeDataset(_ r: Reader) throws -> DataSet {
-        var r = r
-        try r.allow(["label", "clock", "records", "nextIDs", "life"])
+        var extra = r.keep(["label", "clock", "records", "nextIDs", "life"])
         var set = DataSet(label: try r.optionalString("label") ?? "")
-        if var clock = try r.optionalObject("clock") {
-            try clock.allow(["now", "tz"])
+        if let clock = try r.optionalObject("clock") {
+            let ce = clock.keep(["now", "tz"])
+            if !ce.isEmpty { extra["clock"] = .object(ce) }
             set.clock = DataClock(now: try clock.string("now"), tz: try clock.string("tz"))
         }
         if let records = try r.optionalObject("records") {
@@ -214,63 +233,18 @@ enum DataModelCoding {
         }
         if let next = try r.optionalObject("nextIDs") {
             for key in next.fields.keys {
-                guard case .number(let n) = next.fields[key]!, n >= 1, let i = Int(exactly: n) else {
+                guard let n = next.fields[key]!.integerValue, n >= 1, let i = Int(exactly: n) else {
                     throw next.error(key, "다음 번호는 1 이상의 정수다")
                 }
                 set.nextIDs[key] = i
             }
         }
         if let life = try r.optionalObject("life") {
-            // 삶 블록의 뜻은 빌더 · 프로젝트 코드의 것 — 여기서는 최상위 키만 닫는다(모르는 키 거부 · 읽기 규율 ③).
-            //   키는 모두 선택이다 — 빈 칸은 키째 없을 수 있다(`forks` 가 그렇다).
-            var l = life
-            try l.allow(["derived", "domain", "eras", "series", "milestones", "forks", "nextIDs"])
+            // 삶 블록의 뜻은 빌더 · 프로젝트 코드의 것 — 통째로 나른다(키를 닫는 것은 그 블록을 푸는 쪽의 몫).
             set.life = life.fields
         }
+        set.extra = extra
         return set
-    }
-
-    static func decodeMigrated(_ r: Reader) throws -> DataMigrated {
-        var r = r
-        try r.allow(["sql", "swift"])
-        var m = DataMigrated()
-        if var sql = try r.optionalObject("sql") {
-            try sql.allow(["tables"])
-            var snapshot = SQLSnapshot()
-            if let tables = try sql.optionalObject("tables") {
-                for table in tables.fields.keys.sorted() {
-                    var t = SQLTable(name: table)
-                    let columns = try tables.object(table)
-                    for column in columns.fields.keys.sorted() {
-                        t.columns.append(try decodeColumn(column, columns.fields[column]!, path: "\(columns.path).\(column)"))
-                    }
-                    snapshot.tables.append(t)
-                }
-            }
-            m.sql = snapshot
-        }
-        if var swift = try r.optionalObject("swift") {
-            try swift.allow(["schemaVersion"])
-            m.swiftSchemaVersion = try swift.optionalInt("schemaVersion")
-        }
-        return m
-    }
-
-    /// 열 사본 — `{ type, notNull?, primaryKey?, default?, references?, onDelete?, check?, dropPending? }`. 형 글자 하나(`"text"`)는 널 허용 열의 줄임.
-    static func decodeColumn(_ name: String, _ value: JSONValue, path: String) throws -> SQLColumn {
-        if case .string(let type) = value { return SQLColumn(name: name, type: type) }
-        guard case .object(let o) = value else { throw IsoDataError.invalid(path: path, reason: "열 사본은 형 글자 또는 객체다") }
-        var r = Reader(o, path: path)
-        try r.allow(["type", "notNull", "primaryKey", "default", "references", "onDelete", "check", "dropPending"])
-        var c = SQLColumn(name: name, type: try r.string("type"))
-        c.notNull = try r.optionalBool("notNull") ?? false
-        c.primaryKey = try r.optionalBool("primaryKey") ?? false
-        c.default = try r.optionalString("default")
-        c.references = try r.optionalString("references")
-        c.onDelete = try r.optionalString("onDelete")
-        c.check = try r.optionalStrings("check")
-        c.dropPending = try r.optionalBool("dropPending") ?? false
-        return c
     }
 
     // MARK: 쓰기
@@ -280,28 +254,18 @@ enum DataModelCoding {
         if !file.datasets.isEmpty {
             top["datasets"] = .object(file.datasets.mapValues { .object(encodeDataset($0)) })
         }
-        var migrated: [String: JSONValue] = [:]
-        if let sql = file.migrated.sql {
-            var tables: [String: JSONValue] = [:]
-            for t in sql.tables {
-                tables[t.name] = .object(Dictionary(uniqueKeysWithValues: t.columns.map { ($0.name, encodeColumn($0)) }))
-            }
-            migrated["sql"] = .object(["tables": .object(tables)])
-        }
-        if let v = file.migrated.swiftSchemaVersion {
-            migrated["swift"] = .object(["schemaVersion": .number(Double(v))])
-        }
-        if !migrated.isEmpty { top["migrated"] = .object(migrated) }
-        return top
+        return ExtraKeys.merge(top, file.extra)
     }
 
     static func encodeSchema(_ s: DataSchema) -> [String: JSONValue] {
         var o: [String: JSONValue] = ["name": .string(s.name)]
+        if let ns = s.idNamespace { o["idNamespace"] = .string(ns) }
+        if let v = s.revision { o["revision"] = .number(Double(v)) }
         if !s.layers.isEmpty {
             o["layers"] = .array(s.layers.map { l in
                 var lo: [String: JSONValue] = ["id": .string(l.id)]
                 if !l.label.isEmpty { lo["label"] = .string(l.label) }
-                return .object(lo)
+                return .object(ExtraKeys.merge(lo, l.extra))
             })
         }
         if !s.entities.isEmpty { o["entities"] = .array(s.entities.map { .object(encodeEntity($0)) }) }
@@ -310,7 +274,7 @@ enum DataModelCoding {
                 var to: [String: JSONValue] = ["name": .string(t.name)]
                 if !t.doc.isEmpty { to["doc"] = .string(t.doc) }
                 if !t.fields.isEmpty { to["fields"] = .array(t.fields.map { .object(encodeField($0)) }) }
-                return .object(to)
+                return .object(ExtraKeys.merge(to, t.extra))
             })
         }
         if !s.values.isEmpty {
@@ -318,10 +282,10 @@ enum DataModelCoding {
                 var vo: [String: JSONValue] = ["name": .string(v.name)]
                 if !v.doc.isEmpty { vo["doc"] = .string(v.doc) }
                 if !v.fields.isEmpty { vo["fields"] = .array(v.fields.map { .object(encodeField($0)) }) }
-                return .object(vo)
+                return .object(ExtraKeys.merge(vo, v.extra))
             })
         }
-        return o
+        return ExtraKeys.merge(o, s.extra)
     }
 
     static func encodeEntity(_ e: DataEntity) -> [String: JSONValue] {
@@ -333,18 +297,17 @@ enum DataModelCoding {
             o["aliases"] = .array(e.aliases.map { a in
                 var ao: [String: JSONValue] = ["lens": .string(a.lens), "word": .string(a.word)]
                 if !a.doc.isEmpty { ao["doc"] = .string(a.doc) }
-                return .object(ao)
+                return .object(ExtraKeys.merge(ao, a.extra))
             })
         }
         if !e.uses.isEmpty { o["uses"] = .array(e.uses.map { .string($0) }) }
-        if let t = e.sqlTable { o["sql"] = .object(["table": .string(t)]) }
         if let m = e.swiftModel { o["swift"] = .object(["model": .string(m)]) }
         if let u = e.uuidName { o["uuidName"] = .string(u) }
         if e.status != .live { o["status"] = .string(e.status.rawValue) }
         if !e.dropNote.isEmpty { o["dropNote"] = .string(e.dropNote) }
         if !e.fields.isEmpty { o["fields"] = .array(e.fields.map { .object(encodeField($0)) }) }
         if !e.rules.isEmpty { o["rules"] = .array(e.rules.map { .object(encodeRule($0)) }) }
-        return o
+        return ExtraKeys.merge(o, e.extra)
     }
 
     static func encodeField(_ f: DataField) -> [String: JSONValue] {
@@ -354,10 +317,9 @@ enum DataModelCoding {
         if !f.doc.isEmpty { o["doc"] = .string(f.doc) }
         if f.status != .live { o["status"] = .string(f.status.rawValue) }
         if !f.dropNote.isEmpty { o["dropNote"] = .string(f.dropNote) }
-        if let c = f.sqlColumn { o["sql"] = .object(["column": .string(c)]) }
         if let p = f.swiftProperty { o["swift"] = .object(["property": .string(p)]) }
         if let r = f.renamedFrom { o["renamedFrom"] = .string(r) }
-        return o
+        return ExtraKeys.merge(o, f.extra)
     }
 
     static func encodeType(_ t: DataType) -> JSONValue {
@@ -375,6 +337,7 @@ enum DataModelCoding {
         case .ref(let target, let onDelete): .object(["ref": .string(target), "onDelete": .string(onDelete.rawValue)])
         case .value(let name): .object(["value": .string(name)])
         case .list(let inner): .object(["list": encodeType(inner)])
+        case .unknown(let raw): raw
         }
     }
 
@@ -397,8 +360,10 @@ enum DataModelCoding {
             o["check"] = .object(["unique": .array(fields.map { .string($0) })])
         case .sameAs(let field, let via)?:
             o["check"] = .object(["sameAs": .object(["field": .string(field), "via": .string(via)])])
+        case .other(_, let body)?:
+            o["check"] = .object(body)
         }
-        return o
+        return ExtraKeys.merge(o, r.extra)
     }
 
     static func encodeDataset(_ d: DataSet) -> [String: JSONValue] {
@@ -408,44 +373,42 @@ enum DataModelCoding {
         if !d.records.isEmpty { o["records"] = .object(d.records.mapValues { .array($0.map { .object($0) }) }) }
         if !d.nextIDs.isEmpty { o["nextIDs"] = .object(d.nextIDs.mapValues { .number(Double($0)) }) }
         if let life = d.life { o["life"] = .object(life) }
-        return o
-    }
-
-    static func encodeColumn(_ c: SQLColumn) -> JSONValue {
-        var o: [String: JSONValue] = ["type": .string(c.type)]
-        if c.notNull { o["notNull"] = .bool(true) }
-        if c.primaryKey { o["primaryKey"] = .bool(true) }
-        if let d = c.default { o["default"] = .string(d) }
-        if let r = c.references { o["references"] = .string(r) }
-        if let d = c.onDelete { o["onDelete"] = .string(d) }
-        if let check = c.check { o["check"] = .array(check.map { .string($0) }) }
-        if c.dropPending { o["dropPending"] = .bool(true) }
-        return .object(o)
+        return ExtraKeys.merge(o, d.extra)
     }
 }
 
 // MARK: - 경로를 아는 읽개
 
+/// 읽는 동안 모은 모르는 키의 자리 — 읽개들이 함께 쓴다.
+final class Notes {
+    private(set) var lines: [String] = []
+    func add(_ line: String) { lines.append(line) }
+}
+
 /// JSON 객체 하나와 그 경로 — 틀린 자리를 `schema.entities[3].fields[7].type` 꼴로 댄다.
 struct Reader {
     let fields: [String: JSONValue]
     let path: String
+    let notes: Notes
 
-    init(_ fields: [String: JSONValue], path: String) {
+    init(_ fields: [String: JSONValue], path: String, notes: Notes) {
         self.fields = fields
         self.path = path
+        self.notes = notes
     }
 
     func at(_ key: String) -> String { path.isEmpty ? key : (key.isEmpty ? path : "\(path).\(key)") }
 
     func error(_ key: String, _ reason: String) -> IsoDataError { .invalid(path: at(key), reason: reason) }
 
-    /// 모르는 키 거부(읽기 규율 ③).
-    mutating func allow(_ keys: Set<String>) throws {
-        let unknown = Set(fields.keys).subtracting(keys).sorted()
-        if let first = unknown.first {
-            throw error(first, "모르는 키 — 더 새 판의 흔적이거나 오타다(모델 파일은 모르는 키를 받지 않는다)")
+    /// 아는 키 밖의 칸을 돌려준다(읽기 규율 ③ — 보존) · 물러난 키가 아니면 자리마다 한 줄을 남긴다.
+    func keep(_ keys: Set<String>, retired: Set<String> = []) -> [String: JSONValue] {
+        var out: [String: JSONValue] = [:]
+        for k in fields.keys.sorted() where !keys.contains(k) {
+            out[k] = fields[k]
+            if !retired.contains(k) { notes.add("\(at(k)) — 이 빌드가 모르는 키(더 새 판의 칸 · 보존해 되쓴다)") }
         }
+        return out
     }
 
     func value(_ key: String) throws -> JSONValue {
@@ -473,7 +436,7 @@ struct Reader {
     func optionalInt(_ key: String) throws -> Int? {
         guard let v = fields[key], !v.isNull else { return nil }
         // `Int(exactly:)` — 소수 · Int 로 담기지 않는 큰 수(1e20)는 트랩이 아니라 거부.
-        guard case .number(let n) = v, let i = Int(exactly: n) else { throw error(key, "정수여야 한다") }
+        guard let n = v.integerValue, let i = Int(exactly: n) else { throw error(key, "정수여야 한다") }
         return i
     }
 
@@ -488,13 +451,13 @@ struct Reader {
 
     func object(_ key: String) throws -> Reader {
         guard case .object(let o) = try value(key) else { throw error(key, "객체여야 한다") }
-        return Reader(o, path: at(key))
+        return Reader(o, path: at(key), notes: notes)
     }
 
     func optionalObject(_ key: String) throws -> Reader? {
         guard let v = fields[key], !v.isNull else { return nil }
         guard case .object(let o) = v else { throw error(key, "객체여야 한다") }
-        return Reader(o, path: at(key))
+        return Reader(o, path: at(key), notes: notes)
     }
 
     func child(_ key: String) throws -> Reader { try object(key) }
@@ -504,7 +467,7 @@ struct Reader {
         guard case .array(let a) = v else { throw error(key, "배열이어야 한다") }
         return try a.enumerated().map { i, item in
             guard case .object(let o) = item else { throw error("\(key)[\(i)]", "객체여야 한다") }
-            return Reader(o, path: at("\(key)[\(i)]"))
+            return Reader(o, path: at("\(key)[\(i)]"), notes: notes)
         }
     }
 }

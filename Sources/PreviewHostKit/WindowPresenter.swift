@@ -12,7 +12,7 @@ import SwiftUI
 // 같은 꼴이 기준선(창 안 직접 뷰)에도 쓰인다 — 한 프로세스 안에서 값 → 커밋을 재는 자리.
 
 @MainActor
-public final class WindowPresenter {
+package final class WindowPresenter {
     @Observable final class Box { var content = AnyView(EmptyView()) }
     struct BoxView: View {
         let box: Box
@@ -24,13 +24,13 @@ public final class WindowPresenter {
     }
 
     let box = Box()
-    public let window: NSPanel
-    public let hosting: NSView
+    package let window: NSPanel
+    package let hosting: NSView
     /// 화면의 크기(pt) — 창은 그 가운데 보이는 부분(`clip`)만일 수 있다
-    public private(set) var size: CGSize
+    package private(set) var size: CGSize
     private var clip: CGRect?
 
-    public init(size: CGSize, origin: CGPoint) {
+    package init(size: CGSize, origin: CGPoint) {
         self.size = size
         let p = KeyablePanel(contentRect: CGRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.isReleasedWhenClosed = false
@@ -47,16 +47,16 @@ public final class WindowPresenter {
         window = p; hosting = h
     }
 
-    public func update(_ view: AnyView) { box.content = view }
+    package func update(_ view: AnyView) { box.content = view }
     /// 화면 크기를 바꾼다(엔진이 미리보기 크기를 바꿨다 · 창 요청의 `w` · `h`).
-    public func resize(to size: CGSize) {
+    package func resize(to size: CGSize) {
         guard self.size != size else { return }
         self.size = size
         clip = clip?.intersection(CGRect(origin: .zero, size: size))   // 옛 보이는 부분이 새 크기 밖으로 나가지 않게(크기만 바뀐 render 한 틱)
         layout()
     }
     /// 보이는 부분(화면 안의 자리 · 위-왼쪽 원점 · nil = 전부) — 창은 그만큼만 서고 화면은 제 자리에 그대로.
-    public func clip(to rect: CGRect?) {
+    package func clip(to rect: CGRect?) {
         let r = rect.map { $0.intersection(CGRect(origin: .zero, size: size)) }
         guard r != clip else { return }
         clip = r
@@ -72,7 +72,7 @@ public final class WindowPresenter {
     }
     /// 세운다 — `origin` = 화면 전체의 왼쪽 아래(화면 좌표) · 창은 보이는 부분 자리로. `above` = 엔진 창 번호면 그 창 바로 위 보통 층
     /// (엔진이 뒤로 가면 다른 앱 창 밑으로) · nil 이면 떠 있는 층(측정 하니스).
-    public func show(at origin: CGPoint, above: Int? = nil) {
+    package func show(at origin: CGPoint, above: Int? = nil) {
         let v = visible
         window.setFrameOrigin(CGPoint(x: origin.x + v.minX, y: origin.y + (size.height - v.maxY)))
         if let above {
@@ -83,12 +83,12 @@ public final class WindowPresenter {
             window.orderFrontRegardless()
         }
     }
-    public func hide() { window.orderOut(nil) }
+    package func hide() { window.orderOut(nil) }
 }
 
 /// 다음 커밋 뒤 — 메인 런루프의 `beforeWaiting` 에 순서 맨 끝(CA 커밋 관찰자 뒤) 한 번짜리 관찰자를 건다.
 /// 값을 바꾼 그 바퀴가 끝나며 SwiftUI 갱신 → CA 커밋이 돈 뒤에 불린다 — 「값 → 렌더 서버로 넘김」 시각(유리 위 표시는 그 뒤 vsync).
-public enum Commit {
+public enum HostCommit {
     @MainActor public static func next(_ body: @escaping @MainActor () -> Void) {
         let obs = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max) { _, _ in
             MainActor.assumeIsolated { body() }

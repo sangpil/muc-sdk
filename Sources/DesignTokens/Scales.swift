@@ -20,9 +20,18 @@ public struct ScaleEntry: Hashable, Codable, Sendable {
     public init(name: String, pt: CGFloat, doc: String = "", apple: String? = nil) { self.name = name; self.pt = pt; self.doc = doc; self.apple = apple }
 }
 
-/// 토큰 목록의 세 종류 — Style 필드의 종류이자 저장 형식의 축.
-public enum ScaleKind: String, Codable, CaseIterable, Sendable {
-    case space, radius, type
+/// 토큰 목록의 종류 — Style 필드의 종류이자 저장 형식의 축. 열린 꼴: 아는 종류 셋(`known` — 간격 · 반경 · 글자 크기) · 모르는 종류(새 토큰 종류)도
+/// 낱말 그대로 든다(공급자는 모르는 종류에 빈 목록을 낸다 · 새 종류를 싣는 공급자는 그 종류를 받는 손을 덧붙인다).
+public struct ScaleKind: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public static let space = ScaleKind(rawValue: "space")
+    public static let radius = ScaleKind(rawValue: "radius")
+    public static let type = ScaleKind(rawValue: "type")
+    /// 이 SDK 가 아는 종류 — 차례 그대로.
+    public static let known: [ScaleKind] = [.space, .radius, .type]
+    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
 }
 
 /// 토큰 목록 공급자.
@@ -123,8 +132,9 @@ public struct EnumScaleProvider: ScaleTokenProvider {
     public init<S: NamedScaleEnum, R: NamedScaleEnum, T: NamedScaleEnum>(space: S.Type, radius: R.Type, type: T.Type) {
         self.space = S.scaleEntries; self.radius = R.scaleEntries; self.type = T.scaleEntries
     }
+    /// 아는 종류 셋 · 모르는 종류는 빈 목록.
     public func entries(_ kind: ScaleKind) -> [ScaleEntry] {
-        switch kind { case .space: return space; case .radius: return radius; case .type: return type }
+        switch kind { case .space: space; case .radius: radius; case .type: type; default: [] }
     }
 }
 

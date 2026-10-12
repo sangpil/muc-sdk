@@ -168,6 +168,8 @@ public enum RecordValidation {
                                                reason: "\(target) ‘\(ref)’ 의 \(parts[1]) ‘\(theirs.plain)’ 와 다르다(‘\(mine.plain)’)" + why))
                     }
                 }
+            case .other:
+                continue   // 이 SDK 가 모르는 규칙 — 재지 않는다
             }
         }
         return out
@@ -180,10 +182,10 @@ public enum RecordValidation {
             if case .string = value { return nil }
             return "글자여야 한다"
         case .int:
-            if case .number(let n) = value, n == n.rounded(), n.isFinite { return nil }
+            if value.integerValue != nil { return nil }
             return "정수여야 한다"
         case .decimal, .money:
-            if case .number(let n) = value, n.isFinite { return nil }
+            if let n = value.numberValue, n.isFinite { return nil }
             return "수여야 한다"
         case .bool:
             if case .bool = value { return nil }
@@ -221,6 +223,8 @@ public enum RecordValidation {
                 if let p = typeProblem(item, inner, schema: schema, idsByEntity: idsByEntity) { return "[\(i)] \(p)" }
             }
             return nil
+        case .unknown:
+            return nil   // 이 SDK 가 모르는 형 — 값을 재지 않는다
         }
     }
 }

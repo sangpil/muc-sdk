@@ -4,8 +4,9 @@ import PreviewProtocol
 import ProjectFormat
 import Testing
 
-// hello 의 프로젝트 데이터(판 2) — 칸이 왕복하고 · 없으면 nil(옛 호스트) · 판 1 의 말로 내리면 새 칸이 걷히고 판 1 의 줄은 그대로 읽힌다 ·
-// 빌드된 표 요약의 맞대기 · 구성 서술의 꼴 재기 · 콜아웃 푼 값의 층 자료 왕복.
+// hello 의 프로젝트 데이터 — 칸이 왕복하고 · 없으면 nil(옛 호스트) · 판 1 의 말로 내리면 새 칸이 걷히고 판 1 의 줄은 그대로 읽힌다 ·
+// 프로젝트 데이터 꼴 안의 칸은 모두 선택(빠지면 기본값 · 모르는 칸은 보존) · 빌드된 표 요약의 맞대기 · 구성 서술의 꼴 재기(모르는 종류는 재지 않는다) ·
+// 콜아웃 푼 값의 층 자료 왕복(판 칸 `v` — 없으면 1).
 
 @Suite struct HelloProjectTests {
     static let schema = StyleSchema(screen: "s", elements: [], fields: [], defaults: [:])
@@ -53,7 +54,7 @@ import Testing
         let render = Message.render(RenderRequest(seq: 3, screen: "home", state: "normal", size: Size(w: 1, h: 1), scale: 2,
                                                   layers: [LayerState(name: "chrome")]))
         #expect(try ProtocolDialect.v1.decode(ProtocolDialect.v1.encode(render)) == render)
-        #expect(PreviewProtocolVersion.previous.map(\.version) == [1])
+        #expect(PreviewProtocolVersion.previous.map(\.version) == [2], "엔진은 바닥(판 2)부터 받는다 — 판 1 의 말은 사슬로만 선다")
     }
 
     @Test func builtTokensDifferOnlyWhenAValueOrderOrThemeSetDiffers() {
@@ -80,7 +81,7 @@ import Testing
         }
         let t = BuiltTokens(scales: Scales(), layout: [ScaleEntry(name: "gap-wide", pt: 10), ScaleEntry(name: "gap-narrow", pt: 5)], colors: Colors())
         #expect(t.scales["space"] == [.init(name: "md", pt: 8)])
-        #expect(t.scales["radius"] == [] && t.scales.count == ScaleKind.allCases.count)
+        #expect(t.scales["radius"] == [] && t.scales.count == ScaleKind.known.count)
         #expect(t.layout.map(\.name) == ["gap-narrow", "gap-wide"], "간격 역할은 이름 차례")
         #expect(t.colors == Self.built.colors && t.themes == Self.built.themes)
         #expect(t.differs(from: Self.built), "간격 역할 하나가 더 있다")
@@ -98,6 +99,11 @@ import Testing
         #expect(LayerComposition.problems(["bottom": .null], fields: fields).isEmpty, "널 = 비운 칸")
         #expect(LayerComposition.problems(["bottom": "yes"], fields: fields) == ["bottom — bool 꼴이 아니다"])
         #expect(LayerComposition.problems("x", fields: fields) == ["구성이 객체가 아니다"])
+        // 열린 종류 — 프로젝트가 서술로 더한 종류는 글자 그대로 들고 꼴은 재지 않는다
+        let gauge = CompositionField.Kind(rawValue: "gauge")
+        #expect(gauge.accepts(3) && gauge.accepts("x") && !CompositionField.Kind.known.contains(gauge))
+        let wire = try? JSONEncoder().encode(CompositionField(key: "level", kind: gauge, label: "수위"))
+        #expect(wire.flatMap { try? JSONDecoder().decode(CompositionField.self, from: $0) }?.kind == gauge)
     }
 
     @Test func calloutValuesRideTheLayerReport() throws {
@@ -106,7 +112,26 @@ import Testing
                               valueSize: 12, valueColor: "#607080", dotDiameter: 8, dotColor: "#10a0a0", pointerLength: 16, pointerWidth: 2, edgeInset: 10)
         let report = LayerReport(name: "callout", elements: [], data: try v.data())
         #expect(try CalloutValues(data: try #require(report.data)) == v)
-        #expect(throws: (any Error).self) { try CalloutValues(data: ["surface": "#fff"]) }
+        guard case .object(let o) = try v.data() else { Issue.record("객체가 아니다"); return }
+        #expect(o["v"] == .number(Double(CalloutValues.formatVersion)), "판 칸을 싣는다")
+        // 칸이 빠진 자료도 읽힌다(빠진 칸 = 기본값 · 판 칸 없음 = 1) · 모르는 칸은 보존해 되쓴다
+        let thin = try CalloutValues(data: ["surface": "#fff", "glow": 2])
+        #expect(thin.surface == "#fff" && thin.lineWidth == 0 && thin.version == 1 && thin.extra == ["glow": 2])
+        guard case .object(let back) = try thin.data() else { Issue.record("객체가 아니다"); return }
+        #expect(back["glow"] == 2)
+    }
+
+    /// 프로젝트 데이터 꼴 안의 칸은 모두 선택 — 빠지면 기본값 · 모르는 칸은 들고 되쓴다(필수 칸으로 얼리지 않는다).
+    @Test func projectDataCellsAreOptionalAndKeepUnknownCells() throws {
+        let ia = try JSONDecoder().decode(IAInfo.self, from: Data(#"{"appScreens":["home"],"tabs":3}"#.utf8))
+        #expect(ia.appScreens == ["home"] && ia.entryWords.isEmpty && ia.aliases.isEmpty && ia.extra == ["tabs": 3])
+        #expect(try JSONValue.from(ia) == ["appScreens": ["home"], "entryWords": [], "entryHands": [:], "aliases": [:], "planned": [], "tabs": 3])
+        let mac = try JSONDecoder().decode(DeviceFrameInfo.self, from: Data(#"{"id":"desk","platform":"mac","size":{"w":1280,"h":800},"titleBar":28}"#.utf8))
+        #expect(mac.formFactor == .mac && mac.safeTop == 0 && mac.corner == 0 && mac.extra == ["titleBar": 28], "안전영역 없는 틀(맥 창)도 선다")
+        #expect(try JSONDecoder().decode(DeviceFrameInfo.self, from: JSONEncoder().encode(mac)) == mac)
+        #expect(DeviceFrameInfo().formFactor == nil, "낱말이 비면 폼팩터 없음")
+        #expect(DeviceFrameInfo(id: "v", platform: "vision", name: "V", symbol: "v", size: Size(w: 1, h: 1), corner: 0, safeTop: 0, safeBottom: 0)
+                    .formFactor?.rawValue == "vision", "모르는 폼팩터도 낱말 그대로")
     }
 
     /// 짚은 자리(선택 칸) — 실으면 왕복 · 싣지 않은 옛 보고는 nil 로 읽힌다(판 2 안의 덧붙임) · 그림 한 장 안의 점.

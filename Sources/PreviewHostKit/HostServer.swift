@@ -5,7 +5,7 @@ import PreviewProtocol
 import PreviewWire
 import SwiftUI
 
-// 호스트의 몸 — 연결 하나를 받아 메시지를 처리한다. 읽기 스레드는 받은 것을 **우편함**에 넣고 메인에 한 번만 깨운다.
+// 호스트의 몸 — 연결 하나(= 세션 하나)를 받아 메시지를 처리한다. 호스트 프로세스는 연결마다 몸 하나를 세운다(`HostListener`). 읽기 스레드는 받은 것을 **우편함**에 넣고 메인에 한 번만 깨운다.
 // 우편함은 연달아 온 patch 를 하나로 합친다(칸마다 마지막 값 · 입력 번호는 가장 큰 것) — 엔진이 최신값 우선으로 보내도
 // 메인이 바쁜 사이 둘 이상 쌓일 수 있다(진행 중 한도 > 1 · 엔진 재연결 직후). 한 바퀴에 렌더는 한 장.
 
@@ -52,7 +52,7 @@ final class HostServer {
     nonisolated let mailbox = Mailbox()
     /// 렌더러는 같은 render(값 · 틀까지 같은 요청)와 그 위의 patch 사이에서만 다시 쓴다 — 다른 render 는 새 렌더러로 그린다.
     /// 다시 쓴 렌더러는 앞 장의 뷰 그래프(@State · 래스터 캐시)를 들고 있어 같은 값의 새 장과 다른 바이트를 낸다(테마를 바꾼 다음 장에 앞 장의 래스터가 남는다). render 한 장 = 그 값의 새 그림이어야 찍기 · 비교가 선다.
-    var renderer = FrameRenderer()
+    var renderer: FrameRenderer!   // 첫 render 가 세운다(받기 스레드가 몸을 세우므로 메인 액터의 렌더러는 그 뒤에)
     private var renderKey: RenderRequest?
     let onTokensChanged: @MainActor () -> Void
 
@@ -63,28 +63,23 @@ final class HostServer {
     var appliedSeq: UInt64 = 0
     var presenter: WindowPresenter?
 
-    init(screens: [any PreviewScreen], onTokensChanged: @escaping @MainActor () -> Void) {
+    nonisolated init(screens: [any PreviewScreen], onTokensChanged: @escaping @MainActor () -> Void) {
         self.screens = Dictionary(uniqueKeysWithValues: screens.map { ($0.name, $0) })
         self.onTokensChanged = onTokensChanged
     }
 
     /// 받기 스레드에서 — hello 를 곧장 보내고(메인이 NSApplication 을 세우는 동안 엔진이 등록부를 받는다) 읽기를 세운다.
-    /// 읽은 것은 우편함으로 · 메인은 런루프가 선 뒤에 처리한다.
-    nonisolated func attach(_ conn: Connection, hello: Hello) throws {
+    /// 읽은 것은 우편함으로 · 메인은 런루프가 선 뒤에 처리한다. 연결이 닫히면 `onClose`(읽기 스레드에서 한 번).
+    nonisolated func attach(_ conn: Connection, hello: Hello, onClose: @escaping @Sendable () -> Void) throws {
         try conn.send(.hello(hello))
-        Trace.mark("hello 보냄")
+        HostTrace.mark("hello 보냄")
         let box = mailbox
         conn.start(name: "preview-host.read", onInbound: { [self] inbound in
             let t = PreviewClock.now()
             if box.push(inbound.message, recv: t) {
                 DispatchQueue.main.async { MainActor.assumeIsolated { self.conn = conn; self.drain() } }
             }
-        }, onClose: { _ in
-            // 엔진이 떠났다 — 호스트는 엔진의 수명에 묶인다(고아로 남지 않는다). 메인에서 끝내되(정상 경로), 메인이 막혀 그 블록이 안 돌면
-            // 2 s 뒤 읽기 쪽에서 곧장 끝낸다 — 연결이 닫힌 호스트가 읽기 고리 뒤에 남아 엔진의 거둠을 세우지 않게(그러면 시험이 끝나지 않고 매달린다).
-            DispatchQueue.main.async { exit(0) }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { _exit(0) }
-        })
+        }, onClose: { _ in onClose() })
     }
 
     func drain() {
@@ -97,7 +92,7 @@ final class HostServer {
                 }
             } catch {
                 let seq: UInt64? = switch item { case .patch(let p): p.seq; case .message(let m): m.seq }
-                try? conn.send(.error(ErrorMessage(seq: seq, message: String(describing: error))))
+                _ = try? conn.send(.error(ErrorMessage(seq: seq, message: String(describing: error))))
             }
         }
     }
@@ -109,11 +104,12 @@ final class HostServer {
             guard ProtocolJudge.hostAccepts(engine: h.protocolVersion, host: PreviewProtocolVersion.current) else {
                 let why = ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: h.protocolVersion).description
                 FileHandle.standardError.write(Data("\(ProcessInfo.processInfo.processName): \(why)\n".utf8))
-                try? conn.send(.error(ErrorMessage(seq: nil, message: why)))
+                _ = try? conn.send(.error(ErrorMessage(seq: nil, message: why)))
                 conn.close()
                 return
             }
-            if let s = h.shared { region = try SharedRegion.open(s); slotCursor = 0 } else { region = nil }
+            // 모르는 전송 종류면 공유 메모리를 쓰지 않는다(프레임은 소켓으로 — 전송 A)
+            if let s = h.shared, SharedMemoryInfo.Kind.known.contains(s.kind) { region = try SharedRegion.open(s); slotCursor = 0 } else { region = nil }
         case .render(let r):
             request = r
             appliedSeq = max(appliedSeq, r.seq)
@@ -123,16 +119,16 @@ final class HostServer {
             let key = "\(r.screen)|\(r.state)"
             if current?.key != key {
                 guard let screen = screens[r.screen] else { throw PreviewHostError.unknownScreen(r.screen) }
-                Trace.mark("세션 시작 \(key)")
+                HostTrace.mark("세션 시작 \(key)")
                 current = (key, try screen.session(state: r.state))
-                Trace.mark("세션 섬")
+                HostTrace.mark("세션 섬")
             }
             // 값은 render 가 갈아 끼운다(엔진이 안 파일에서 읽은 것 · 픽스처 갈아 끼우기) — 앞 patch 는 그 밑에 묻힌다
             try current!.session.load(style: r.style, layers: r.layers ?? [], fixture: r.fixture)
             // 자기 창이 서 있으면 그 창도 새 값 · 틀로(답은 늘 그 값의 프레임 — 엔진이 창 밑에 둔다)
             if let p = presenter { p.resize(to: CGSize(width: r.size.w, height: r.size.h)); p.update(current!.session.view(context(r, offscreen: false))) }
             try produce(seq: r.seq, recv: recv, start: start)
-            Trace.mark("프레임 보냄 \(r.seq)")
+            HostTrace.mark("프레임 보냄 \(r.seq)")
         case .tokensChanged(let t):
             onTokensChanged()
             renderer = FrameRenderer(); renderKey = nil   // 토큰 값이 바뀌었다 — 앞 장의 뷰 그래프를 버린다
@@ -161,10 +157,16 @@ final class HostServer {
             p.show(at: CGPoint(x: w.x, y: w.y), above: w.above)
             ackAfterCommit(seq: w.seq, recv: recv, start: start, before: before)
         case .bye:
-            exit(0)
+            conn.close()   // 이 세션만 끝난다 — 프로세스는 연결이 모두 닫히면 끝난다(`HostListener`)
         case .frame, .ack, .error, .patch:
             break
         }
+    }
+
+    /// 세션이 닫혔다 — 자기 창을 내리고 · 공유 메모리 칸 · 세션 값 · 렌더러를 놓는다(메인에서 · 연결이 닫힌 뒤 한 번).
+    func shutdown() {
+        presenter?.hide(); presenter = nil
+        region = nil; current = nil; request = nil; renderer = nil
     }
 
     private func handlePatch(_ p: Patch, recv: UInt64, start: UInt64) throws {
@@ -214,7 +216,7 @@ final class HostServer {
                                  snapFrames: wantsFrames ? cur.session.snapFrames() : [], elements: elements, layers: reports,
                                  ms: PreviewClock.ms(t0, t1), payload: payload,
                                  timing: HostTiming(recv: recv, start: start, rendered: rendered, sent: PreviewClock.now()))
-        try withExtendedLifetime(f) { try conn.send(.frame(header), payload: body) }
+        _ = try withExtendedLifetime(f) { try conn.send(.frame(header), payload: body) }
     }
 
     /// 창 모드의 답 — 그 바퀴의 커밋이 끝난 뒤 ack.
@@ -222,10 +224,10 @@ final class HostServer {
         let applied = appliedSeq
         let session = current?.session
         let conn = conn!
-        Commit.next {
+        HostCommit.next {
             let t = PreviewClock.now()
             let changed = session.map { $0.snapFrames() != before }
-            try? conn.send(.ack(Ack(seq: seq, applied: applied, ms: PreviewClock.ms(start, t),
+            _ = try? conn.send(.ack(Ack(seq: seq, applied: applied, ms: PreviewClock.ms(start, t),
                                     timing: HostTiming(recv: recv, start: start, rendered: t, sent: t), changed: changed)))
         }
     }

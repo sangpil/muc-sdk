@@ -1,10 +1,11 @@
 import Foundation
 
 // 엔진 SDK `ProjectFormat` — 모델 파일의 형식 계약(꼴 · 인코딩 · 읽기 규율)은 엔진과 프로젝트의 도구 실행물이 같은 한 벌을 문다
-// (SDK 문서 §2). SQL 투영 · 생성 · 울타리는 엔진의 몫이다.
+// (SDK 문서 §2). 생성물 · 울타리는 엔진의 몫이다.
 //
 // 스키마 검증(읽기 규율 ② — `DataModelCoding` 머리) — 틀리면 경로를 대고 파일 전체를 거부한다.
-// 막는 것은 형식이 거부하는 것뿐(이름 겹침 · 모르는 형 · 없는 대상 · 닫힌 낱말 밖). 나머지는 경고(노랑)로 알린다 — 막지 않는다.
+// 막는 것은 형식이 거부하는 것뿐(이름 겹침 · 없는 대상 · 이름 꼴). 이 SDK 가 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙)은 막지 않고 경고로 알린다 —
+// 더 새 판의 낱말이라 읽는 쪽이 읽기 전용으로 다룬다. 나머지도 경고(노랑) — 막지 않는다.
 
 public enum SchemaValidation {
 
@@ -132,59 +133,39 @@ public enum SchemaValidation {
                     if let targetEntity = schema.entity(target), !schema.expandedFields(of: targetEntity).contains(where: { $0.name == parts[1] }) {
                         fail(rp + ".check.sameAs.via", "‘\(target)’ 에 필드 ‘\(parts[1])’ 가 없다")
                     }
+                case .other:
+                    break   // 이 SDK 가 모르는 규칙 — 재지 않는다(경고 `warnings`)
                 }
             }
         }
-        sqlNameErrors(schema, fail)
         return out
     }
 
-    /// SQL 이름 — 생성 SQL 에 그대로 들어가는 테이블 · 열 이름. 적은 이름(`sql.table` · `sql.column`)은 늘,
-    /// 파생 이름은 실재(live)인 것만 잰다. 소유 열 `user_id` 는 생성기가 붙이므로 필드 열이 가질 수 없다. 예약어는 생성기가 인용한다.
-    static func sqlNameErrors(_ schema: DataSchema, _ fail: (String, String) -> Void) {
-        func name(_ n: String, _ path: String, _ what: String) {
-            if !SQLProjection.isValidIdentifier(n) {
-                fail(path, "\(what) ‘\(n)’ — SQL 이름은 소문자 · 숫자 · 밑줄(글자나 밑줄로 시작 · 63자 이하)")
-            }
-        }
-        var tables: [String: Int] = [:]
-        for (i, e) in schema.entities.enumerated() {
-            let path = "schema.entities[\(i)]"
-            if let t = e.sqlTable { name(t, path + ".sql.table", "테이블 이름") }
-            guard e.status == .live else { continue }
-            let table = SQLProjection.tableName(e)
-            if e.sqlTable == nil { name(table, path + ".name", "파생 테이블 이름") }
-            if let j = tables[table] { fail(path + ".sql.table", "테이블 이름 ‘\(table)’ 이 schema.entities[\(j)] 와 겹친다") } else { tables[table] = i }
-            var columns: Set<String> = []
-            var seen: Set<String> = []
-            for (j, f) in schema.expandedFields(of: e).enumerated() where f.status == .live && seen.insert(f.name).inserted {   // 필드 이름 겹침은 위가 댄다
-                let fp = j < e.fields.count ? "\(path).fields[\(j)]" : "\(path).uses"
-                let column = SQLProjection.columnName(f)
-                name(column, fp + (f.sqlColumn == nil ? ".name" : ".sql.column"), "열 이름")
-                if column == SQLProjection.ownerColumn {
-                    fail(fp + (f.sqlColumn == nil ? ".name" : ".sql.column"), "열 ‘\(column)’ 은 소유 열(생성기가 모든 테이블에 붙인다)과 겹친다 — 다른 SQL 열 이름(sql.column)을 적는다")
-                }
-                if !columns.insert(column).inserted { fail(fp + ".sql.column", "테이블 ‘\(table)’ 에 열 ‘\(column)’ 이 둘이다") }
-            }
-        }
-        for (i, t) in schema.traits.enumerated() {
-            for (j, f) in t.fields.enumerated() { if let c = f.sqlColumn { name(c, "schema.traits[\(i)].fields[\(j)].sql.column", "열 이름") } }
-        }
-        for (i, e) in schema.entities.enumerated() {
-            for (j, f) in e.fields.enumerated() where e.status != .live || f.status != .live {
-                if let c = f.sqlColumn { name(c, "schema.entities[\(i)].fields[\(j)].sql.column", "열 이름") }
-            }
-        }
-    }
-
     /// 경고(노랑) — 막지 않는다. 편집 창의 즉시 알림과 데이터 검사가 싣는다.
+    /// 이 SDK 가 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙)이 든 자리마다 한 줄 — 더 새 판의 낱말이다(읽기 전용으로 다룬다).
     public static func warnings(_ schema: DataSchema) -> [String] {
         var out: [String] = []
-        for e in schema.entities {
-            if e.status == .live, e.sqlTable == nil {
-                out.append("\(e.name) — SQL 테이블 이름(sql.table)이 없어 ‘\(SQLProjection.tableName(e))’ 로 파생한다")
+        func unknownType(_ t: DataType) -> String? {
+            switch t {
+            case .unknown(let raw): raw.plain
+            case .list(let inner): unknownType(inner)
+            case .ref(_, let d) where !DataOnDelete.known.contains(d): "삭제 규칙 \(d.rawValue)"
+            default: nil
             }
-            // CloudKit 규약 — 필드는 선택이거나 기본값이 있어야 한다(CloudKit 동기화가 필수 칸에 기본값을 요구한다).
+        }
+        func words(_ owner: String, _ fields: [DataField]) {
+            for f in fields {
+                if let w = unknownType(f.type) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 형 ‘\(w)’(읽기 전용)") }
+                if !DataStatus.known.contains(f.status) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 상태 ‘\(f.status.rawValue)’(읽기 전용)") }
+            }
+        }
+        for t in schema.traits { words(t.name, t.fields) }
+        for v in schema.values { words(v.name, v.fields) }
+        for e in schema.entities {
+            if !DataStatus.known.contains(e.status) { out.append("\(e.name) — 이 빌드가 모르는 상태 ‘\(e.status.rawValue)’(읽기 전용)") }
+            words(e.name, e.fields)
+            for r in e.rules { if case .other(let kind, _)? = r.check { out.append("\(e.name) — 규칙 ‘\(r.id)’ 의 낱말 ‘\(kind)’ 을 이 빌드가 모른다(재지 않는다)") } }
+            // CloudKit 규약 — 필드는 선택이거나 기본값이 있어야 한다(CloudKit 동기화가 필수 칸에 기본값을 요구한다 · 전수 규칙은 `CloudKitRules`).
             for f in schema.expandedFields(of: e) where f.status == .live && f.type != .id && !f.optional && f.default == nil {
                 out.append("\(e.name).\(f.name) — 필수인데 기본값이 없다: CloudKit 전환에서 막힌다")
             }
@@ -204,16 +185,5 @@ public enum SchemaValidation {
     static func isCamelCase(_ s: String) -> Bool {
         guard let first = s.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) else { return false }
         return s.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII }
-    }
-}
-
-extension DataRuleCheck {
-    var word: String {
-        switch self {
-        case .required: "required"
-        case .forbidden: "forbidden"
-        case .unique: "unique"
-        case .sameAs: "sameAs"
-        }
     }
 }

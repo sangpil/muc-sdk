@@ -20,10 +20,13 @@ public final class SharedRegion: @unchecked Sendable {
     public enum Failure: Error, CustomStringConvertible {
         case sys(String, Int32)
         case nameTooLong(String)
+        /// 이 SDK 가 모르는 전송 종류(`SharedMemoryInfo.Kind`).
+        case unknownKind(String)
         public var description: String {
             switch self {
             case .sys(let w, let e): "\(w) 실패: \(String(cString: strerror(e)))"
             case .nameTooLong(let n): "shm 이름이 31바이트를 넘는다: \(n)"
+            case .unknownKind(let k): "모르는 공유 메모리 종류: \(k)"
             }
         }
     }
@@ -39,6 +42,8 @@ public final class SharedRegion: @unchecked Sendable {
         case .file:
             unlink(info.name)
             fd = Darwin.open(info.name, O_CREAT | O_EXCL | O_RDWR, 0o600)
+        default:
+            throw Failure.unknownKind(info.kind.rawValue)
         }
         guard fd >= 0 else { throw Failure.sys("열기 \(info.name)", errno) }
         defer { close(fd) }
@@ -48,9 +53,11 @@ public final class SharedRegion: @unchecked Sendable {
 
     /// 호스트 쪽 — 엔진이 만든 것을 연다.
     public static func open(_ info: SharedMemoryInfo) throws -> SharedRegion {
-        let fd: Int32 = switch info.kind {
-        case .posix: cshm_open(info.name, O_RDWR, 0o600)
-        case .file: Darwin.open(info.name, O_RDWR)
+        let fd: Int32
+        switch info.kind {
+        case .posix: fd = cshm_open(info.name, O_RDWR, 0o600)
+        case .file: fd = Darwin.open(info.name, O_RDWR)
+        default: throw Failure.unknownKind(info.kind.rawValue)
         }
         guard fd >= 0 else { throw Failure.sys("열기 \(info.name)", errno) }
         defer { close(fd) }
@@ -69,6 +76,7 @@ public final class SharedRegion: @unchecked Sendable {
             switch info.kind {
             case .posix: shm_unlink(info.name)
             case .file: unlink(info.name)
+            default: break
             }
         }
     }

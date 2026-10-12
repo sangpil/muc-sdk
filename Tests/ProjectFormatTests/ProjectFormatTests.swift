@@ -31,24 +31,37 @@ import Testing
     /// 규약의 검산값 — 엔진(데이터 도구)과 프로젝트(코어의 앉히기)가 같은 바이트를 내는 근거.
     @Test func recordUUIDIsTheContractValue() {
         let id = IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: "watering-1")
-        #expect(id.uuidString.lowercased() == "ee5c8311-4efc-5c4e-9c14-313d666b319d")
-        #expect(id == IsoDataIDs.uuid5(namespace: IsoDataIDs.uuid5(namespace: IsoDataIDs.urlNamespace, name: "com.sangpil.isodata/sample"), name: "Watering/watering-1"))
+        #expect(id.uuidString.lowercased() == "28241eae-2497-50f0-b848-aa5eab203910")
+        #expect(id == IsoDataIDs.uuid5(namespace: IsoDataIDs.uuid5(namespace: IsoDataIDs.urlNamespace, name: "com.makeusclever.isodata/sample"), name: "Watering/watering-1"))
+        #expect(IsoDataIDs.defaultNamespace == "com.makeusclever.isodata")
         #expect(id != IsoDataIDs.uuid(schema: "sample", entity: "Pot", id: "watering-1"))
         #expect(id != IsoDataIDs.uuid(schema: "other", entity: "Watering", id: "watering-1"))
     }
 
     @Test func namespaceIsTheContractValue() {
-        #expect(IsoDataIDs.namespace(schema: "sample").uuidString.lowercased() == "2efa13c1-8065-5859-986a-71b01fdfa997")
+        #expect(IsoDataIDs.namespace(schema: "sample").uuidString.lowercased() == "36cdee70-912d-59a8-a0e3-8a12914dd8d0")
+    }
+
+    /// 스키마가 적은 머리(`idNamespace`) — 그 머리로 해시한다(앉은 행의 UUID 를 지키는 길) · 없으면 기본 머리 · 엔티티의 이름 칸(`uuidKey`)을 쓴다.
+    @Test func theSchemaNamespaceOverridesTheDefault() {
+        let fixed = IsoDataIDs.uuid(namespace: "com.example.rows", schema: "sample", entity: "Watering", id: "watering-1")
+        #expect(fixed.uuidString.lowercased() == "511f582f-4a12-5b51-8be1-3e67485b5e22")
+        #expect(IsoDataIDs.uuid(namespace: nil, schema: "sample", entity: "Watering", id: "watering-1") == IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: "watering-1"))
+        var schema = DataSchema(name: "sample")
+        schema.idNamespace = "com.example.rows"
+        #expect(IsoDataIDs.uuid(in: schema, entity: DataEntity(name: "Drip", uuidName: "Watering"), id: "watering-1") == fixed)
+        schema.idNamespace = nil
+        #expect(IsoDataIDs.uuid(in: schema, entity: DataEntity(name: "Watering"), id: "watering-1") != fixed)
     }
 
     /// UUID 꼴 id 는 해시하지 않고 그대로(대소문자 무관 · 이름공간을 타지 않는다) · UUID 꼴이 아니면(하이픈 없는 32자 · 접두 붙은 꼴) 해시한다.
     @Test func uuidShapedIDsPassThrough() {
-        let upper = "EE5C8311-4EFC-5C4E-9C14-313D666B319D"
+        let upper = "28241EAE-2497-50F0-B848-AA5EAB203910"
         let got = IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: upper)
         #expect(got.uuidString.lowercased() == upper.lowercased())
         #expect(IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: upper.lowercased()) == got)
         #expect(IsoDataIDs.uuid(schema: "other", entity: "Pot", id: upper) == got)
-        let bare = "ee5c83114efc5c4e9c14313d666b319d"
+        let bare = "28241eae249750f0b848aa5eab203910"
         #expect(IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: bare) == IsoDataIDs.uuid5(namespace: IsoDataIDs.namespace(schema: "sample"), name: "Watering/\(bare)"))
         #expect(IsoDataIDs.uuid(schema: "sample", entity: "Watering", id: "watering-\(upper)") != got)
     }
@@ -60,13 +73,16 @@ import Testing
         #expect(IsoDataFormat.minimumVersion(hasModel: false) == IsoDataFormat.life)
         #expect(IsoDataFormat.minimumVersion(hasModel: true) == IsoDataFormat.model)
         #expect(IsoDataFormat.newest >= IsoDataFormat.model)
-        #expect(SceneFormat.oldestReadable <= SceneFormat.newestReadable)
     }
 
-    /// 쓰는 손이 찍는 가장 낮은 판 — 읽는 범위 안이다(업그레이드가 쓰는 판의 바닥 · 최신이 아니다).
-    @Test func theLowestWrittenVersionIsInsideWhatIsRead() {
-        #expect(SceneFormat.oldestReadable <= SceneFormat.lowestWritten && SceneFormat.lowestWritten < SceneFormat.newestReadable)
-        #expect(1 <= ModelFormat.lowestWritten && ModelFormat.lowestWritten < ModelFormat.newestReadable)
+    /// 판 범위 한 벌 — 옛 상수와 같은 값 · 쓰는 바닥은 읽는 범위 안(업그레이드가 쓰는 판의 바닥 · 최신이 아니다).
+    @Test func versionsAreTheConstants() {
+        #expect(IsoDataFormat.versions == FormatVersions(oldest: 1, newest: IsoDataFormat.newest, writeFloor: IsoDataFormat.life, stampKey: "version"))
+        #expect(DesignFormat.versions.newest == DesignFormat.version && IAFormat.versions.newest == IAFormat.version)
+        for v in [IsoDataFormat.versions, DesignFormat.versions, IAFormat.versions] {
+            #expect(v.oldest <= v.writeFloor && v.writeFloor <= v.newest)
+            #expect(UpgradeChain(versions: v, steps: []).newest == v.newest)
+        }
     }
 }
 
@@ -93,6 +109,14 @@ import Testing
         #expect(DesignFile.url(screen: "plants", name: "A", in: root).lastPathComponent == "A.design.json")
         #expect(DesignFile.names(screen: "plants", in: root) == ["A", "B"])
         #expect(DesignFile.names(screen: "harvest", in: root).isEmpty)
+    }
+
+    /// 안 파일의 판 — 칸이 없으면 1 · 있으면 그 수(「이 SDK 보다 새 안」을 가른다).
+    @Test func designFileVersionDefaultsToOne() {
+        #expect(DesignFile.version(Data(#"{"screen": "a"}"#.utf8)) == DesignFormat.version)
+        #expect(DesignFile.version(Data(#"{"version": 2}"#.utf8)) == 2)
+        #expect(DesignFile.head(Data(#"{"createdAt": "2040-01-02T03:00:00Z", "version": 2}"#.utf8))?.version == 2)
+        #expect(DesignFile.head(Data(#"{"createdAt": "2040-01-02T03:00:00Z"}"#.utf8))?.version == 1)
     }
 
     @Test func headReadsConfirmedAndCreatedAt() {
@@ -164,12 +188,42 @@ import Testing
         #expect(ScreenComponent.Kind.of(file: URL(fileURLWithPath: "/a/b.png")) == nil)
         #expect(!ScreenComponent.Kind.general.hasFile)
     }
+
+    /// 모르는 칸 보존 — 구성요소 · 영역의 모르는 칸이 왕복에 남는다(관대한 읽기도 든다).
+    @Test func unknownCellsSurvive() throws {
+        let json = #"{"id":"w.scene","kind":"isoscene","source":"a.isoscene","layer":2,"region":{"x":0,"y":0.5,"width":1,"height":0.5,"z":3}}"#
+        let c = try JSONDecoder().decode(ScreenComponent.self, from: Data(json.utf8))
+        #expect(c.extra == ["layer": 2] && c.region?.extra == ["z": 3])
+        #expect(try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(c)) == (try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))))
+        let lenient = ScreenComponent.decodeLenient([["id": "w", "kind": "general", "tint": "x"]])
+        #expect(lenient.components.first?.extra == ["tint": "x"])
+    }
+
+    @Test func regionClampsAndTellsFull() {
+        #expect(ScreenComponent.Region(x: -1, y: 0, width: 2, height: 0).clamped == ScreenComponent.Region(x: 0, y: 0, width: 1, height: 0.05))
+        #expect(ScreenComponent.Region.full.isFull)
+    }
 }
 
 @Suite struct FormFactorTests {
     /// 낱말과 차례 — 매니페스트 `platforms` 와 IA 플랫폼 칸이 이 글자를 쓴다.
     @Test func wordsAndOrder() {
-        #expect(FormFactor.allCases.map(\.rawValue) == ["iphone", "ipad", "mac"])
+        #expect(FormFactor.known.map(\.rawValue) == ["iphone", "ipad", "mac"])
+    }
+
+    /// 열린 꼴 — 모르는 낱말도 글자 그대로 들고 나온다.
+    @Test func unknownWordsRoundTrip() throws {
+        let words = try JSONDecoder().decode([FormFactor].self, from: Data(#"["mac", "vision"]"#.utf8))
+        #expect(words == [.mac, FormFactor(rawValue: "vision")] && !FormFactor.known.contains(words[1]))
+        #expect(String(decoding: try JSONEncoder().encode(words), as: UTF8.self) == #"["mac","vision"]"#)
+    }
+
+    /// 어느 폼팩터도 필수가 아니다 — iPhone 없는 조합(맥 전용 · iPad 전용 · iPad + 맥)도 선다 · 비었다 · 겹친다 · 낱말 꼴만 문제.
+    @Test func noFormFactorIsRequired() {
+        for ok in [["mac"], ["ipad"], ["ipad", "mac"], ["iphone"], ["vision"]] { #expect(FormFactor.problems(in: ok).isEmpty, "\(ok)") }
+        #expect(FormFactor.problems(in: []) == ["플랫폼 목록이 비었다"])
+        #expect(FormFactor.problems(in: ["mac", "mac"]).count == 1)
+        #expect(FormFactor.problems(in: ["Mac"]).count == 1)
     }
 }
 
@@ -186,6 +240,18 @@ import Testing
         #expect(v.text(pretty: false) == #"{"a":1.5,"b":18,"p":"a/b"}"#)
         struct S: Encodable { let gap = 4; let on = true }
         #expect(try JSONValue.from(S()) == ["gap": 4, "on": true])
+    }
+
+    /// 큰 정수는 깎이지 않는다 — 2^53 을 넘는 정수는 `integer`(Int64) 꼴로 읽고 그대로 쓴다 · 그 아래와 소수는 `number`(정본 꼴 하나).
+    @Test func largeIntegersRoundTripExactly() throws {
+        let text = #"{"big":1700000000000000001,"neg":-9007199254740993,"small":9007199254740992,"half":1.5}"#
+        let v = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+        #expect(v == ["big": .integer(1_700_000_000_000_000_001), "neg": .integer(-9_007_199_254_740_993), "small": .number(9_007_199_254_740_992), "half": .number(1.5)])
+        #expect(v.text(pretty: false) == #"{"big":1700000000000000001,"half":1.5,"neg":-9007199254740993,"small":9007199254740992}"#, "글자 그대로 되쓴다(키 정렬)")
+        #expect(JSONValue.int(1_700_000_000_000_000_001) == .integer(1_700_000_000_000_000_001) && JSONValue.int(7) == .number(7) && (7 as JSONValue) == .number(7))
+        #expect(JSONValue.integer(1_700_000_000_000_000_001).integerValue == 1_700_000_000_000_000_001 && JSONValue.number(4).integerValue == 4 && JSONValue.number(4.5).integerValue == nil)
+        struct Stamp: Codable, Equatable { var ns: UInt64 = 1_700_000_000_000_000_001 }
+        #expect(try JSONValue.from(Stamp()).decode(Stamp.self) == Stamp(), "Codable 값의 큰 정수도 왕복")
     }
 
     /// 프로젝트의 타입으로 오가기 — 객체로 인코드되는 값 → 사전(객체가 아니면 거부) · JSON 값 → 그 타입(꼴이 틀리면 거부).
@@ -243,5 +309,17 @@ import Testing
         #expect(d.jumps.isEmpty)
         #expect(ScreenJump(from: "a", to: "b", label: "l", source: ScreenJump.labSource()).isLabDrawn)
         #expect(IADoc.currentVersion == IAFormat.version)
+        #expect(IADoc(nodes: [], jumps: [], hubs: []).version == IAFormat.version, "판 없는 손 = 지금 판")
+    }
+
+    /// 모르는 칸 보존 — 문서 · 마디 · 점프 · 진입 · 허브 · 읽는 칸의 모르는 칸이 왕복에 남는다(같은 판의 덧붙임을 옛 엔진이 지우지 않는다).
+    @Test func unknownCellsSurviveARoundTrip() throws {
+        let json = #"{"version":1,"theme":"x","nodes":[{"id":"a","label":"A","via":"v","source":"s","badge":2,"data":{"reads":["T"],"writes":["U"]}}],"jumps":[{"from":"a","to":"a","label":"l","weight":1,"entries":[{"control":"more","hint":"h"}]}],"hubs":[{"id":"h","label":"H","kind":"rail","slots":["a"],"pinned":true}]}"#
+        let doc = try JSONDecoder().decode(IADoc.self, from: Data(json.utf8))
+        #expect(doc.extra == ["theme": "x"] && doc.nodes[0].extra == ["badge": 2] && doc.nodes[0].data?.extra == ["writes": ["U"]])
+        #expect(doc.jumps[0].extra == ["weight": 1] && doc.jumps[0].entries?.first?.extra == ["hint": "h"])
+        #expect(doc.hubs[0].extra == ["pinned": true] && doc.hubs[0].kind.rawValue == "rail")
+        let back = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(doc))
+        #expect(back == (try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))))
     }
 }

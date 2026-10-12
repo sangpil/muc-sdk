@@ -3,9 +3,12 @@ import Foundation
 @testable import PreviewHostKit
 import PreviewProtocol
 import PreviewWire
+import ProjectFormat
+import SwiftUI
 import Testing
 
-// 호스트 런타임 — 우편함이 연달아 온 patch 를 하나로 합친다 · 프레임 수집함의 차례 · 자기 창의 보이는 부분 · 엔진 hello 의 판(옛 엔진은 거절).
+// 호스트 런타임 — 우편함이 연달아 온 patch 를 하나로 합친다 · 프레임 수집함의 차례 · 자기 창의 보이는 부분 · 엔진 hello 의 판(옛 엔진은 거절) ·
+// 연결 = 세션(한 호스트가 같은 소켓 자리로 연결을 여럿 받고 세션마다 따로 그린다 · 모두 닫히면 끝).
 // 앵커를 모으는 손(`collectFrames`)은 프로젝트의 화면 코드가 `.snapID` 를 단 빌드(트레이트 `ActiveMarks`)에서만 값이 차므로 그 프로젝트 쪽 시험이 잰다.
 
 @Suite struct HostKitTests {
@@ -70,6 +73,22 @@ import Testing
         }
     }
 
+    /// 모르는 공유 메모리 종류 — 칸을 열지 않고(오류 없이) 프레임을 소켓으로 보낸다(전송 A).
+    @MainActor @Test func anUnknownSharedMemoryKindFallsBackToTheSocket() throws {
+        let (a, b) = try UnixSocket.pair()
+        let server = HostServer(screens: [], onTokensChanged: {})
+        server.conn = Connection(fd: a)
+        let engineSide = Connection(fd: b)
+        let got = Inbox()
+        engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
+        let shared = SharedMemoryInfo(kind: SharedMemoryInfo.Kind(rawValue: "mach"), name: "x", slotBytes: 1, slots: 1)
+        _ = server.mailbox.push(.hello(Hello(role: .engine, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "e", shared: shared)), recv: 0)
+        server.drain()
+        #expect(server.region == nil)
+        #expect(!got.waitClosed(timeout: 0.1) && got.messages.isEmpty, "오류 없이 받았다")
+        engineSide.close(); server.conn.close()
+    }
+
     /// 크기만 바뀐 render — 옛 보이는 부분이 새 화면 밖으로 나가면 새 크기에 맞춰 잘린다(창이 화면보다 크게 서지 않는다).
     @MainActor @Test func presenterResizeKeepsTheClipInsideTheScreen() {
         let p = WindowPresenter(size: CGSize(width: 100, height: 200), origin: .zero)
@@ -79,6 +98,92 @@ import Testing
         #expect(p.window.frame == CGRect(x: 10, y: 20, width: 100, height: 70))   // 보이는 부분 = y 50–120
         #expect(p.hosting.frame == CGRect(x: 0, y: 0, width: 100, height: 120))
         p.hide()
+    }
+}
+
+/// 연결 = 세션 — 같은 듣는 자리로 둘이 붙으면 둘 다 제 hello 를 받고 · 제 render 에 제 프레임을 받는다 · 하나가 닫혀도 다른 쪽은 남고 · 모두 닫히면 끝난다.
+@Suite(.serialized) struct HostSessionsTests {
+    struct Probe: PreviewScreen {
+        let name = "probe"
+        func info() throws -> ScreenInfo { ScreenInfo(name: name, states: ["n"], style: StyleSchema(screen: name, elements: [], fields: [], defaults: [:])) }
+        func session(state: String) throws -> any PreviewSession { Session() }
+    }
+    @MainActor final class Session: PreviewSession {
+        func load(style: StyleValues?, layers: [LayerState], fixture: JSONValue?) throws {}
+        func apply(_ edit: Edit) throws {}
+        func view(_ context: RenderContext) -> AnyView { AnyView(Color.red.frame(width: context.size.width, height: context.size.height)) }
+        func snapFrames() -> [SnapFrame] { [] }
+        func elementIDs() -> [String] { [] }
+        func layerReports() -> [LayerReport] { [] }
+    }
+    final class Flag: @unchecked Sendable { private let lock = NSLock(); private var on = false
+        func set() { lock.withLock { on = true } }; var isSet: Bool { lock.withLock { on } } }
+
+    @MainActor static func until(_ cond: () -> Bool) async -> Bool {
+        for _ in 0..<500 { if cond() { return true }; try? await Task.sleep(for: .milliseconds(10)) }
+        return cond()
+    }
+
+    @MainActor @Test func oneHostServesManyConnections() async throws {
+        let path = "/tmp/mucp-test.\(getpid()).\(Int.random(in: 0..<99999)).sock"
+        let fd = try UnixSocket.listen(path: path)
+        defer { unlink(path) }
+        let emptied = Flag()
+        let hello = Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h", screens: [try Probe().info()])
+        let listener = HostListener(listener: fd, hello: hello, screens: [Probe()], onTokensChanged: {}, grace: 0.05, onEmpty: { emptied.set() })
+        listener.start()
+        defer { listener.stop() }
+        let a = Connection(fd: try UnixSocket.connect(path: path)), b = Connection(fd: try UnixSocket.connect(path: path))
+        let ga = Inbox(), gb = Inbox()
+        a.start(name: "test.a", onInbound: { ga.put($0.message) }, onClose: { _ in ga.close() })
+        b.start(name: "test.b", onInbound: { gb.put($0.message) }, onClose: { _ in gb.close() })
+        #expect(await Self.until { ga.messages.count == 1 && gb.messages.count == 1 }, "세션마다 제 hello")
+        #expect(ga.messages.first?.type == "hello" && gb.messages.first?.type == "hello")
+        #expect(listener.accepted == 2 && listener.live == 2)
+        let engine = Hello(role: .engine, protocolVersion: PreviewProtocolVersion.current, pid: 2, name: "e")
+        for (c, seq) in [(a, UInt64(3)), (b, UInt64(9))] {
+            try c.send(.hello(engine))
+            try c.send(.render(RenderRequest(seq: seq, screen: "probe", state: "n", size: Size(w: 4, h: 4), scale: 1)))
+        }
+        #expect(await Self.until { ga.messages.count == 2 && gb.messages.count == 2 }, "세션마다 제 프레임")
+        #expect(ga.messages.last?.seq == 3 && gb.messages.last?.seq == 9, "seq 는 세션마다 따로")
+        // 자기 창 — 세션마다 제 창 · 닫힌 세션의 창은 내려간다(소유자가 풀려도 패널은 화면에 남으므로 몸을 거둘 때 내린다)
+        for (c, seq) in [(a, UInt64(4)), (b, UInt64(10))] { try c.send(.window(WindowRequest(seq: seq, x: 6000, y: 6000, show: true, w: 4, h: 4))) }
+        #expect(await Self.until { listener.sessions().allSatisfy { $0.presenter != nil } })
+        let windows = listener.sessions().compactMap { $0.presenter?.window }
+        #expect(windows.count == 2 && windows.allSatisfy(\.isVisible), "창 둘")
+        a.close()
+        #expect(await Self.until { listener.live == 1 })
+        #expect(await Self.until { windows.filter(\.isVisible).count == 1 }, "닫힌 세션의 창은 내려가고 남은 세션의 창은 그대로")
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(!emptied.isSet, "남은 세션이 있으면 끝나지 않는다")
+        b.close()
+        #expect(await Self.until { emptied.isSet }, "모두 닫히면 끝난다")
+        #expect(await Self.until { windows.allSatisfy { !$0.isVisible } })
+    }
+
+    /// 마지막 연결이 닫힌 뒤 짧게 기다린다 — 그 사이 같은 자리로 새 연결이 서면 끝나지 않는다.
+    @MainActor @Test func aNewConnectionWithinTheGraceKeepsTheHost() async throws {
+        let path = "/tmp/mucp-test.\(getpid()).\(Int.random(in: 0..<99999)).sock"
+        let fd = try UnixSocket.listen(path: path)
+        defer { unlink(path) }
+        let emptied = Flag()
+        let hello = Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h")
+        let listener = HostListener(listener: fd, hello: hello, screens: [], onTokensChanged: {}, grace: 0.4, onEmpty: { emptied.set() })
+        listener.start()
+        defer { listener.stop() }
+        let a = Connection(fd: try UnixSocket.connect(path: path))
+        a.start(name: "test.a", onInbound: { _ in }, onClose: { _ in })
+        #expect(await Self.until { listener.live == 1 })
+        a.close()
+        #expect(await Self.until { listener.live == 0 })
+        let c = Connection(fd: try UnixSocket.connect(path: path))
+        c.start(name: "test.c", onInbound: { _ in }, onClose: { _ in })
+        #expect(await Self.until { listener.live == 1 })
+        try? await Task.sleep(for: .milliseconds(600))
+        #expect(!emptied.isSet, "유예 안에 다시 붙었다 — 끝나지 않는다")
+        c.close()
+        #expect(await Self.until { emptied.isSet })
     }
 }
 
