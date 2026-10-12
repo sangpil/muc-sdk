@@ -1,5 +1,12 @@
 import SwiftUI
 
+// 모듈 `ScreenMarks` — 계약 갈래(플랫폼 중립 · iOS · macOS). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 화면 요소 표식 — 프로젝트의 화면 코드가 요소에 이름을 달고(`.snapID`), 엔진의 도구 · 호스트의 프레임 수집이 그 경계를 모은다.
+//   누가 부르나 : 프로젝트의 화면 코드(앱 제품 포함) · 엔진의 도구 · SDK 의 `PreviewHostKit`(`FrameSink`).
+//   지키는 것   : 표식의 몸은 트레이트 `ActiveMarks` ∧ macOS 일 때만 선다 — 그 밖엔 값이 0인 빈 모디파이어 · 키 · 탭 환경값의 꼴은 늘 선다 ·
+//                SwiftUI 만 문다.
+//   시작점     : `View.snapID(_:)` · `SnapPreferenceKey` · `SnapTapKey`
+//
 // 요소 식별자 — `.snapID("home.hero")` 를 붙인 요소를 엔진의 도구가 집어낼 수 있게 하는 표식. 이름은 요소 id 다(의견 · 구성요소 id 와 같은 낱말).
 //
 // **이 모디파이어는 제품 화면에 남는다**(뷰 코드에 도구용 갈래를 파지 않는다). 대신 하는 일은 빌드 플래그로 갈린다:

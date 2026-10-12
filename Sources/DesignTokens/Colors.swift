@@ -2,6 +2,13 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
+// 모듈 `DesignTokens` — 계약 갈래(플랫폼 중립 · iOS · macOS). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 디자인 토큰의 꼴 — 색(값 · 테마 · 역할 · 공급자 · 정본 읽개) · 스케일(간격 · 반경 · 글자 크기) · 정본 곁 칸(씬 칸 규칙 · 색 역할 묶음).
+//   누가 부르나 : 엔진의 도구(토큰 창 · 조절판) · 프로젝트(토큰 생성물 · 미리보기 호스트) · SDK 의 `PreviewProtocol`(스케일 종류).
+//   지키는 것   : 꼴만 든다 — 토큰의 값(생성물 · 실행 시점 등록부)과 플랫폼 색 손(UIKit ⟂ AppKit)은 프로젝트의 것이다 ·
+//                Foundation · CoreGraphics · SwiftUI 만 문다.
+//   시작점     : `HexColor` · `ColorTokenProvider` · `SoTColorProvider` · `SoTScaleProvider`
+//
 // 색 토큰의 꼴 — 「어느 테마에서 어느 역할이 무슨 색인가」를 담는 값 · 공급자 프로토콜 · 정본 읽개(엔진 SDK · 프로젝트와 엔진의 도구가 함께 문다).
 //
 // 정본 `tokens.json` 을 실행 시점에 읽는 `SoTColorProvider`(저장 즉시 목록에 선다) ⟂ 빌드 시점 사본(생성기가 방출한 표 — 그 공급자 · 실행 시점 등록부는

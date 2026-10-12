@@ -3,6 +3,12 @@ import Darwin
 import Foundation
 import PreviewProtocol
 
+// 모듈 `PreviewWire` — 런타임 갈래(macOS 전용 · 소스는 통째로 `#if os(macOS)`). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 엔진 ⟂ 미리보기 호스트의 전송 — 유닉스 소켓 상주 연결 · 공유 메모리 칸(POSIX shm ⟂ `/tmp` mmap).
+//   누가 부르나 : 엔진(미리보기 클라이언트 · 원격 화면 창) · SDK 의 `PreviewHostKit`(호스트 쪽 연결). 앱 제품은 물지 않는다.
+//   지키는 것   : 쓰기는 락 하나로 줄 세운다 · 프레임 몸은 복사 없이 · 상대의 판에 없는 메시지는 보내지 않는다 · 상대가 죽으면 `onClose` 한 번.
+//   시작점     : `Connection` · `UnixSocket` · `SharedRegion`
+//
 // 상주 연결 하나 — 쓰기는 락 하나로 줄 세우고(`writev` 로 머리 + 몸을 한 번에), 읽기는 전용 스레드가 돈다.
 // 받은 메시지는 그 읽기 스레드에서 `onInbound` 로 넘긴다(어느 큐로 보낼지는 쓰는 쪽이 정한다 — 스레드 홉을 하나라도 덜게).
 // 상대가 죽으면 읽기가 EOF(0)·오류를 보고 `onClose` 를 한 번 부른다 — 엔진의 크래시 감지가 이것이다.

@@ -23,7 +23,7 @@ import PackageDescription
 // 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
 //   PreviewWire     : 전송 — 유닉스 소켓 상주 연결(`Connection` · `UnixSocket`) · 공유 메모리 칸(`SharedRegion` — POSIX shm ⟂ `/tmp` mmap). 엔진 · 호스트가 함께 문다.
-//   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
+//   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:ia:frames:tokensBuilt:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
 //                     (`ImageRenderer.cgImage` 바이트 그대로) · 연결 = 세션(듣기 하나에 연결 여럿) · 자기 창 모드 · 프레임 수집(`FrameSink` · `collectFrames`). **프로젝트를 모른다.**
 //
 // 시험(시험 타깃만 문다 — 제품 타깃이 물면 무는 쪽의 경계 게이트가 빨강):
@@ -33,8 +33,8 @@ import PackageDescription
 // **플랫폼 바닥 = 가장 낮은 소비자**(프로젝트 코어 패키지의 macOS 14 · iOS 17). 앱(iOS 18 · macOS 15)과
 // 엔진(macOS 15)은 그 위에서 그대로 문다. 계약 모듈은 AppKit · UIKit · RealityKit 을 쓰지 않는다 — 셋 중 하나가 필요한 것은 런타임 모듈이거나 SDK 가 아니다.
 //
-// 이름 — 패키지 이름 = 저장소 이름 `muc-sdk`(정체성). 무는 쪽은 `.package(url: …/muc-sdk.git, exact: <판>)` · 제품 참조 `package: "muc-sdk"` 다(빌더 저장소 안의
-// 경로 의존도 `name: "muc-sdk"` 로 같은 글자). 모듈 · 타입 · 트레이트 · define 에는 제품 이름을 쓰지 않는다.
+// 이름 — 패키지 이름 = 저장소 이름 `muc-sdk`(정체성). 무는 쪽은 `.package(url: …/muc-sdk.git, exact: <판>)` · 제품 참조 `package: "muc-sdk"` 다(경로 의존으로
+// 무는 소비자도 `name: "muc-sdk"` 로 같은 글자). 모듈 · 타입 · 트레이트 · define 에는 제품 이름을 쓰지 않는다.
 let package = Package(
     name: "muc-sdk",
     platforms: [.macOS(.v14), .iOS(.v17)],
@@ -67,10 +67,14 @@ let package = Package(
         .target(name: "PreviewWire", dependencies: ["PreviewProtocol", "CShm"]),
         .target(name: "PreviewHostKit", dependencies: ["PreviewProtocol", "ProjectFormat", "PreviewWire", "ScreenMarks", "LaunchTrace"]),
         .target(name: "TestScratch"),
-        .testTarget(name: "ProjectFormatTests", dependencies: ["ProjectFormat", "TestScratch"]),
+        // 모델 파일 표본(`Fixtures/`)은 시험이 제 자리에서 읽는다(자원으로 싣지 않는다)
+        .testTarget(name: "ProjectFormatTests", dependencies: ["ProjectFormat", "TestScratch"], exclude: ["Fixtures"]),
         .testTarget(name: "DesignTokensTests", dependencies: ["DesignTokens", "TestScratch"]),
         .testTarget(name: "TestScratchTests", dependencies: ["TestScratch"]),
         .testTarget(name: "LaunchTraceTests", dependencies: ["LaunchTrace"]),
+        // 표식 시험은 표식의 몸과 같은 조건(macOS ∧ 트레이트)으로 갈린다 — 꺼진 빌드에서만 「빈 모디파이어」를 잰다
+        .testTarget(name: "ScreenMarksTests", dependencies: ["ScreenMarks"],
+                    swiftSettings: [.define("ACTIVE_MARKS", .when(platforms: [.macOS], traits: ["ActiveMarks"]))]),
         // 꼴 지문 기록(`protocol-shapes.txt` — 판마다 한 줄 · 덧붙이기 전용)은 시험이 제 자리에서 읽는다(자원으로 싣지 않는다)
         .testTarget(name: "PreviewProtocolTests", dependencies: ["PreviewProtocol", "ProjectFormat"], exclude: ["protocol-shapes.txt"]),
         // 소켓 · 공유 메모리 시험은 짧은 자리만 쓴다 — 소켓은 이어진 한 쌍(`socketpair` — 경로 없음) · shm 이름은 pid + 난수(`/mucp.<pid>.<n>` · 31바이트 안)

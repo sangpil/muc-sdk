@@ -4,7 +4,7 @@
 의존 방향 · SDK 판 · 프로토콜 판 · 형식이 자라는 규칙 · 1.0 의 약속 · 공개 표면의 변경 규칙 · SDK 에 들지 않는 것과 그 까닭. 이 저장소는 **공개**다 — `public` 한 줄이 곧 외부 프로젝트와의 약속이다(§6).
 파일 형식의 열기 판정 · 판을 올리는 차례 · 프로젝트 폴더의 꼴(`muc.json`) · SDK 가 디코드하지 않는 형식의 판은 빌더(엔진)가 갖는다 — 이 문서는 SDK 에 든 꼴과 상수만 다룬다.
 
-몸 — 이 저장소 뿌리의 [`Package.swift`](../Package.swift)(SwiftPM 패키지 `muc-sdk`). 시험 — `Tests/ProjectFormatTests` · `DesignTokensTests` · `LaunchTraceTests` · `PreviewProtocolTests` ·
+몸 — 이 저장소 뿌리의 [`Package.swift`](../Package.swift)(SwiftPM 패키지 `muc-sdk`). 시험 — `Tests/ProjectFormatTests` · `ScreenMarksTests` · `DesignTokensTests` · `LaunchTraceTests` · `PreviewProtocolTests` ·
 `PreviewWireTests` · `PreviewHostKitTests` · `TestScratchTests`(게이트 [`qa/qa-sdk-build.mjs`](../qa/qa-sdk-build.mjs) — 대상마다 0건이면 빨강 · 잎 · 갈래 · 공개 적합 · 판 꼬리표 · 공개 표면 깨짐 진단 · 공개 이름 = §2 표 · 판 품은 기본 인자 0 · 모델 파일 표본은 [`qa/sample-model.mjs`](../qa/sample-model.mjs) 가 짓고 잰다).
 
 ## 1. 의존 방향 — 하나
@@ -45,8 +45,22 @@
 
 ## 2. 모듈
 
-계약 다섯(`ProjectFormat` · `ScreenMarks` · `DesignTokens` · `LaunchTrace` · `PreviewProtocol`) · 런타임 둘(`PreviewWire` · `PreviewHostKit` — macOS 전용 · §1).
-표의 **약속** 열 — **프로젝트**(앱 · 코어 · 미리보기 호스트 · 프로젝트 도구가 무는 이름) ⟂ **엔진**(엔진의 도구가 무는 판 상수 · 사슬 꼴 · 메시지 열 · 전송 · 렌더러).
+**모듈 지도** — 모듈마다 한 줄: 누가 부르나 · 어디서 읽기 시작하나(시작점 타입) · 무엇을 지키나 · 그 모듈의 머리 주석(파일 맨 위 `` // 모듈 `<이름>` `` 묶음 — 무엇 · 누가 부르나 · 지키는 것 · 시작점) · 시험 폴더.
+게이트 [`qa/qa-map.mjs`](../qa/qa-map.mjs) 가 이 표를 `Package.swift` 의 타깃 · `Sources/` 폴더 · `Tests/` 폴더 · 머리 주석 · 소스의 공개 타입과 양방향으로 맞댄다(빠짐 · 남음 빨강).
+
+| 모듈 | 갈래 | 누가 부르나 | 시작점 타입 | 지키는 것 | 머리 주석 | 시험 |
+|---|---|---|---|---|---|---|
+| **ProjectFormat** | 계약 | 엔진 · 프로젝트(앱 제품 포함) · 미리보기 호스트 | `IsoDataFile` · `DesignFile` · `IADoc` · `FormatStamp` · `JSONValue` | 판을 몸보다 먼저 읽는다 · 모르는 키는 보존해 되쓴다 · SDK 가 읽고 쓰는 형식의 판 상수는 한 자리 | [Formats.swift](../Sources/ProjectFormat/Formats.swift) | [ProjectFormatTests](../Tests/ProjectFormatTests) |
+| **ScreenMarks** | 계약 | 프로젝트의 화면 코드(앱 제품 포함) · 엔진의 도구 · `PreviewHostKit` | `View.snapID(_:)` · `SnapPreferenceKey` · `SnapTapKey` | 표식의 몸은 `ActiveMarks` ∧ macOS 일 때만 — 그 밖엔 값이 0인 빈 모디파이어 | [SnapID.swift](../Sources/ScreenMarks/SnapID.swift) | [ScreenMarksTests](../Tests/ScreenMarksTests) |
+| **DesignTokens** | 계약 | 엔진의 도구 · 프로젝트(토큰 생성물 · 미리보기 호스트) · `PreviewProtocol` | `HexColor` · `ColorTokenProvider` · `SoTColorProvider` · `SoTScaleProvider` | 꼴만 든다 — 토큰의 값과 플랫폼 색 손은 프로젝트의 것 | [Colors.swift](../Sources/DesignTokens/Colors.swift) | [DesignTokensTests](../Tests/DesignTokensTests) |
+| **LaunchTrace** | 계약 | 프로젝트의 화면 코드 · 엔진의 도구 · `PreviewHostKit` | `OpenTrace` | `MUC_OPEN_TRACE=1` ∧ DEBUG 일 때만 잰다 — 그 밖엔 몸이 빈 함수 | [OpenTrace.swift](../Sources/LaunchTrace/OpenTrace.swift) | [LaunchTraceTests](../Tests/LaunchTraceTests) |
+| **PreviewProtocol** | 계약 | 엔진의 미리보기 클라이언트 · 미리보기 호스트 · `PreviewWire` · `PreviewHostKit` | `Message` · `Hello` · `ProtocolJudge` · `Framing` · `StyleSchema` | 메시지 꼴이 바뀌면 프로토콜 판을 올린다 · 엔진이 판정자 | [Messages.swift](../Sources/PreviewProtocol/Messages.swift) | [PreviewProtocolTests](../Tests/PreviewProtocolTests) |
+| **CShm** | 런타임 · 제품 아님(C 심) | `PreviewWire` 만 | `cshm_open` | 고정 인자로 감싼 한 줄 밖의 일을 하지 않는다 | [CShm.h](../Sources/CShm/include/CShm.h) | — (`PreviewWireTests` 가 공유 메모리로 잰다) |
+| **PreviewWire** | 런타임 | 엔진(미리보기 클라이언트 · 원격 화면 창) · `PreviewHostKit` — 앱은 물지 않는다 | `Connection` · `UnixSocket` · `SharedRegion` | 상대의 판에 없는 메시지는 보내지 않는다 · 상대가 죽으면 `onClose` 한 번 | [Connection.swift](../Sources/PreviewWire/Connection.swift) | [PreviewWireTests](../Tests/PreviewWireTests) |
+| **PreviewHostKit** | 런타임 | 미리보기 호스트 실행물 · 호스트 시험 · 엔진의 도구 — 앱은 물지 않는다 | `PreviewHost` · `PreviewScreen` · `PreviewSession` · `FrameRenderer` | 프로젝트를 모른다 · 연결 = 세션 · 엔진의 수명에 묶인다 | [PreviewHost.swift](../Sources/PreviewHostKit/PreviewHost.swift) | [PreviewHostKitTests](../Tests/PreviewHostKitTests) |
+| **TestScratch** | 시험 | 엔진 · 프로젝트 · SDK 의 시험 타깃만 | `TestScratch` | 만든 자리는 그 시험이 끝날 때 지운다 | [TestScratch.swift](../Sources/TestScratch/TestScratch.swift) | [TestScratchTests](../Tests/TestScratchTests) |
+
+아래는 모듈마다의 공개 이름 전부다(공개 표면 = 이 표들 · §6). 표의 **약속** 열 — **프로젝트**(앱 · 코어 · 미리보기 호스트 · 프로젝트 도구가 무는 이름) ⟂ **엔진**(엔진의 도구가 무는 판 상수 · 사슬 꼴 · 메시지 열 · 전송 · 렌더러).
 둘 다 소스 호환 약속은 같다(§5) — 다른 것은 깨는 변경의 비용이다(엔진 표면만 깨는 변경은 엔진 한 저장소가 같은 판에서 따라가고 프로젝트 영향은 0 이다).
 
 **`ProjectFormat`** — 프로젝트 문서의 형식. Foundation · CryptoKit 만.
@@ -168,7 +182,7 @@
 
 | 무엇 | 자리 | 까닭(§3 의 몇 번) |
 |---|---|---|
-| 렌더 코어(씬 · 카메라 · 입력 · 오프스크린 그림) · 리뷰 킷(의견 기록 · 저장 · 작성기) | **빌더 배포 패키지**(`muc-builder` — 프로젝트가 빌더에서 받아 앱에 싣는 런타임 · 비공개) | ② 렌더 코어는 RealityKit · UIKit(터치) · AppKit(포인터)을 쓴다 — 계약이 아니라 앱이 싣는 **엔진 런타임**이다. 리뷰 킷은 다섯이 다 서지만 렌더 코어 · 편집기와 한 배포 패키지로 함께 간다 |
+| 렌더 코어(씬 · 카메라 · 입력 · 오프스크린 그림) · 리뷰 킷(의견 기록 · 저장 · 작성기) | **빌더**(비공개 배포 패키지 — 프로젝트가 빌더에서 받아 앱에 싣는 런타임) | ② 렌더 코어는 RealityKit · UIKit(터치) · AppKit(포인터)을 쓴다 — 계약이 아니라 앱이 싣는 **엔진 런타임**이다. 리뷰 킷은 다섯이 다 서지만 렌더 코어 · 편집기와 한 배포 패키지로 함께 간다 |
 | 씬(`.isoscene`) · 모델(`.isomodel`) · 배선(`graph.json`)의 형식 판 상수 | 그 형식을 디코드하는 쪽 — 렌더 코어(씬 · 모델) · 엔진의 도구(배선) | ① 판 상수는 그 형식을 읽는 모듈과 함께 산다 — SDK 는 이 형식을 디코드하지 않는다(그 칸 하나가 SDK 판을 올리지 않게). 판 범위의 꼴(`FormatVersions`)과 사슬의 꼴(`UpgradeChain`)은 SDK 에 있어 그쪽도 같은 꼴로 낸다 |
 | 엔진의 도구 몸 — IA · 배선 · 안 문서의 저장소 · 코덱 · 자동 배치 · 쓰임 셈 · 미리보기 클라이언트 · 호스트 프로세스 · 호스트 빌드 손 · 원격 화면 창 · 화면 위 오버레이 · 계측 하니스 · 매니페스트(`muc.json`) · 토큰 정본 편집기 · 그림 파일 쓰기(PNG) · 조절판 칸 이름 짓기와 낱말 사전 · 형 · 상태 · 구성요소 종류의 사람 말 이름 | 엔진(빌더) | ① 엔진의 도구가 여닫는 손이다(앱은 읽지 않는다) · ④ 자식 프로세스(호스트 · 빌드 · 생성기)를 띄운다 · UI 낱말은 엔진의 UI 다(공개 계약은 중립 — §6) — 문서 · 메시지의 **꼴**(`IADoc` · `DesignFile` · `PreviewProtocol` · `ScreenMarks` · `SnapFrame` · `FrameSink`) · 매니페스트에 싣는 공유 데이터 칸의 꼴(`SharedDataModel`)과 전송(`PreviewWire`)만 SDK 에 든다 |
 | 저장 백엔드의 생성물 — SQL 투영 · 차이 · 마이그레이션 · 소유 열 · 접근 정책 | SDK 밖(쓰는 쪽) | ⑤ 백엔드(스토어 · 서버)의 가정이다 — 모델 파일 형식은 백엔드를 모른다. 판 4 의 생성 사본 칸(`migrated` · 엔티티와 필드의 `sql`)은 물러난 키로 읽은 그대로 들고 되쓴다(§2 `IsoDataFile`) |
@@ -176,7 +190,7 @@
 
 ## 5. 판
 
-**SDK 판: 0.16.0** — 공개 베타(0.x 동안은 공개 표면을 바꾸는 변경도 부 판으로 낸다 — 아래 표). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 1.0.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 
@@ -198,18 +212,18 @@
 - **모르는 키는 보존한다** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다 · 아는 칸과 이름이 겹치면 아는 칸이 이긴다). 같은 판에 칸이 더해져도 옛 읽개가 열어 저장하면 그 칸이 사라지지 않는다. 모델 파일은 자리마다 한 줄로 알린다(`DataModelFile.unknownKeys` — 읽는 쪽이 읽기 전용으로 열지 정한다).
 - **파일에 칸을 더하는 것은 형식 판을 올리지 않는다**(빠진 칸 = 옛 뜻 · 모르는 칸 = 보존) — 칸의 뜻을 바꾸거나 빼는 것만 판을 올린다(와이어는 위의 판 규칙). 모델 파일 판 4 는 칸 더하기(`idNamespace` · `revision`)와 물러난 키(`migrated` · `sql`)를 판 안에서 든다.
 - **열린 꼴**(`FormFactor` · `ScaleKind` · `DataStatus` · `DataOnDelete` · `CompositionField.Kind` · `SharedMemoryInfo.Kind` · `Hub.Kind`) — 낱말 그대로 드는 `RawRepresentable` 구조체 + 아는 상수 + `known`. 아는 낱말을 더하는 것은 부 판이다(파일 · 와이어의 글자가 그대로라 소비자 소스가 깨지지 않는다 — 소비자는 이 꼴을 `switch` 로 전수하지 않는다 · `default` 를 둔다).
-- **페이로드 열거의 모르는 갈래**(`DataType.unknown` · `DataRuleCheck.other`) — 이 SDK 가 모르는 형 · 규칙을 읽은 그대로 든다(재지 않는다 · 경고). 닫힌 열거(`Message` · `Hello.Role` · `UpgradeEffect` · `FramePayload` · `ScreenComponent.Kind` · `FieldKind`)에 갈래를 더하는 것은 주 판이다(`ScreenComponent.Kind` 는 앱이 그리는 코드와 함께 오는 종류라 닫아 둔다 · 모르는 종류는 관대한 읽기가 건너뛴다).
+- **페이로드 열거의 모르는 갈래**(`DataType.unknown` · `DataRuleCheck.other`) — 이 SDK 가 모르는 형 · 규칙을 읽은 그대로 든다(재지 않는다 · 경고). 닫힌 열거(`Message` · `Hello.Role` · `UpgradeEffect` · `FramePayload` · `ScreenComponent.Kind` · `FieldKind`)에 갈래를 더하거나 갈래의 연관값을 바꾸는 것은 주 판이다 — 소비자의 전수 `switch` 를 깬다(`ScreenComponent.Kind` 는 앱이 그리는 코드와 함께 오는 종류라 닫아 둔다 · 모르는 종류는 관대한 읽기가 건너뛴다). 1.x 에서 새 말이 필요하면 닫힌 열거를 늘리지 않고 있는 갈래의 몸(구조체)에 기본값 있는 새 칸을 더한다 — 옛 상대가 그 칸을 몰라 무시해도 뜻이 틀리지 않을 때만이고, 아니면 새 갈래는 다음 주 판(2.0)에 싣는다.
 - **오류 열거**(`IsoDataError` · `ProtocolMismatch` · `UpgradeError` · …)에 갈래를 더하는 것은 부 판이다 — 소비자는 오류를 `switch` 로 전수하지 않는다. 오류 · 문제의 사람 말(`description` · `reason`)은 계약 밖이다(문구를 고치는 것은 수 판).
 
 SDK 판이 오르는 때:
 
 | 바뀌는 것 | SDK 판 |
 |---|---|
-| 공개 이름을 빼거나 · 이름 · 꼴 · 뜻 · 선언 종류를 바꾼다 · 닫힌 열거에 갈래를 더한다 · 기본 구현 없는 프로토콜 요구를 더한다 | 주(0.x 동안은 부) |
-| 공개 이름을 더한다 · 열린 꼴에 아는 낱말을 더한다 · 오류 갈래를 더한다 · 형식 판 상수를 올린다 · 프로토콜 판을 올린다(위) | 부 |
+| 공개 표면을 깬다 — 공개 이름 · 제품 · 트레이트를 빼거나 · 이름 · 꼴 · 뜻 · 선언 종류를 바꾼다 · 닫힌 열거에 갈래를 더하거나 연관값을 바꾼다 · 기본 구현 없는 프로토콜 요구를 더한다 | 주(2.0 — 1.x 안에서는 내지 않는다) |
+| 덧붙인다 — 새 타입 · 새 메서드 · 기본값 있는 새 칸 · 열린 꼴에 아는 낱말 · 오류 갈래 · 형식 판 상수를 올린다 · 프로토콜 판을 올린다(위 — 기본값 있는 새 칸처럼 모르는 상대가 무시해도 뜻이 틀리지 않는 덧붙임만 · 메시지 종류를 더하는 것은 닫힌 열거의 갈래라 주 판) | 부 |
 | 공개 표면이 그대로인 고침 · 사람 말 문구 | 수 |
 
-**1.0 의 약속** — 「1.0 이후 프로젝트가 문 공개 표면(§2 의 표 · 프로젝트 ⟂ 엔진 두 약속 모두)을 이후의 1.x SDK 가 계속 지킨다」: 소스 호환(공개 이름 · 꼴 · 선언 종류 — 게이트 `qa-sdk-build` ⑦ 이 직전 꼬리표와 맞대 깨짐 하나면 빨강) · 파일 호환(1.x 의 읽개는 1.0 이 쓴 파일을 읽고 모르는 칸을 보존한다) · 와이어 호환(1.x 엔진은 바닥 판부터 받는다). 약속 밖 — SDK 안의 손(`package`) · 사람 말 문구 · SDK 가 디코드하지 않는 형식(§4).
+**1.0 의 약속** — 「프로젝트가 문 1.0 의 공개 표면(§2 의 표 · 프로젝트 ⟂ 엔진 두 약속 모두)을 이후의 1.x SDK 가 계속 지킨다」: 소스 호환(공개 이름 · 꼴 · 선언 종류 · 제품 · 트레이트 — 기준선은 HEAD 에서 닿는 가장 가까운 꼬리표(지금 판의 꼬리표 포함 · HEAD 가 지금 판 꼬리표 그 자체면 그 앞 꼬리표) · 1.x 의 꼬리표 사슬은 1.0.0 에서 시작하므로 1.0.0 표면이 바닥이다 · 게이트 `qa-sdk-build` ⑦ 이 기준선과 맞대 깨짐 하나면 빨강 · 주 판을 올리는 변경만 `qa/api-major.txt` 에 그 판 글자와 까닭을 적어 통과) · 파일 호환(1.x 의 읽개는 1.0 이 쓴 파일을 읽고 모르는 칸을 보존한다) · 와이어 호환(1.x 엔진은 바닥 판부터 받는다). 약속 밖 — SDK 안의 손(`package`) · 사람 말 문구 · SDK 가 디코드하지 않는 형식(§4).
 
 ## 6. 변경 규칙
 

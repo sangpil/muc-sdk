@@ -56,7 +56,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 이 화면이 서는 플랫폼(`iphone` · `ipad` · `mac`) — **선택 칸** · nil 이면 매니페스트 `platforms` 전부. 적으면 비지 않은 부분집합(생성기가 잰다).
     public var platforms: [String]?
     /// 이 화면이 읽는 **데이터** — 모델 파일(`*.isodata`)의 엔티티 이름 목록(`data.reads`). **선택 칸**이다 —
-    /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 `mucb data check` 가 잰다.
+    /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 엔진의 데이터 검사가 잰다.
     public var data: ScreenData?
     /// 이 SDK 가 모르는 칸.
     public var extra: [String: JSONValue] = [:]
@@ -138,8 +138,8 @@ public struct ScreenJump: Sendable, Equatable, Codable, Identifiable {
     public var to: String
     /// 무엇을 눌러 건너뛰나
     public var label: String
-    /// 출처 — 근거 글(소스의 파일:줄 ⟂ 문서의 행) ⟂ 「lab IA 창 YYYY-MM-DD」(캔버스·`mucb ia edit jump` 가 그은 점프 · `labSource`).
-    /// 근거 없는 점프는 없다(프로젝트의 시험이 커밋된 점프를 붙든다). 끊기 전 확인은 IA 창 밖 출처만 받는다 — IA 창(캔버스 · `mucb ia edit jump`)이 그은 것은 바로 끊긴다(⌘Z).
+    /// 출처 — 근거 글(소스의 파일:줄 ⟂ 문서의 행) ⟂ 「lab IA 창 YYYY-MM-DD」(엔진의 IA 창 — 캔버스 · 명령 — 이 그은 점프 · `labSource`).
+    /// 근거 없는 점프는 없다(프로젝트의 시험이 커밋된 점프를 붙든다). 끊기 전 확인은 IA 창 밖 출처만 받는다 — IA 창(캔버스 · 명령)이 그은 것은 바로 끊긴다(⌘Z).
     public var source: String?
     /// 앱의 진입 — 이 점프를 크롬(또는 씬)의 어느 손이 여나(`JumpEntry`). nil = 앱 크롬에 진입이 없는 점프(근거 글만 있는 점프 · 화면 안 행).
     /// 앱 셸의 메뉴 항목은 이것을 프로젝트의 생성 상수로 읽는다 — 끊으면 앱의 그 항목도 사라진다.
@@ -169,7 +169,7 @@ public struct ScreenJump: Sendable, Equatable, Codable, Identifiable {
 
     /// IA 창이 그은 점프의 출처 머리 — 뒤에 날짜(`yyyy-MM-dd`)가 붙는다(글자는 이미 저장된 출처와 맞춘 값이라 바꾸지 않는다).
     public static let labSourcePrefix = "lab IA 창"
-    /// IA 창(캔버스 · `mucb ia edit jump`)이 새로 긋는 점프의 출처 — 「lab IA 창 YYYY-MM-DD」.
+    /// IA 창(캔버스 · 명령)이 새로 긋는 점프의 출처 — 「lab IA 창 YYYY-MM-DD」.
     public static func labSource(on date: Date = Date()) -> String {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"

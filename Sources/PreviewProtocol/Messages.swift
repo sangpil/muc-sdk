@@ -1,6 +1,13 @@
 import Foundation
 import ProjectFormat
 
+// 모듈 `PreviewProtocol` — 계약 갈래(플랫폼 중립 · iOS · macOS). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 엔진 ⟂ 미리보기 호스트의 말 — 메시지 열 · 줄 프레이밍 · 프로토콜 판과 판 맞대기 · 최신값 우선 · Style 서술 · hello 의 프로젝트 데이터.
+//   누가 부르나 : 엔진의 미리보기 클라이언트 · 프로젝트의 미리보기 호스트 · SDK 의 `PreviewWire` · `PreviewHostKit`.
+//   지키는 것   : 메시지 꼴이 바뀌면 프로토콜 판을 올린다(선택 칸도) · 엔진이 판정자 · hello 의 `type` · `protocolVersion` 은 판이 올라도 그대로 ·
+//                Foundation · SDK `ProjectFormat` · `DesignTokens` 만 문다.
+//   시작점     : `Message` · `Hello` · `ProtocolJudge` · `Framing` · `StyleSchema`
+//
 // 엔진 ⟂ 미리보기 호스트의 말 — 호스트(프로젝트가 자기 코드로 빌드한 별도 프로세스) · 엔진이 이 모듈 하나를 문다(정본 `Docs/SDK.md`).
 //
 //   흐름   : 엔진이 호스트를 띄운다 → 호스트 `hello`(화면 등록부 · 층 · 프레임 형식) → 엔진 `hello`(전송 선택 · 공유 메모리 자리) →

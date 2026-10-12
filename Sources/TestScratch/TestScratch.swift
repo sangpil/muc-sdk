@@ -1,5 +1,11 @@
 import Foundation
 
+// 모듈 `TestScratch` — 시험 갈래(시험 타깃만 문다). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 시험의 임시 자리 한 벌 — 임시 폴더 · 파일 자리 · 설정 도메인.
+//   누가 부르나 : 엔진 · 프로젝트 · SDK 의 시험 타깃. 제품 타깃은 물지 않는다.
+//   지키는 것   : 만든 자리는 그 시험이 끝날 때 지운다 · 이름은 늘 `test-scratch-` 로 시작한다 · Foundation 만 문다.
+//   시작점     : `TestScratch`
+//
 // 시험의 임시 자리 한 벌 — 임시 폴더 · 임시 파일 자리 · 설정 도메인(UserDefaults suite). **만든 것은 그 시험이 끝날 때 지운다.**
 //
 // 시험마다 제 손으로 `temporaryDirectory` 밑에 폴더를 만들고 suite 도메인을 열던 것이 부산물을 쌓았다(`$TMPDIR` 의 시험 폴더 ·

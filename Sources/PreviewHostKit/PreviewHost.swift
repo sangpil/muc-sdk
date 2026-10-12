@@ -4,6 +4,13 @@ import Foundation
 import PreviewProtocol
 import PreviewWire
 
+// 모듈 `PreviewHostKit` — 런타임 갈래(macOS 전용 · 소스는 통째로 `#if os(macOS)`). 모듈 지도는 `Docs/SDK.md` §2.
+//   무엇       : 미리보기 호스트 런타임 — 진입점 · 화면 등록 프로토콜 · 창 없는 렌더 · 자기 창 · 프레임 수집.
+//   누가 부르나 : 프로젝트의 미리보기 호스트 실행물(`main.swift` 한 줄) · 프로젝트의 호스트 시험 · 엔진의 도구(창 없는 렌더 · 커밋 눈금).
+//                앱 제품은 물지 않는다.
+//   지키는 것   : 프로젝트를 모른다(등록부는 호스트 실행물이 넘긴다) · 연결 = 세션 · 엔진의 수명에 묶인다 · 프레임은 `ImageRenderer.cgImage` 바이트 그대로.
+//   시작점     : `PreviewHost` · `PreviewScreen` · `PreviewSession` · `FrameRenderer`
+//
 // 호스트 진입점 — 프로젝트의 `main.swift` 는 이 한 줄이다: `PreviewHost.main(name:, screens:, layers:)` — 프로젝트의 데이터(IA 낱말 · 기기 틀 ·
 // 빌드된 표 요약 — `PreviewProtocol` `HelloProject.swift`)를 함께 넘기면 hello 에 싣는다(`ia:` · `frames:` · `tokensBuilt:` · 없으면 싣지 않는다).
 //

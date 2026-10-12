@@ -142,7 +142,7 @@ extension ScreenComponent {
     }
 
     /// `components` 칸을 **관대하게** 읽는다 — 앱의 읽기 · 엔진의 도달 목록. 모르는 종류 · 깨진 줄은 건너뛰고(`skipped` 에 까닭) 나머지를 돌려준다.
-    /// 모르는 칸은 `extra` 로 든다(되쓰면 남는다). 앞으로 종류가 늘어도 앱이 깨지지 않게 — 검사기(`mucb scene check <안>.design.json`)는 같은 줄을 경고로 알린다.
+    /// 모르는 칸은 `extra` 로 든다(되쓰면 남는다). 앞으로 종류가 늘어도 앱이 깨지지 않게 — 엔진의 안 파일 검사기는 같은 줄을 경고로 알린다.
     /// - Parameter value: `JSONSerialization` 으로 읽은 `components` 값(배열이 아니면 빈 목록).
     public static func decodeLenient(_ value: Any?) -> (components: [ScreenComponent], skipped: [String]) {
         guard let value else { return ([], []) }

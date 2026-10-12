@@ -87,7 +87,7 @@ import Testing
 }
 
 @Suite struct SDKVersionTests {
-    /// SDK 판 — 세 마디 정수(주.부.수). 정본 문서의 판 칸과의 맞대기는 엔진 쪽 시험의 몫 — SDK 는 저장소 배치를 가정하지 않는다.
+    /// SDK 판 — 세 마디 정수(주.부.수). 정본 문서의 판 칸과의 맞대기는 `SDKDocumentTests` 의 몫이다.
     @Test func isMajorMinorPatch() {
         let parts = SDKVersion.current.split(separator: ".")
         #expect(parts.count == 3 && parts.allSatisfy { Int($0) != nil }, "주.부.수 — \(SDKVersion.current)")

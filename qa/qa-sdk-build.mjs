@@ -13,9 +13,12 @@
 //   ⑤ **판 꼬리표** — `SDKVersion.current`(코드의 한 자리) = HEAD 에 꼬리표가 있으면 그 꼬리표 · README 의 설치 줄(`exact: "<판>"`) = 같은 판.
 //      `Docs/SDK.md` §5 의 판 칸은 시험(`SDKDocumentTests`)이 잰다.
 //   ⑥ **시험이 남긴 자리 0** — 자식에 범위 폴더(`TMPDIR` · `TEST_SCRATCH_ROOT`)를 주고 시험 뒤 범위 안 `test-scratch-*` · 새 `~/Library/Preferences/test-scratch-*.plist` 가 있으면 빨강.
-//   ⑦ **공개 표면 깨짐 진단** — `swift package diagnose-api-breaking-changes <직전 꼬리표>`(기준 = HEAD 에서 닿는 가장 가까운 꼬리표 · 지금 판의 꼬리표는 뺀다).
-//      보조 점검 — 소스의 public 선언 목록(멤버 포함 · `<둘레>.<종류> <이름>(<레이블>)`)을 직전 꼬리표의 것과 맞대 사라진 선언을 센다(도구가 못 보는 `public → package` 강등).
-//      1.0 전(SDK 판 0.x)은 둘 다 수를 적기만 한다 · 1.0 뒤는 하나라도 있으면 빨강 — 주 판을 올리는 변경이면 `qa/api-major.txt` 에 **지금 판 글자**와 까닭 한 줄이
+//   ⑦ **공개 표면 깨짐 진단** — `swift package diagnose-api-breaking-changes <기준선>`(이 명령은 `-j` 를 받지 않아 `SWIFT_BUILD_JOBS` 를 넘기지 않는다).
+//      기준선 = HEAD 가 지금 판의 꼬리표 그 자체면 그 앞 꼬리표 · 아니면 HEAD 에서 닿는 가장 가까운 꼬리표(지금 판의 꼬리표 포함 — 꼬리표 뒤 개발 커밋은 그 꼬리표와 맞댄다)
+//      · 1.x 의 꼬리표 사슬은 1.0.0 에서 시작하므로 1.0.0 표면이 바닥이다 · 고르는 손은 갈래마다 자체 시험이 붙든다.
+//      보조 점검 — 소스의 public 선언 목록(멤버 포함 · `<둘레>.<종류> <이름>(<레이블>)`)을 기준선의 것과 맞대 사라진 선언을 센다(도구가 못 보는 `public → package` 강등) ·
+//      기준선 매니페스트(`dump-package`)의 제품 · 트레이트 이름을 지금 매니페스트와 맞대 사라진 이름을 센다(도구 · 선언 목록이 못 보는 자리).
+//      셋 중 하나라도 있으면 빨강 — 주 판을 올리는 변경이면 `qa/api-major.txt` 에 **지금 판 글자**와 까닭 한 줄이
 //      있을 때만 통과(판이 바뀌면 지난 선언은 무효 — 판 글자가 없는 선언 파일은 빨강).
 //      기본 구현 없는 프로토콜 요구를 더한 것도 이 도구가 깨짐으로 센다. git 밖 · 기준 꼬리표 없음이면 건너뛴다(그 까닭을 적는다). `SDK_API_LIST=1` 이면 깨짐을 줄마다 찍는다.
 //   ⑧ **공개 이름 = §2 표** — `Sources/**` 의 맨 위 `public` 타입 이름(struct · enum · class · protocol · typealias · actor) 집합 = `Docs/SDK.md` §2 표 첫 칸의 백틱 이름
@@ -27,7 +30,7 @@
 // 사용: node qa/qa-sdk-build.mjs       SWIFT_BUILD_JOBS=6 node qa/qa-sdk-build.mjs
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { residueLine, residueScope, residueSelfTest } from "./lib/test-residue.mjs";
@@ -153,10 +156,15 @@ const pinned = [...readme.matchAll(/exact:\s*"([^"]+)"/g)].map((m) => m[1]);
 if (!pinned.length || pinned.some((p) => p !== version)) failures.push(`⑤ README 의 설치 줄 판 [${pinned.join(" · ")}] ≠ SDKVersion.current ${version}`);
 const top = spawnSync("git", ["-C", ROOT, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
 let tagWord = "git 밖 — 꼬리표 없음";
+const inRepo = top.status === 0 && resolve(top.stdout.trim()) === ROOT;
+const headTags = inRepo ? (spawnSync("git", ["-C", ROOT, "tag", "--points-at", "HEAD"], { encoding: "utf8" }).stdout || "").split("\n").filter(Boolean) : [];
 if (top.status === 0) {
-  const tags = (spawnSync("git", ["-C", ROOT, "tag", "--points-at", "HEAD"], { encoding: "utf8" }).stdout || "").split("\n").filter(Boolean);
+  const tags = headTags;
   if (resolve(top.stdout.trim()) !== ROOT) tagWord = `다른 저장소 안의 폴더(${relative(top.stdout.trim(), ROOT)}) — 꼬리표는 SDK 저장소의 몫`;
-  else if (tags.length && !tags.includes(version)) failures.push(`⑤ HEAD 의 꼬리표 [${tags.join(" · ")}] ≠ SDKVersion.current ${version}(꼬리표 = 판)`);
+  else if (tags.length && !tags.includes(version)) {
+    failures.push(`⑤ HEAD 의 꼬리표 [${tags.join(" · ")}] ≠ SDKVersion.current ${version}(꼬리표 = 판)`);
+    tagWord = `HEAD 꼬리표 ${tags.join(" · ")}`;
+  }
   else tagWord = tags.length ? `HEAD 꼬리표 ${version}` : "HEAD 꼬리표 없음";
 }
 console.log(`  ${failures.some((f) => f.startsWith("⑤")) ? "✗" : "✓"} ⑤ 판 — SDKVersion ${version} · README 설치 줄 ${pinned.join(" · ")} · ${tagWord}`);
@@ -169,7 +177,6 @@ if (left.length) failures.push(`⑥ ${residueLine(left)}`);
 console.log(`  ${selfBad || left.length ? "✗" : "✓"} ⑥ 시험이 남긴 자리 ${left.length}`);
 
 // ⑦ 공개 표면 깨짐 진단 — 진단 도구 + 보조 점검(소스의 public 선언 목록 ⟂ 직전 꼬리표 — `public → package` 강등 · 빼기를 도구가 못 보는 자리)
-const major = Number((version || "0").split(".")[0]);
 // 주 판 선언 — `qa/api-major.txt` 에 지금 판 글자(SDKVersion)가 적혀 있을 때만 유효(판이 바뀌면 지난 선언은 무효)
 const majorNote = existsSync(join(QA, "api-major.txt")) ? readFileSync(join(QA, "api-major.txt"), "utf8") : "";
 const majorDeclared = !!version && majorNote.split(/\s+/).includes(version);
@@ -197,20 +204,35 @@ const publicDecls = (files) => {
   }
   return out;
 };
+/// 기준선을 고르는 `git describe` 인자 — HEAD 가 지금 판의 꼬리표 그 자체면 그 꼬리표를 빼고(그 앞 꼬리표) · 아니면 HEAD 에서 닿는 가장 가까운 꼬리표(지금 판의 꼬리표 포함 —
+/// 꼬리표 뒤 판을 안 올린 개발 커밋은 그 꼬리표와 맞댄다).
+const baselineArgs = (tagsAtHead, ver) => ["describe", "--tags", "--abbrev=0", ...(ver && tagsAtHead.includes(ver) ? ["--exclude", ver] : []), "HEAD"];
+// 기준선 고르기의 자체 시험 — 갈래마다 한 줄(어긋나면 빨강)
+const baselineCases = [
+  [["1.0.0"], "1.0.0", ["--exclude", "1.0.0"]],   // 판 꼬리표 커밋 → 그 앞 꼬리표
+  [[], "1.0.0", []],                                // 꼬리표 뒤 개발 커밋 → 가장 가까운 꼬리표(1.0.0 포함)
+  [[], "1.1.0", []],                                // 판을 올렸고 꼬리표 전 → 가장 가까운 꼬리표
+  [["0.16.0"], "1.0.0", []],                        // 꼬리표 ≠ 판(⑤ 가 빨강) → 가장 가까운 꼬리표
+];
+const baselineBad = baselineCases.filter(([t, v, ex]) => JSON.stringify(baselineArgs(t, v)) !== JSON.stringify(["describe", "--tags", "--abbrev=0", ...ex, "HEAD"]));
+if (baselineBad.length) failures.push(`⑦ 기준선 고르기 자체 시험 ${baselineBad.length} 어긋남 — ${baselineBad.map(([t, v]) => `HEAD 꼬리표 [${t.join(" · ")}] · 판 ${v}`).join(" / ")}`);
+/// 매니페스트의 제품 · 트레이트 이름 — `swift package dump-package` 의 JSON 에서.
+const manifestNames = (j) => new Set([...(j.products || []).map((p) => `제품 ${p.name}`), ...(j.traits || []).map((t) => `트레이트 ${t.name}`)]);
 let diagWord;
 let declWord = "";
-const inRepo = top.status === 0 && resolve(top.stdout.trim()) === ROOT;
-const lastTag = inRepo ? (spawnSync("git", ["-C", ROOT, "describe", "--tags", "--abbrev=0", "--exclude", version || "", "HEAD"], { encoding: "utf8" }).stdout || "").trim() : "";
+let manifestWord = "";
+const lastTag = inRepo ? (spawnSync("git", ["-C", ROOT, ...baselineArgs(headTags, version)], { encoding: "utf8" }).stdout || "").trim() : "";
 if (!lastTag) diagWord = "기준 꼬리표 없음(git 밖 · 첫 판) — 건너뜀";
 else {
-  const d = run(["swift", "package", "diagnose-api-breaking-changes", lastTag, ...JOBS]);
+  // 진단 도구는 `-j` 를 받지 않는다 — JOBS 를 넘기지 않는다
+  const d = run(["swift", "package", "diagnose-api-breaking-changes", lastTag]);
   const breaks = d.out.split("\n").filter((l) => /API breakage:/.test(l)).map((l) => l.replace(/^.*API breakage:\s*/, "").trim());
   const ran = /No breaking changes detected|API breakage:/.test(d.out);
   if (!ran) failures.push(`⑦ 깨짐 진단이 돌지 않았다(${lastTag}):\n    ${d.out.split("\n").filter((l) => /error/i.test(l)).slice(0, 10).join("\n    ")}`);
-  else if (major >= 1 && breaks.length && !majorDeclared) {
-    failures.push(`⑦ 공개 표면 깨짐 ${breaks.length} — ${lastTag} 대비(1.0 뒤 · 주 판을 올리는 변경이면 qa/api-major.txt 에 지금 판 글자 ${version} 와 까닭 한 줄):\n    ${breaks.slice(0, 40).join("\n    ")}`);
+  else if (breaks.length && !majorDeclared) {
+    failures.push(`⑦ 공개 표면 깨짐 ${breaks.length} — 기준선 ${lastTag} 대비(주 판을 올리는 변경이면 qa/api-major.txt 에 지금 판 글자 ${version} 와 까닭 한 줄):\n    ${breaks.slice(0, 40).join("\n    ")}`);
   }
-  diagWord = `${lastTag} 대비 깨짐 ${breaks.length}${major < 1 ? "(1.0 전 — 적기만)" : ""}`;
+  diagWord = `기준선 ${lastTag} 대비 깨짐 ${breaks.length}`;
   if (process.env.SDK_API_LIST && breaks.length) console.log(`    ${breaks.join("\n    ")}`);
   // 보조 점검 — 직전 꼬리표의 public 선언 가운데 지금 소스에 없는 것(빼기 · 이름 바꿈 · package 로 강등)
   const tagFiles = (spawnSync("git", ["-C", ROOT, "ls-tree", "-r", "--name-only", lastTag, "--", "Sources"], { encoding: "utf8" }).stdout || "")
@@ -219,15 +241,29 @@ else {
   const before = publicDecls(tagFiles);
   const now = publicDecls(walk(join(ROOT, "Sources"), (e) => e.endsWith(".swift")).map((f) => readFileSync(f, "utf8")));
   const gone = [...before].filter((x) => !now.has(x)).sort();
-  if (!before.size) failures.push(`⑦ 직전 꼬리표 ${lastTag} 의 public 선언을 못 읽었다(보조 점검이 거짓 초록이 된다)`);
-  else if (major >= 1 && gone.length && !majorDeclared) {
-    failures.push(`⑦ 직전 꼬리표 ${lastTag} 의 public 선언 ${gone.length} 이 사라졌다(빼기 · 이름 바꿈 · package 강등 — 1.0 뒤 · 주 판이면 qa/api-major.txt 에 지금 판 글자):\n    ${gone.slice(0, 40).join("\n    ")}`);
+  if (!before.size) failures.push(`⑦ 기준선 ${lastTag} 의 public 선언을 못 읽었다(보조 점검이 거짓 초록이 된다)`);
+  else if (gone.length && !majorDeclared) {
+    failures.push(`⑦ 기준선 ${lastTag} 의 public 선언 ${gone.length} 이 사라졌다(빼기 · 이름 바꿈 · package 강등 — 주 판이면 qa/api-major.txt 에 지금 판 글자):\n    ${gone.slice(0, 40).join("\n    ")}`);
   }
   declWord = ` · public 선언 ${before.size} → ${now.size}(사라짐 ${gone.length})`;
   if (process.env.SDK_API_LIST && gone.length) console.log(`    사라진 public 선언:\n    ${gone.join("\n    ")}`);
+  // 보조 점검 둘 — 기준선 매니페스트의 제품 · 트레이트 가운데 지금 매니페스트에 없는 것(진단 도구 · 선언 목록이 못 본다)
+  const baseDir = join(scope.dir, "baseline-manifest");
+  mkdirSync(baseDir, { recursive: true });
+  writeFileSync(join(baseDir, "Package.swift"), spawnSync("git", ["-C", ROOT, "show", `${lastTag}:Package.swift`], { encoding: "utf8", maxBuffer: 64 << 20 }).stdout || "");
+  const baseDump = run(["swift", "package", "--package-path", baseDir, "dump-package"]);
+  let baseNames = new Set();
+  try { baseNames = manifestNames(JSON.parse(baseDump.out.replace(/^[^{]*/, ""))); } catch {}
+  const nowNames = manifestNames(dump);
+  const goneNames = [...baseNames].filter((x) => !nowNames.has(x)).sort();
+  if (!baseNames.size) failures.push(`⑦ 기준선 ${lastTag} 의 매니페스트 제품 · 트레이트를 못 읽었다(보조 점검이 거짓 초록이 된다)`);
+  else if (goneNames.length && !majorDeclared) {
+    failures.push(`⑦ 기준선 ${lastTag} 의 제품 · 트레이트 ${goneNames.length} 이 사라졌다(빼기 · 이름 바꿈 — 주 판이면 qa/api-major.txt 에 지금 판 글자):\n    ${goneNames.join("\n    ")}`);
+  }
+  manifestWord = ` · 제품 · 트레이트 ${baseNames.size} → ${nowNames.size}(사라짐 ${goneNames.length})`;
 }
 if (majorNote && !majorDeclared) failures.push(`⑦ qa/api-major.txt 에 지금 판 글자 ${version} 가 없다 — 지난 판의 주 판 선언이다(지우거나 이 판의 까닭으로 고친다)`);
-console.log(`  ${failures.some((f) => f.startsWith("⑦")) ? "✗" : "✓"} ⑦ 공개 표면 깨짐 진단 — ${diagWord}${declWord}`);
+console.log(`  ${failures.some((f) => f.startsWith("⑦")) ? "✗" : "✓"} ⑦ 공개 표면 깨짐 진단 — ${diagWord}${declWord}${manifestWord}`);
 
 // ⑧ 공개 이름 = SDK.md §2 표 · 종류를 얼린 이름
 const sourceNames = new Map();
