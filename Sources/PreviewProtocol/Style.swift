@@ -9,7 +9,11 @@ import ProjectFormat
 // 그것 · 없으면 엔진이 제 규칙으로 짓는다(사람 말 · 낱말 사전은 엔진 UI 의 몫이라 이 계약에 없다).
 // 서술은 **데이터**다(클로저 · 타입을 넘기지 않는다). 값의 저장 꼴은 칸 종류가 정한다:
 //   간격 · 반경 · 글자 크기 = `{"token":"md"}` ⟂ `{"pt":18}` · 색 = 역할 이름(`"inkSoft"` · 리터럴 `"#rrggbb"`) · 토글 = `true` — `patch` 의 값도 이 꼴이다.
+// 문구(단추 글자 · 제목 — `StyleText`)는 칸 종류가 아니라 서술의 따로 선 목록(`texts`)이다 — 값은 같은 사전의 글자 하나(`"cta":"시작하기"`)이고
+// 저장 꼴은 앞뒤 공백을 걷고 · 최대 길이(글자 수 — 자소 묶음)로 자르고 · 빈 글이면 기본값(`defaults` 의 같은 칸)이다. 닫힌 열거 `FieldKind` 를 늘리지 않는 까닭 —
+// 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판). 목록은 기본값(빈 목록)이 있는 새 칸이라 그것을 모르는 상대가 무시해도 화면은 기본 글로 선다.
 // 그 값을 프로젝트의 Style 타입에 넣는 손(`StyleEdit` — Codable 왕복)도 한 벌이다 — 호스트가 `patch` 를 받는 자리와 엔진의 조절판이 같은 손을 부른다.
+// 문구도 같은 손이다 — 프로젝트의 Style 타입이 문구를 `String` 칸으로 들면 앱 · 호스트의 화면 코드는 그 칸을 읽는다(사전으로 다루는 쪽은 `StyleSchema.text(_:in:)`).
 
 /// Style 값 사전 — 칸 이름 → 그 칸의 JSON 값(`style` 칸 한 덩이를 읽은 그대로).
 public typealias StyleValues = [String: JSONValue]
@@ -113,20 +117,53 @@ public struct StyleField: Identifiable, Equatable, Sendable {
     }
 }
 
+/// 조절판의 문구 칸 하나 — 화면의 글(단추 글자 · 제목)을 디자이너가 조절판에서 바꾸는 자리. 값은 Style 값 사전의 같은 이름 칸에 든 글자 하나 ·
+/// 기본 글은 서술의 `defaults` 의 같은 칸(프로젝트의 Style 타입의 기본값 — 한 자리) · 이름(`label`)은 칸과 같이 선택(nil = 엔진이 짓는다).
+/// 저장 꼴(`normalized(_:)`) — 앞뒤 공백 · 줄바꿈을 걷고 · `maxLength` 글자(자소 묶음 — 사람이 보는 글자 수)에서 자르고 · 비면 nil(= 기본 글).
+public struct StyleText: Identifiable, Equatable, Sendable {
+    /// 파일 키 — Style 값 사전의 칸 이름(칸 `StyleField.name` 과 겹치지 않는다).
+    public let name: String
+    public let element: StyleElement
+    /// 조절판 칸의 이름 — 호스트(프로젝트)가 지은 것 · nil 이면 엔진이 제 규칙으로 짓는다.
+    public let label: String?
+    /// 최대 길이(글자 수 · 1 이상) — 넘으면 자른다.
+    public let maxLength: Int
+    public var id: String { name }
+    /// 최대 길이를 적지 않은 문구의 길이 — 줄에 `maxLength` 가 없을 때도 이 값.
+    public static let defaultMaxLength = 200
+    public init(name: String, element: StyleElement, label: String? = nil, maxLength: Int = StyleText.defaultMaxLength) {
+        self.name = name; self.element = element; self.label = label; self.maxLength = max(1, maxLength)
+    }
+
+    /// 글 하나의 저장 꼴 — 앞뒤 공백 · 줄바꿈을 걷고 최대 길이에서 자른다(자른 끝의 공백도 걷는다) · 남은 글이 비면 nil(기본 글을 쓰라는 뜻).
+    public func normalized(_ text: String) -> String? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count > maxLength { t = String(t.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines) }
+        return t.isEmpty ? nil : t
+    }
+}
+
 /// 화면 하나(또는 화면 위에 얹는 층 하나)의 Style **서술** — 프로젝트가 내는 데이터. JSON 꼴:
-/// `{"screen":"…","elements":[{"id","label","snapPrefix"}],"fields":[{"name","kind","element","label"?}],"defaults":{…}}`(칸의 `label` 은 선택).
-/// `defaults` 는 화면의 기본값(파일에 없는 칸을 채운다 — 칸이 늘어도 옛 안 파일이 읽힌다).
+/// `{"screen":"…","elements":[{"id","label","snapPrefix"}],"fields":[{"name","kind","element","label"?}],"texts"?:[{"name","element","label"?,"maxLength"}],"defaults":{…}}`
+/// (칸의 `label` 은 선택 · `texts` 는 선택 — 없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다 · 문구의 `maxLength` 가 없으면 `StyleText.defaultMaxLength`).
+/// `defaults` 는 화면의 기본값(파일에 없는 칸 · 문구를 채운다 — 칸이 늘어도 옛 안 파일이 읽힌다).
 public struct StyleSchema: Equatable, Sendable {
     public let screen: String
     public let elements: [StyleElement]
     public let fields: [StyleField]
+    /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술 · 이 칸을 모르는 상대가 읽은 서술).
+    public let texts: [StyleText]
     public let defaults: StyleValues
     public init(screen: String, elements: [StyleElement], fields: [StyleField], defaults: StyleValues) {
-        self.screen = screen; self.elements = elements; self.fields = fields; self.defaults = defaults
+        self.init(screen: screen, elements: elements, fields: fields, texts: [], defaults: defaults)
+    }
+    public init(screen: String, elements: [StyleElement], fields: [StyleField], texts: [StyleText], defaults: StyleValues) {
+        self.screen = screen; self.elements = elements; self.fields = fields; self.texts = texts; self.defaults = defaults
     }
 
     /// 값 한 덩이를 서술로 잰다 — 없는 칸은 기본값으로 채우고 · 칸마다 꼴을 재 다시 쓰고(스칼라의 남는 열쇠는 떨어진다) · 서술에 없는 칸은 뺀다.
-    /// 프로젝트의 Style 타입이 읽고 다시 쓴 것과 같은 값이다.
+    /// 문구는 글자여야 하고(아니면 거부) 저장 꼴로 다시 쓴다(`StyleText.normalized` — 비면 기본 글 · 기본 글도 같은 꼴로 잰다).
+    /// 문구 이름이 칸 이름 · 다른 문구 이름과 겹치면 거부한다. 프로젝트의 Style 타입이 읽고 다시 쓴 것과 같은 값이다.
     public func normalize(_ style: StyleValues) throws -> StyleValues {
         var out: StyleValues = [:]
         for f in fields {
@@ -134,13 +171,38 @@ public struct StyleSchema: Equatable, Sendable {
             guard let n = f.kind.normalized(v) else { throw StyleSchemaError.badValue(screen, f.name, f.kind, v) }
             out[f.name] = n
         }
+        for t in texts {
+            guard out[t.name] == nil else { throw StyleTextError.nameTaken(screen, t.name) }
+            out[t.name] = .string(try resolved(t, style[t.name]))
+        }
         return out
+    }
+
+    /// 문구 하나의 글 — 값(사전의 그 칸 · nil = 비었다)을 저장 꼴로 · 비면 기본 글. 사전으로 다루는 화면 코드가 문구를 읽는 손이다
+    /// (프로젝트의 Style 타입으로 푸는 쪽은 그 타입의 `String` 칸을 읽는다 — 엔진이 쓴 값은 이미 저장 꼴이다).
+    /// 읽기는 관대하다 — 값이 글자가 아니면 기본 글로 읽는다(거부는 `normalize` 의 몫). 서술에 없는 문구 · 기본 글도 글자가 아니면 nil.
+    public func text(_ name: String, in style: StyleValues?) -> String? {
+        guard let t = texts.first(where: { $0.name == name }) else { return nil }
+        if case .string(let s)? = style?[name], let n = t.normalized(s) { return n }
+        guard case .string(let d)? = defaults[name] else { return nil }
+        return t.normalized(d) ?? ""
+    }
+
+    private func resolved(_ t: StyleText, _ value: JSONValue?) throws -> String {
+        if let value {
+            guard case .string(let s) = value else { throw StyleTextError.notText(screen, t.name, value) }
+            if let n = t.normalized(s) { return n }
+        }
+        guard let d = defaults[t.name] else { throw StyleSchemaError.missing(screen, t.name) }
+        guard case .string(let s) = d else { throw StyleTextError.notText(screen, t.name, d) }
+        return t.normalized(s) ?? ""
     }
 }
 
 extension StyleSchema: Codable {
     private struct WireField: Codable { var name: String; var kind: FieldKind; var element: String; var label: String? }
-    private enum Keys: String, CodingKey { case screen, elements, fields, defaults }
+    private struct WireText: Codable { var name: String; var element: String; var label: String?; var maxLength: Int? }
+    private enum Keys: String, CodingKey { case screen, elements, fields, texts, defaults }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         screen = try c.decode(String.self, forKey: .screen)
@@ -152,6 +214,19 @@ extension StyleSchema: Codable {
             }
             return StyleField(name: w.name, kind: w.kind, element: e, label: w.label)
         }
+        var taken = Set(fields.map(\.name))
+        texts = try (c.decodeIfPresent([WireText].self, forKey: .texts) ?? []).map { w in
+            guard let e = byID[w.element] else {
+                throw DecodingError.dataCorruptedError(forKey: .texts, in: c, debugDescription: "문구 \(w.name) 의 절 \(w.element) 이 elements 에 없다")
+            }
+            guard taken.insert(w.name).inserted else {
+                throw DecodingError.dataCorruptedError(forKey: .texts, in: c, debugDescription: "문구 \(w.name) 의 이름이 칸 · 다른 문구와 겹친다")
+            }
+            if let m = w.maxLength, m < 1 {
+                throw DecodingError.dataCorruptedError(forKey: .texts, in: c, debugDescription: "문구 \(w.name) 의 최대 길이 \(m) 이 1 보다 작다")
+            }
+            return StyleText(name: w.name, element: e, label: w.label, maxLength: w.maxLength ?? StyleText.defaultMaxLength)
+        }
         defaults = try c.decode(StyleValues.self, forKey: .defaults)
     }
     public func encode(to encoder: Encoder) throws {
@@ -159,6 +234,9 @@ extension StyleSchema: Codable {
         try c.encode(screen, forKey: .screen)
         try c.encode(elements, forKey: .elements)
         try c.encode(fields.map { WireField(name: $0.name, kind: $0.kind, element: $0.element.id, label: $0.label) }, forKey: .fields)
+        if !texts.isEmpty {
+            try c.encode(texts.map { WireText(name: $0.name, element: $0.element.id, label: $0.label, maxLength: $0.maxLength) }, forKey: .texts)
+        }
         try c.encode(defaults, forKey: .defaults)
     }
 }
@@ -188,6 +266,20 @@ public enum StyleSchemaError: Error, CustomStringConvertible {
         switch self {
         case .missing(let s, let f): return "\(s) — 칸 \(f) 의 값도 기본값도 없다"
         case .badValue(let s, let f, let k, let v): return "\(s) — 칸 \(f) 의 값이 \(k) 꼴이 아니다: \(v.text(pretty: false))"
+        }
+    }
+}
+
+/// 문구가 서지 않는다(`StyleSchema.normalize`) — 값도 기본 글도 없으면 칸과 같은 `StyleSchemaError.missing` 이다.
+public enum StyleTextError: Error, CustomStringConvertible {
+    /// 문구의 값(또는 기본 글)이 글자가 아니다 — 화면 · 문구 이름 · 값.
+    case notText(String, String, JSONValue)
+    /// 문구 이름이 칸 이름 · 다른 문구 이름과 겹친다(한 사전의 한 칸이라 둘이 설 수 없다) — 화면 · 문구 이름.
+    case nameTaken(String, String)
+    public var description: String {
+        switch self {
+        case .notText(let s, let t, let v): return "\(s) — 문구 \(t) 의 값이 글자가 아니다: \(v.text(pretty: false))"
+        case .nameTaken(let s, let t): return "\(s) — 문구 \(t) 의 이름이 칸 · 다른 문구와 겹친다"
         }
     }
 }

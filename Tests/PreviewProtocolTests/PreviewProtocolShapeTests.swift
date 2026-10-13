@@ -24,7 +24,8 @@ import Testing
     static let values: StyleValues = ["§": json]
     static let element = StyleElement(id: "card", label: "카드", snapPrefix: "card")
     static let schema = StyleSchema(screen: "s", elements: [element],
-                                    fields: [StyleField(name: "cardGap", kind: .scalar(.space), element: element, label: "간격")], defaults: values)
+                                    fields: [StyleField(name: "cardGap", kind: .scalar(.space), element: element, label: "간격")],
+                                    texts: [StyleText(name: "cardTitle", element: element, label: "제목", maxLength: 40)], defaults: values)
     static let timing = HostTiming(recv: 1, start: 2, rendered: 3, sent: 4)
     static let shared = SharedMemoryInfo(kind: .posix, name: "/m", slotBytes: 1, slots: 3)
     static let ia = IAInfo(appScreens: ["s"], entryWords: [.init(control: "plus", label: "＋")], entryHands: ["s": ["plus"]],

@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.0.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.1.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -60,7 +60,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.0.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.1.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
