@@ -96,6 +96,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 판 = 저장소의 판 꼬리표 · 한 번 찍은 꼬리표는 다시 찍지 않는다.
 - **Protocol version** (`PreviewProtocolVersion.current`) is counted separately; the engine accepts every version from the floor (`oldest`) up to the current one. One preview host process serves many connections — one connection is one session.
   프로토콜 판은 따로 센다 · 엔진이 바닥 판부터 지금 판까지 전부 받는다 · 호스트 하나가 연결을 여럿 받는다(연결 = 세션).
+- **Pinning SDK 1.1 moves your preview host to protocol version 4** — the builder (engine) must be on SDK 1.1 or newer too; an older builder refuses the host with "update the builder".
+  SDK 1.1 로 핀을 올린 프로젝트의 호스트는 프로토콜 판 4 — 빌더(엔진)도 1.1 이상이어야 한다(옛 빌더는 「빌더를 업데이트하세요」로 거절).
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.

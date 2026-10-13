@@ -6,7 +6,7 @@ import Testing
 
 // Style 서술 — 프로젝트가 내는 데이터(칸 · 절 · 이름(선택) · 기본값)로 안 파일의 값을 잰다(`normalize`). 서술은 JSON 으로 오가도 같다(`hello` 에 실린다).
 // 칸 하나 바꾸기(`StyleEdit` — 프로젝트의 Style 타입에 Codable 왕복)도 여기서 잰다. 쓰임 셈은 엔진의 몫이라 엔진 쪽 시험이 잰다.
-// 문구(`StyleText`) — 선택 목록의 줄 꼴 · 저장 꼴(공백 · 최대 길이 · 빈 글 = 기본 글) · 관대한 읽개 · 옛 상대 둘(문구를 모르는 엔진 ⟂ 호스트) · 안 파일의 값.
+// 문구(`StyleText`) — 선택 목록의 줄 꼴 · 저장 꼴(공백 · 최대 길이 · 빈 글 = 기본 글) · 관대한 읽개 · 옛 상대 둘(문구를 모르는 엔진은 판정이 막는다 ⟂ 호스트는 서술 밖 칸으로 뺀다) · 글자 엣지(자소 묶음 · 한 줄 라벨) · 안 파일의 값.
 
 @Suite struct StyleSchemaTests {
     static let pot = StyleElement(id: "pot", label: "화분", snapPrefix: "plants.pot")
@@ -119,10 +119,11 @@ import Testing
             try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"t","element":"q"},{"name":"t","element":"q"}]"#))
         }
         #expect(throws: (any Error).self, "최대 길이 0") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"t","element":"q","maxLength":0}]"#)) }
-        #expect(StyleText(name: "t", element: Self.pot, maxLength: 0).maxLength == 1, "코드로 지은 문구의 최대 길이는 1 이상으로 선다")
+        #expect(throws: (any Error).self, "최대 길이 음수") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"t","element":"q","maxLength":-3}]"#)) }
+        #expect(try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"t","element":"q","maxLength":1}]"#)).texts.first?.maxLength == 1, "1 은 선다")
     }
 
-    /// 문구의 저장 꼴 — 앞뒤 공백 · 줄바꿈을 걷고 · 최대 길이(자소 묶음 글자 수)에서 자르고(자른 끝 공백도) · 비면 기본 글(기본 글도 같은 꼴) ·
+    /// 문구의 저장 꼴 — 앞뒤 공백을 걷고 · 최대 길이(자소 묶음 글자 수)에서 자르고(자른 끝 공백도) · 비면 기본 글(기본 글도 같은 꼴) ·
     /// 없으면 기본 글 · 글자가 아니면 거부 · 칸과 겹치는 이름은 거부.
     @Test func normalizeTrimsCapsAndFallsBackToTheDefault() throws {
         let s = Self.texted
@@ -141,8 +142,33 @@ import Testing
         let clash = StyleSchema(screen: "x", elements: [Self.pot], fields: StyleField.list([("potOn", .bool)], elements: [Self.pot]),
                                 texts: [StyleText(name: "potOn", element: Self.pot)], defaults: ["potOn": true])
         #expect(throws: StyleTextError.self, "칸과 겹치는 문구") { try clash.normalize([:]) }
+        let twin = StyleSchema(screen: "x", elements: [Self.pot], fields: [],
+                               texts: [StyleText(name: "potTitle", element: Self.pot), StyleText(name: "potTitle", element: Self.pot, maxLength: 3)],
+                               defaults: ["potTitle": "화분"])
+        #expect(throws: StyleTextError.self, "문구끼리 겹치는 이름") { try twin.normalize([:]) }
         // 한 번 잰 값을 다시 재도 같다(엔진이 쓴 안 파일을 다시 열어도 바이트가 그대로)
         #expect(try s.normalize(got) == got)
+    }
+
+    /// 글 하나의 저장 꼴 엣지 — 최대 길이 1 · 결합 문자(조합형 한글 · 결합 악센트)는 한 글자 · 공백에 붙은 결합 문자는 공백과 함께 걷힌다 ·
+    /// 기본 길이(200) 넘침 · 한 줄 라벨(줄바꿈과 그 둘레 공백은 공백 하나 · 줄바꿈만 든 글은 빈 글).
+    @Test func normalizedHandlesGraphemesAndLineBreaks() {
+        let one = StyleText(name: "t", element: Self.pot, maxLength: 1)
+        #expect(one.normalized("가나") == "가")
+        #expect(one.normalized(" 👩‍👩‍👧‍👦x") == "👩‍👩‍👧‍👦", "이모지 묶음은 한 글자")
+        let three = StyleText(name: "t", element: Self.pot, maxLength: 3)
+        let jamo = "\u{1112}\u{1161}\u{11AB}"   // 조합형 「한」 — 자소 셋이 한 글자
+        #expect(three.normalized(jamo + jamo + jamo + jamo) == jamo + jamo + jamo)
+        #expect(three.normalized("e\u{301}e\u{301}e\u{301}e\u{301}") == "e\u{301}e\u{301}e\u{301}", "결합 악센트는 앞 글자와 한 글자")
+        #expect(three.normalized(" \u{301}a") == "a", "공백에 붙은 결합 문자는 맨 앞에 남지 않는다")
+        #expect(three.normalized("a \u{301}") == "a", "끝도 같다")
+        let plain = StyleText(name: "t", element: Self.pot)
+        #expect(plain.maxLength == StyleText.defaultMaxLength)
+        let long = String(repeating: "가", count: StyleText.defaultMaxLength + 50)
+        #expect(plain.normalized(long) == String(repeating: "가", count: StyleText.defaultMaxLength), "기본 길이에서 자른다")
+        #expect(plain.normalized("첫 줄 \n\n  둘째 줄\r\n셋째\u{2028}넷") == "첫 줄 둘째 줄 셋째 넷", "줄바꿈은 공백 하나")
+        #expect(plain.normalized("가  나") == "가  나", "줄바꿈이 아닌 글 속 공백은 그대로")
+        #expect(plain.normalized("\n\r\n \u{2028}") == nil, "줄바꿈만 든 글은 빈 글")
     }
 
     /// 사전으로 다루는 화면 코드의 읽개 — 저장 꼴 · 빈 글과 글자 아닌 값은 기본 글(관대한 읽기) · 서술에 없는 문구는 nil.
@@ -156,23 +182,22 @@ import Testing
         #expect(s.text("nope", in: [:]) == nil)
     }
 
-    /// 옛 상대 둘 — (1) 문구를 모르는 읽개(1.0 의 서술 디코더는 모르는 키를 넘긴다 — `texts` 를 걷고 읽은 것과 같다)가 잰 값에는 문구가 없고,
-    /// 그 값을 받은 새 호스트는 기본 글로 그린다(뜻이 틀리지 않는다 — 디자이너가 바꾼 적 없는 화면과 같다).
-    /// (2) 새 엔진이 문구 값을 실어 보내도 문구를 모르는 호스트(서술에 문구가 없다)는 서술 밖 칸으로 빼고 깨지지 않는다 · 그 호스트의 Style 타입도 모르는 칸을 넘긴다.
-    @Test func olderPeersIgnoreTextsWithoutChangingTheMeaning() throws {
-        // (1) 문구를 모르는 엔진
+    /// 옛 상대 둘 — (1) 문구를 모르는 엔진(프로토콜 판 3 이하)은 판정이 막는다: 문구를 싣는 판 4 호스트의 hello 를 몸을 풀기 전에 `hostNewer` 로 거절한다
+    /// (문구 값이 조용히 빠진 채 그려지는 짝은 와이어에서 서지 않는다). 서술 디코더가 모르는 키를 넘기는 것은 읽기 방어일 뿐이다.
+    /// (2) 새 엔진이 문구 값을 실어 보내도 문구를 모르는 호스트(서술에 문구가 없다)는 서술 밖 칸으로 빼고 깨지지 않는다 · 그 호스트의 Style 타입도 모르는 칸을 넘긴다
+    /// (화면은 기본 글 — 그 호스트에겐 문구 칸이 없으니 조절판에도 서지 않는다).
+    @Test func olderEnginesAreRefusedAndOlderHostsDropTexts() throws {
+        // (1) 문구를 모르는 엔진 — 판정이 막는다
+        #expect(PreviewProtocolVersion.current == 4, "문구 목록은 프로토콜 판 4 의 꼴")
+        let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
+                                        screens: [ScreenInfo(name: "home", states: ["n"], style: Self.texted)]))
+        let greeting = try ProtocolDialect.current.encode(hello)
+        let engine3 = ProtocolJudge(version: 3, dialects: [])
+        #expect(throws: ProtocolMismatch.hostNewer(host: 4, engine: 3), "판 3 엔진은 판 4 호스트를 거절한다") { try engine3.dialect(greeting: greeting) }
+        // 읽기 방어 — 서술 디코더는 모르는 키를 넘긴다(판정을 거친 상대의 뜻밖의 칸을 잃지 않고 읽을 뿐 · 판을 올리지 않아도 된다는 뜻이 아니다)
         var wire = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.texted)) as? [String: Any])
-        wire["future"] = ["shape": 1]   // 모르는 키를 넘기는 것이 옛 읽개가 문구를 넘기는 길이다
-        let withFuture = try JSONDecoder().decode(StyleSchema.self, from: JSONSerialization.data(withJSONObject: wire))
-        #expect(withFuture == Self.texted, "서술 디코더는 모르는 키를 넘긴다")
-        wire.removeValue(forKey: "texts")
-        let oldView = try JSONDecoder().decode(StyleSchema.self, from: JSONSerialization.data(withJSONObject: wire))
-        #expect(oldView.texts.isEmpty && oldView.fields == Self.texted.fields)
-        let sentByOld = try oldView.normalize(["potGap": ["pt": 4], "potTitle": "바꾼 제목"])
-        #expect(sentByOld["potTitle"] == nil, "옛 엔진은 문구 값을 싣지 못한다")
-        let drawn = try Self.texted.normalize(sentByOld)
-        #expect(drawn["potTitle"] == "화분 하나" && drawn["potGap"] == ["pt": 4], "새 호스트는 기본 글로 그리고 칸 값은 그대로")
-        #expect(Self.texted.text("potTitle", in: sentByOld) == "화분 하나")
+        wire["future"] = ["shape": 1]
+        #expect(try JSONDecoder().decode(StyleSchema.self, from: JSONSerialization.data(withJSONObject: wire)) == Self.texted)
 
         // (2) 문구를 모르는 호스트 — 서술에 문구가 없다
         let oldHost = StyleSchema(screen: "home", elements: [Self.pot, Self.color],

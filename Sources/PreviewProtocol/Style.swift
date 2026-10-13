@@ -10,8 +10,10 @@ import ProjectFormat
 // 서술은 **데이터**다(클로저 · 타입을 넘기지 않는다). 값의 저장 꼴은 칸 종류가 정한다:
 //   간격 · 반경 · 글자 크기 = `{"token":"md"}` ⟂ `{"pt":18}` · 색 = 역할 이름(`"inkSoft"` · 리터럴 `"#rrggbb"`) · 토글 = `true` — `patch` 의 값도 이 꼴이다.
 // 문구(단추 글자 · 제목 — `StyleText`)는 칸 종류가 아니라 서술의 따로 선 목록(`texts`)이다 — 값은 같은 사전의 글자 하나(`"cta":"시작하기"`)이고
-// 저장 꼴은 앞뒤 공백을 걷고 · 최대 길이(글자 수 — 자소 묶음)로 자르고 · 빈 글이면 기본값(`defaults` 의 같은 칸)이다. 닫힌 열거 `FieldKind` 를 늘리지 않는 까닭 —
-// 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판). 목록은 기본값(빈 목록)이 있는 새 칸이라 그것을 모르는 상대가 무시해도 화면은 기본 글로 선다.
+// 저장 꼴은 한 줄 라벨이다 — 줄바꿈은 공백 하나 · 앞뒤 공백을 걷고 · 최대 길이(글자 수 — 자소 묶음)로 자르고 · 빈 글이면 기본값(`defaults` 의 같은 칸).
+// 닫힌 열거 `FieldKind` 를 늘리지 않는 까닭 — 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판). 목록은 기본값(빈 목록)이 있는 새 칸이다.
+// 와이어에서 문구를 모르는 엔진(프로토콜 판 3 이하)은 판정이 막는다(판 4 호스트를 `hostNewer` 로 거절) — 문구 값이 조용히 빠진 채 그려지는 짝은 서지 않는다.
+// 새 엔진 ⟂ 판 3 호스트는 서술에 문구가 없어 조절판에 문구 칸이 서지 않고, 실려 온 문구 값은 그 호스트가 서술 밖 칸으로 뺀다(화면은 기본 글).
 // 그 값을 프로젝트의 Style 타입에 넣는 손(`StyleEdit` — Codable 왕복)도 한 벌이다 — 호스트가 `patch` 를 받는 자리와 엔진의 조절판이 같은 손을 부른다.
 // 문구도 같은 손이다 — 프로젝트의 Style 타입이 문구를 `String` 칸으로 들면 앱 · 호스트의 화면 코드는 그 칸을 읽는다(사전으로 다루는 쪽은 `StyleSchema.text(_:in:)`).
 
@@ -119,27 +121,39 @@ public struct StyleField: Identifiable, Equatable, Sendable {
 
 /// 조절판의 문구 칸 하나 — 화면의 글(단추 글자 · 제목)을 디자이너가 조절판에서 바꾸는 자리. 값은 Style 값 사전의 같은 이름 칸에 든 글자 하나 ·
 /// 기본 글은 서술의 `defaults` 의 같은 칸(프로젝트의 Style 타입의 기본값 — 한 자리) · 이름(`label`)은 칸과 같이 선택(nil = 엔진이 짓는다).
-/// 저장 꼴(`normalized(_:)`) — 앞뒤 공백 · 줄바꿈을 걷고 · `maxLength` 글자(자소 묶음 — 사람이 보는 글자 수)에서 자르고 · 비면 nil(= 기본 글).
+/// 저장 꼴(`normalized(_:)`) — **한 줄 라벨**이다: 글 속 줄바꿈은 공백 하나로 · 앞뒤 공백을 자소 묶음 단위로 걷고 · `maxLength` 글자(자소 묶음 — 사람이 보는
+/// 글자 수)에서 자르고 · 비면 nil(= 기본 글).
 public struct StyleText: Identifiable, Equatable, Sendable {
     /// 파일 키 — Style 값 사전의 칸 이름(칸 `StyleField.name` 과 겹치지 않는다).
     public let name: String
     public let element: StyleElement
     /// 조절판 칸의 이름 — 호스트(프로젝트)가 지은 것 · nil 이면 엔진이 제 규칙으로 짓는다.
     public let label: String?
-    /// 최대 길이(글자 수 · 1 이상) — 넘으면 자른다.
+    /// 최대 길이(글자 수) — **1 이상**(1 미만은 서지 않는다: 코드로 지으면 `precondition` · 줄에서 읽으면 디코드 오류) · 넘으면 자른다.
     public let maxLength: Int
     public var id: String { name }
     /// 최대 길이를 적지 않은 문구의 길이 — 줄에 `maxLength` 가 없을 때도 이 값.
     public static let defaultMaxLength = 200
     public init(name: String, element: StyleElement, label: String? = nil, maxLength: Int = StyleText.defaultMaxLength) {
-        self.name = name; self.element = element; self.label = label; self.maxLength = max(1, maxLength)
+        precondition(maxLength >= 1, "문구 \(name) 의 최대 길이 \(maxLength) 이 1 보다 작다")
+        self.name = name; self.element = element; self.label = label; self.maxLength = maxLength
     }
 
-    /// 글 하나의 저장 꼴 — 앞뒤 공백 · 줄바꿈을 걷고 최대 길이에서 자른다(자른 끝의 공백도 걷는다) · 남은 글이 비면 nil(기본 글을 쓰라는 뜻).
+    /// 글 하나의 저장 꼴 — 줄바꿈이 낀 자리(그 둘레 공백 포함)는 공백 하나로 · 앞뒤 공백을 자소 묶음 단위로 걷고(공백에 붙은 결합 문자가 맨 앞에 남지 않는다) ·
+    /// 최대 길이에서 자른다(자른 끝의 공백도 걷는다) · 남은 글이 비면 nil(기본 글을 쓰라는 뜻).
     public func normalized(_ text: String) -> String? {
-        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.count > maxLength { t = String(t.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines) }
-        return t.isEmpty ? nil : t
+        let line = text.split(whereSeparator: \.isNewline).map(Self.trimmed).filter { !$0.isEmpty }.joined(separator: " ")
+        var t = Self.trimmed(Substring(line))
+        if t.count > maxLength { t = Self.trimmed(t.prefix(maxLength)) }
+        return t.isEmpty ? nil : String(t)
+    }
+
+    /// 앞뒤의 공백 자소 묶음을 걷는다(`Character.isWhitespace` — 공백에 결합 문자가 붙은 묶음도 공백이다).
+    private static func trimmed(_ s: Substring) -> Substring {
+        var s = s
+        while let c = s.first, c.isWhitespace { s.removeFirst() }
+        while let c = s.last, c.isWhitespace { s.removeLast() }
+        return s
     }
 }
 
@@ -151,7 +165,7 @@ public struct StyleSchema: Equatable, Sendable {
     public let screen: String
     public let elements: [StyleElement]
     public let fields: [StyleField]
-    /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술 · 이 칸을 모르는 상대가 읽은 서술).
+    /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술 · 판 3 의 줄에서 읽은 서술).
     public let texts: [StyleText]
     public let defaults: StyleValues
     public init(screen: String, elements: [StyleElement], fields: [StyleField], defaults: StyleValues) {
