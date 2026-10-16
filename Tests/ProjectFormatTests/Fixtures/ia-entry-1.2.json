@@ -1,0 +1,51 @@
+{
+  "hubs" : [
+    {
+      "id" : "tabs",
+      "kind" : "tabBar",
+      "label" : "탭",
+      "slots" : [
+        "shelf"
+      ]
+    }
+  ],
+  "jumps" : [
+    {
+      "from" : "shelf",
+      "label" : "선반 › 카드",
+      "source" : "s",
+      "to" : "note"
+    }
+  ],
+  "nodes" : [
+    {
+      "id" : "shelf",
+      "label" : "선반",
+      "source" : "s",
+      "via" : "탭"
+    },
+    {
+      "entry" : {
+        "element" : "shelf.row",
+        "kind" : "row",
+        "screen" : "shelf"
+      },
+      "id" : "shelf.detail",
+      "label" : "상세",
+      "parent" : "shelf",
+      "source" : "s",
+      "via" : "선반 › 행 shelf.row"
+    },
+    {
+      "entry" : {
+        "kind" : "card",
+        "screen" : "shelf"
+      },
+      "id" : "note",
+      "label" : "메모",
+      "source" : "s",
+      "via" : "선반 › 카드"
+    }
+  ],
+  "version" : 1
+}

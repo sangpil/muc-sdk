@@ -312,6 +312,59 @@ import Testing
         #expect(IADoc(nodes: [], jumps: [], hubs: []).version == IAFormat.version, "판 없는 손 = 지금 판")
     }
 
+    /// 진입 선택(`entry`) — 왕복 · 빈 요소는 적지 않는다 · 없으면 칸째 없다(옛 파일의 바이트 불변) · 모르는 종류 낱말 · 모르는 칸 보존.
+    @Test func entryRoundTripsAndOldFilesStayByteForByte() throws {
+        let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys]
+        let n = ScreenNode(id: "shelf.detail", label: "상세", parent: "shelf", via: "선반 › 행 shelf.row", source: "s",
+                           entry: ScreenEntry(screen: "shelf", kind: .row, element: "shelf.row"))
+        let data = try enc.encode(n)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""entry":{"element":"shelf.row","kind":"row","screen":"shelf"}"#))
+        #expect(try JSONDecoder().decode(ScreenNode.self, from: data) == n)
+        #expect(String(decoding: try enc.encode(ScreenEntry(screen: "a", kind: .tab, element: "")), as: UTF8.self) == #"{"kind":"tab","screen":"a"}"#,
+                "빈 요소는 칸째 쓰지 않는다")
+        // 옛 파일(entry 없음) — 읽고 되쓴 바이트가 같다
+        let old = #"{"id":"home","label":"홈","source":"s","via":"탭"}"#
+        let back = try JSONDecoder().decode(ScreenNode.self, from: Data(old.utf8))
+        #expect(back.entry == nil)
+        #expect(String(decoding: try enc.encode(back), as: UTF8.self) == old)
+        // 열린 낱말 — 모르는 종류는 그대로 · 아는 낱말의 차례
+        let odd = try JSONDecoder().decode(ScreenEntry.self, from: Data(#"{"screen":"a","kind":"swipe","hint":1}"#.utf8))
+        #expect(odd.kind.rawValue == "swipe" && odd.extra == ["hint": 1])
+        #expect(ScreenEntry.Kind.known.map(\.rawValue) == ["tab", "button", "row", "card", "menu", "gesture", "other"])
+    }
+
+    /// `entry` 를 모르는 읽개 — **실제 SDK 1.1.0** 의 `IADoc` 이 1.2 가 쓴 파일(`Fixtures/ia-entry-1.2.json`)을 읽고 되쓴 바이트를 얼린 것
+    /// (`Fixtures/ia-entry-1.2.rewritten-by-1.1.0.json` — 1.1.0 을 `exact` 로 문 실행물이 디코드 → 인코드(키 정렬 · 들여쓰기 · 슬래시 그대로 · 끝 개행)한 출력 그대로 ·
+    /// 손으로 고치지 않는다). 1.1 이 모르는 칸으로 보존한 선택이 지금 판에서 그대로 읽히고, 되쓴 바이트가 원본과 같다.
+    @Test func theRealSDK110KeepsEntryAsAnUnknownCell() throws {
+        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        let written = try Data(contentsOf: folder.appendingPathComponent("ia-entry-1.2.json"))
+        let rewritten = try Data(contentsOf: folder.appendingPathComponent("ia-entry-1.2.rewritten-by-1.1.0.json"))
+        #expect(rewritten == written, "1.1.0 이 열어 되쓴 파일이 1.2 가 쓴 바이트와 같다(진입 칸이 사라지지 않는다)")
+        let doc = try JSONDecoder().decode(IADoc.self, from: rewritten)
+        #expect(doc.node("shelf.detail")?.entry == ScreenEntry(screen: "shelf", kind: .row, element: "shelf.row"))
+        #expect(doc.node("note")?.entry == ScreenEntry(screen: "shelf", kind: .card))
+        #expect(doc.nodes.allSatisfy { $0.extra.isEmpty }, "아는 칸이 된 entry 는 extra 에 남지 않는다")
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var again = try enc.encode(doc); again.append(0x0A)
+        #expect(again == written, "지금 판이 되쓴 바이트도 같다")
+    }
+
+    /// 못 읽는 진입 칸(빠진 칸 · 다른 형) — 마디째 거부하지 않는다: 선택은 nil · 글자는 모르는 칸으로 읽은 그대로 들고 되쓴다.
+    @Test func anUnreadableEntryIsKeptAsWritten() throws {
+        let json = #"{"id":"a","label":"A","source":"s","via":"v","entry":{"screen":"b"}}"#
+        let n = try JSONDecoder().decode(ScreenNode.self, from: Data(json.utf8))
+        #expect(n.entry == nil)
+        #expect(n.extra == ["entry": ["screen": "b"]])
+        let back = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(n))
+        #expect(back == (try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))), "되쓰면 그대로")
+        var fixed = n
+        fixed.entry = ScreenEntry(screen: "b", kind: .tab)
+        let out = try JSONDecoder().decode(ScreenNode.self, from: JSONEncoder().encode(fixed))
+        #expect(out.entry == ScreenEntry(screen: "b", kind: .tab), "선택을 놓으면 아는 칸이 이긴다")
+        #expect(try JSONDecoder().decode(ScreenNode.self, from: Data(#"{"id":"a","label":"A","source":"s","via":"v","entry":7}"#.utf8)).entry == nil)
+    }
+
     /// 모르는 칸 보존 — 문서 · 마디 · 점프 · 진입 · 허브 · 읽는 칸의 모르는 칸이 왕복에 남는다(같은 판의 덧붙임을 옛 엔진이 지우지 않는다).
     @Test func unknownCellsSurviveARoundTrip() throws {
         let json = #"{"version":1,"theme":"x","nodes":[{"id":"a","label":"A","via":"v","source":"s","badge":2,"data":{"reads":["T"],"writes":["U"]}}],"jumps":[{"from":"a","to":"a","label":"l","weight":1,"entries":[{"control":"more","hint":"h"}]}],"hubs":[{"id":"h","label":"H","kind":"rail","slots":["a"],"pinned":true}]}"#
