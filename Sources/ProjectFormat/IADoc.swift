@@ -62,6 +62,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 엔진의 데이터 검사가 잰다.
     public var data: ScreenData?
     /// 진입의 **선택** — 어느 화면에서 · 무엇을 눌러 여나(`ScreenEntry`). **선택 칸**이다 — nil 이면 진입은 `via` 글뿐이다.
+    /// 칸이 있는데 이 SDK 가 못 읽는 꼴이면 nil 이고 그 글자는 `extra["entry"]` 에 읽은 그대로 남는다(되쓰면 그대로 · 마디는 읽힌다).
     public var entry: ScreenEntry?
     /// 이 SDK 가 모르는 칸.
     public var extra: [String: JSONValue] = [:]
@@ -104,9 +105,12 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         proposed = try c.decodeIfPresent(Bool.self, forKey: .proposed) ?? false
         platforms = try c.decodeIfPresent([String].self, forKey: .platforms)
         data = try c.decodeIfPresent(ScreenData.self, forKey: .data)
-        entry = try c.decodeIfPresent(ScreenEntry.self, forKey: .entry)
-        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+        // 진입 칸은 관대하게 — 이 SDK 가 못 읽는 꼴(빠진 칸 · 다른 형 · 뒤 판의 변형)이면 마디째 거부하지 않고 읽은 그대로 모르는 칸으로 든다(되쓰면 그대로).
+        entry = c.contains(.entry) ? (try? c.decode(ScreenEntry.self, forKey: .entry)) : nil
+        extra = try ExtraKeys.decode(from: decoder, known: entry == nil ? Self.knownWithoutEntry : Self.known)
     }
+    /// 진입 칸을 못 읽었을 때의 아는 칸 — 그 칸의 글자를 모르는 칸으로 보존한다.
+    static let knownWithoutEntry = known.subtracting([CodingKeys.entry.rawValue])
     static let known = Set(CodingKeys.allCases.map(\.rawValue))
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -123,7 +127,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         try c.encodeIfPresent(platforms, forKey: .platforms)
         if let d = data, !d.isEmpty { try c.encode(d, forKey: .data) }
         try c.encodeIfPresent(entry, forKey: .entry)
-        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+        try ExtraKeys.encode(extra, to: encoder, known: entry == nil ? Self.knownWithoutEntry : Self.known)
     }
 }
 
