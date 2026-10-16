@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.1.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.2.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -60,7 +60,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.1.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.2.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -98,6 +98,8 @@ Your app links contract products only. Your preview host (an executable in your 
   프로토콜 판은 따로 센다 · 엔진이 바닥 판부터 지금 판까지 전부 받는다 · 호스트 하나가 연결을 여럿 받는다(연결 = 세션).
 - **Pinning SDK 1.1 moves your preview host to protocol version 4** — the builder (engine) must be on SDK 1.1 or newer too; an older builder refuses the host with "update the builder".
   SDK 1.1 로 핀을 올린 프로젝트의 호스트는 프로토콜 판 4 — 빌더(엔진)도 1.1 이상이어야 한다(옛 빌더는 「빌더를 업데이트하세요」로 거절).
+- **SDK 1.2 adds an optional field to the IA document** (`ScreenNode.entry` — which screen · what kind of control · which element). The protocol stays at version 4 and the IA format at version 1; a 1.1 reader keeps the field as an unknown key.
+  SDK 1.2 는 IA 문서에 선택 칸 하나(`ScreenNode.entry` — 어느 화면 · 무엇을 · 요소)를 더한다 — 프로토콜 판 4 · IA 형식 판 1 그대로 · 1.1 읽개는 모르는 칸으로 보존한다.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.

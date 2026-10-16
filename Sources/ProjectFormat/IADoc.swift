@@ -18,6 +18,8 @@ import Foundation
 // **플랫폼 칸**(IA 하나 + 플랫폼별 틀과 안) — 마디 · 허브의 `platforms` 는 **선택 칸**이다: 없으면 매니페스트(`muc.json` `platforms`)
 // 전부에 선다. 적으면 그 부분집합만. 판 번호는 1 그대로(추가 칸이라 옛 파일이 그대로 읽힌다).
 //
+// **진입 칸**(`ScreenNode.entry` — 어느 화면 · 무엇을 · 요소) 도 선택 칸이다 — 없으면 진입은 `via` 글뿐 · 있으면 `via` 는 그 선택에서 지은 글(판 1 그대로).
+//
 // **모르는 칸 보존** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다). 같은 판에 칸이 더해져도 옛 엔진이 열어 저장하면 사라지지 않는다.
 
 /// 화면 하나 — 트리의 마디.
@@ -28,7 +30,8 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     public var label: String
     /// 부모 화면 코드명(없으면 루트 — 탭 ⟂ 전역 오버레이)
     public var parent: String?
-    /// 진입 — 무엇을 눌러 열리나
+    /// 진입 — 무엇을 눌러 열리나(사람 말 글 · 화면 목록 문서의 「진입」 칸). `entry` 가 있으면 그 선택에서 지은 글이다 —
+    /// 둘이 어긋나면(손으로 고친 글 · `entry` 를 모르는 읽개가 글만 고친 파일) **글이 이긴다**(읽는 쪽이 어긋남을 알릴 뿐 글을 덮지 않는다).
     public var via: String
     /// 출처(이 화면이 어디서 왔나 — 소스의 파일:줄 · 문서의 행 같은 근거 글)
     public var source: String
@@ -58,6 +61,8 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 이 화면이 읽는 **데이터** — 모델 파일(`*.isodata`)의 엔티티 이름 목록(`data.reads`). **선택 칸**이다 —
     /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 엔진의 데이터 검사가 잰다.
     public var data: ScreenData?
+    /// 진입의 **선택** — 어느 화면에서 · 무엇을 눌러 여나(`ScreenEntry`). **선택 칸**이다 — nil 이면 진입은 `via` 글뿐이다.
+    public var entry: ScreenEntry?
     /// 이 SDK 가 모르는 칸.
     public var extra: [String: JSONValue] = [:]
 
@@ -68,11 +73,19 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         self.mapID = mapID; self.form = form; self.states = states; self.scenes = scenes; self.chrome = chrome; self.proposed = proposed
         self.platforms = platforms; self.chromeChart = chromeChart; self.data = data
     }
+    /// 진입 선택을 든 마디 — 위의 손과 같고 `entry` 하나를 더 받는다(덧붙인 칸은 오버로드로 — 있던 손의 꼴을 바꾸지 않는다).
+    public init(id: String, label: String, parent: String? = nil, via: String, source: String, route: String? = nil,
+                mapID: String? = nil, form: Bool = false, states: [String] = [], scenes: String? = nil, chrome: JSONValue? = nil, proposed: Bool = false,
+                platforms: [String]? = nil, chromeChart: JSONValue? = nil, data: ScreenData? = nil, entry: ScreenEntry?) {
+        self.init(id: id, label: label, parent: parent, via: via, source: source, route: route, mapID: mapID, form: form, states: states,
+                  scenes: scenes, chrome: chrome, proposed: proposed, platforms: platforms, chromeChart: chromeChart, data: data)
+        self.entry = entry
+    }
 
     /// 읽는 엔티티 이름(칸이 없으면 빈 목록).
     public var reads: [String] { data?.reads ?? [] }
 
-    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data, entry }
     /// 파일엔 비어 있는 것을 적지 않는다(form=false · states=[] · nil) — 한 마디가 한 덩어리로 읽히게.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -91,6 +104,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         proposed = try c.decodeIfPresent(Bool.self, forKey: .proposed) ?? false
         platforms = try c.decodeIfPresent([String].self, forKey: .platforms)
         data = try c.decodeIfPresent(ScreenData.self, forKey: .data)
+        entry = try c.decodeIfPresent(ScreenEntry.self, forKey: .entry)
         extra = try ExtraKeys.decode(from: decoder, known: Self.known)
     }
     static let known = Set(CodingKeys.allCases.map(\.rawValue))
@@ -108,6 +122,7 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         if proposed { try c.encode(proposed, forKey: .proposed) }
         try c.encodeIfPresent(platforms, forKey: .platforms)
         if let d = data, !d.isEmpty { try c.encode(d, forKey: .data) }
+        try c.encodeIfPresent(entry, forKey: .entry)
         try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }
@@ -129,6 +144,52 @@ public struct ScreenData: Sendable, Equatable, Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(reads, forKey: .reads)
         try ExtraKeys.encode(extra, to: encoder, known: ["reads"])
+    }
+}
+
+/// 마디의 `entry` 칸 — 진입을 **두 단으로 고른 것**: 어느 화면에서(`screen` — 같은 문서의 마디 id) · 무엇을 눌러서(`kind` — 열린 낱말) ·
+/// 그 요소의 이름(`element` — 호스트의 요소 id(`ScreenMarks` 의 snap id)이거나 손으로 적은 글 · 선택).
+/// `screen` 이 문서에 있는가 · `screen` 이 부모가 아니면 그 길을 점프로도 긋는가는 쓰는 쪽(엔진의 편집)이 정한다 — 이 꼴은 읽은 그대로 든다.
+/// 파일 꼴 — `"entry": {"screen": "plans", "kind": "row", "element": "plans.row"}` · 빈 `element` 는 쓰지 않는다.
+public struct ScreenEntry: Sendable, Equatable, Codable {
+    /// 무엇을 눌러 여나 — 열린 꼴(모르는 낱말은 그대로 든다). 사람 말 이름은 읽는 쪽(엔진의 UI)의 몫이다.
+    public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
+        public let rawValue: String
+        public init(rawValue: String) { self.rawValue = rawValue }
+        public static let tab = Kind(rawValue: "tab")
+        public static let button = Kind(rawValue: "button")
+        public static let row = Kind(rawValue: "row")
+        public static let card = Kind(rawValue: "card")
+        public static let menu = Kind(rawValue: "menu")
+        public static let gesture = Kind(rawValue: "gesture")
+        public static let other = Kind(rawValue: "other")
+        /// 이 SDK 가 아는 낱말 — 고르개의 차례.
+        public static let known: [Kind] = [.tab, .button, .row, .card, .menu, .gesture, .other]
+
+        public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+        public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
+    }
+    public var screen: String
+    public var kind: Kind
+    public var element: String?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
+    public init(screen: String, kind: Kind, element: String? = nil) { self.screen = screen; self.kind = kind; self.element = element }
+
+    enum CodingKeys: String, CodingKey, CaseIterable { case screen, kind, element }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        screen = try c.decode(String.self, forKey: .screen)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        element = try c.decodeIfPresent(String.self, forKey: .element)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(screen, forKey: .screen); try c.encode(kind, forKey: .kind)
+        if let e = element, !e.isEmpty { try c.encode(e, forKey: .element) }
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }
 

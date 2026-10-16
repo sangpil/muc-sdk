@@ -312,6 +312,51 @@ import Testing
         #expect(IADoc(nodes: [], jumps: [], hubs: []).version == IAFormat.version, "판 없는 손 = 지금 판")
     }
 
+    /// 진입 선택(`entry`) — 왕복 · 빈 요소는 적지 않는다 · 없으면 칸째 없다(옛 파일의 바이트 불변) · 모르는 종류 낱말 · 모르는 칸 보존.
+    @Test func entryRoundTripsAndOldFilesStayByteForByte() throws {
+        let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys]
+        let n = ScreenNode(id: "plans.detail", label: "상세", parent: "plans", via: "계획 › 행 plans.row", source: "s",
+                           entry: ScreenEntry(screen: "plans", kind: .row, element: "plans.row"))
+        let data = try enc.encode(n)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""entry":{"element":"plans.row","kind":"row","screen":"plans"}"#))
+        #expect(try JSONDecoder().decode(ScreenNode.self, from: data) == n)
+        #expect(String(decoding: try enc.encode(ScreenEntry(screen: "a", kind: .tab, element: "")), as: UTF8.self) == #"{"kind":"tab","screen":"a"}"#,
+                "빈 요소는 칸째 쓰지 않는다")
+        // 옛 파일(entry 없음) — 읽고 되쓴 바이트가 같다
+        let old = #"{"id":"home","label":"홈","source":"s","via":"탭"}"#
+        let back = try JSONDecoder().decode(ScreenNode.self, from: Data(old.utf8))
+        #expect(back.entry == nil)
+        #expect(String(decoding: try enc.encode(back), as: UTF8.self) == old)
+        // 열린 낱말 — 모르는 종류는 그대로 · 아는 낱말의 차례
+        let odd = try JSONDecoder().decode(ScreenEntry.self, from: Data(#"{"screen":"a","kind":"swipe","hint":1}"#.utf8))
+        #expect(odd.kind.rawValue == "swipe" && odd.extra == ["hint": 1])
+        #expect(ScreenEntry.Kind.known.map(\.rawValue) == ["tab", "button", "row", "card", "menu", "gesture", "other"])
+    }
+
+    /// `entry` 를 모르는 읽개(1.1 의 마디 — 아는 칸에 `entry` 가 없다)는 그 칸을 `extra` 로 들고 되쓴다 — 새 파일을 옛 빌더가 열어 저장해도 선택이 남는다.
+    @Test func aReaderWithoutEntryKeepsItAsAnUnknownCell() throws {
+        struct OldNode: Codable {   // 1.1 의 아는 칸 집합 — entry 가 없다
+            var id: String; var via: String; var extra: [String: JSONValue] = [:]
+            enum K: String, CodingKey { case id, via }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: K.self)
+                id = try c.decode(String.self, forKey: .id); via = try c.decode(String.self, forKey: .via)
+                let all = try decoder.singleValueContainer().decode([String: JSONValue].self)
+                extra = all.filter { $0.key != "id" && $0.key != "via" }
+            }
+            func encode(to encoder: Encoder) throws {
+                var all = extra; all["id"] = .string(id); all["via"] = .string(via)
+                var c = encoder.singleValueContainer(); try c.encode(all)
+            }
+        }
+        let json = #"{"id":"b","label":"B","source":"s","via":"A › 단추","entry":{"screen":"a","kind":"button"}}"#
+        let old = try JSONDecoder().decode(OldNode.self, from: Data(json.utf8))
+        #expect(old.extra["entry"] != nil)
+        let rewritten = try JSONDecoder().decode(ScreenNode.self, from: try JSONEncoder().encode(old))
+        #expect(rewritten.entry == ScreenEntry(screen: "a", kind: .button))
+        #expect(rewritten.extra.isEmpty, "아는 칸이 된 entry 는 extra 에 남지 않는다")
+    }
+
     /// 모르는 칸 보존 — 문서 · 마디 · 점프 · 진입 · 허브 · 읽는 칸의 모르는 칸이 왕복에 남는다(같은 판의 덧붙임을 옛 엔진이 지우지 않는다).
     @Test func unknownCellsSurviveARoundTrip() throws {
         let json = #"{"version":1,"theme":"x","nodes":[{"id":"a","label":"A","via":"v","source":"s","badge":2,"data":{"reads":["T"],"writes":["U"]}}],"jumps":[{"from":"a","to":"a","label":"l","weight":1,"entries":[{"control":"more","hint":"h"}]}],"hubs":[{"id":"h","label":"H","kind":"rail","slots":["a"],"pinned":true}]}"#

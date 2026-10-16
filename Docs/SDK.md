@@ -79,7 +79,7 @@
 | `ScreenComponent` | 프로젝트 | 안 파일 `components` 칸 한 줄(일반 · 씬 · 모델 · 영역 · 조작 · 구성요소와 영역의 모르는 칸 보존 `extra`) + 관대한 읽기(모르는 종류 · 깨진 줄은 건너뛴다 — 종류는 닫힌 열거: 새 종류는 앱이 그리는 코드와 함께 온다) · 칸 크기 → 그릴 픽셀의 셈 한 벌 |
 | `IAWiring` | 프로젝트 | 배선 고르기 — 배선 → 확정 → 가장 최근(안) ⟂ 배선 → 이름 순 첫(씬) |
 | `FormFactor` | 프로젝트 | 폼팩터 낱말 — 매니페스트 `platforms` 와 IA 플랫폼 칸의 한 벌 · 열린 꼴(아는 낱말 `iphone` · `ipad` · `mac` = `known` · 모르는 낱말도 글자 그대로) · **어느 폼팩터도 필수가 아니다** — 플랫폼 목록은 비지 않고 겹치지 않으면 선다(맥 전용 · iPad 전용 포함 · `problems(in:)`) |
-| `IADoc` · `ScreenNode` · `ScreenData` · `ScreenJump` · `JumpEntry` · `Hub` | 프로젝트 | IA 문서(`paths.ia`)의 꼴 — 마디 · 점프 · 허브 · 읽는 엔티티 · 제안 표지 · 꼴마다 모르는 칸 보존(`extra`). **프로젝트 낱말은 글자 · JSON 그대로 든다**: 진입 손 `JumpEntry.control` 은 글자 · 크롬 구성 `ScreenNode.chrome` · `chromeChart` 와 내비 항목 `Hub.items` 는 `JSONValue`(읽은 그대로 쓴다 — 파일 꼴 불변 · 형식 판 1) · 허브 종류는 열린 꼴. 엔진(저장소 · 화면 지도)과 미리보기 호스트(층 자료 `PreviewProtocol.LayerContext` — 크롬의 구성 · 탭 슬롯을 호스트가 이 문서에서 셈한다)가 함께 문다 |
+| `IADoc` · `ScreenNode` · `ScreenData` · `ScreenEntry` · `ScreenJump` · `JumpEntry` · `Hub` | 프로젝트 | IA 문서(`paths.ia`)의 꼴 — 마디 · 점프 · 허브 · 읽는 엔티티 · 제안 표지 · 진입 선택(`ScreenEntry` — 어느 화면 · 무엇을(열린 낱말 `ScreenEntry.Kind`) · 요소 · 선택 칸 · 있으면 `via` 는 그 선택에서 지은 글이고 어긋나면 글이 이긴다) · 꼴마다 모르는 칸 보존(`extra`). **프로젝트 낱말은 글자 · JSON 그대로 든다**: 진입 손 `JumpEntry.control` 은 글자 · 크롬 구성 `ScreenNode.chrome` · `chromeChart` 와 내비 항목 `Hub.items` 는 `JSONValue`(읽은 그대로 쓴다 — 파일 꼴 불변 · 형식 판 1) · 허브 종류는 열린 꼴. 엔진(저장소 · 화면 지도)과 미리보기 호스트(층 자료 `PreviewProtocol.LayerContext` — 크롬의 구성 · 탭 슬롯을 호스트가 이 문서에서 셈한다)가 함께 문다 |
 | `JSONValue` · `JSONValueError` | 프로젝트 | JSON 값 한 덩이(널 · 참거짓 · 수 · 큰 정수 · 글자 · 배열 · 객체 — 수의 정본 꼴: Double 로 정확히 담기는 수는 `number` · 크기 2^53 을 넘는 정수는 `integer`(Int64 — 시각 ns · 큰 id 가 깎이지 않는다) · `int(_:)` · `integerValue` · `numberValue`) — 프로젝트가 뜻을 정하는 칸(IA 의 크롬 구성 · 내비 항목 · 안 파일의 Style 값) · 모르는 칸 주머니(`extra`) · 엔진 명령의 결과 · 미리보기 호스트의 조절판 값이 같은 한 벌이다. 정수로 떨어지는 수는 정수로 쓴다 · 쓸 때 키 정렬(`text`) · Codable 값 → JSON 값(`from`) · → JSON 객체(`dictionary(from:)` — 객체가 아니면 던진다) · JSON 값 → 프로젝트의 타입(`decode` — 칸의 꼴은 그 타입의 Codable 이 정한다) · 글자 · 수 · 배열 · 사전 리터럴 |
 
 **`ScreenMarks`** — 화면 요소 표식. SwiftUI 만.
@@ -190,7 +190,7 @@
 
 ## 5. 판
 
-**SDK 판: 1.1.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 1.2.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 
@@ -212,7 +212,7 @@ SDK 1.1 로 핀을 올린 프로젝트의 미리보기 호스트는 프로토콜
 
 - **모르는 키는 보존한다** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다 · 아는 칸과 이름이 겹치면 아는 칸이 이긴다). 같은 판에 칸이 더해져도 옛 읽개가 열어 저장하면 그 칸이 사라지지 않는다. 모델 파일은 자리마다 한 줄로 알린다(`DataModelFile.unknownKeys` — 읽는 쪽이 읽기 전용으로 열지 정한다).
 - **파일에 칸을 더하는 것은 형식 판을 올리지 않는다**(빠진 칸 = 옛 뜻 · 모르는 칸 = 보존) — 칸의 뜻을 바꾸거나 빼는 것만 판을 올린다(와이어는 위의 판 규칙). 모델 파일 판 4 는 칸 더하기(`idNamespace` · `revision`)와 물러난 키(`migrated` · `sql`)를 판 안에서 든다.
-- **열린 꼴**(`FormFactor` · `ScaleKind` · `DataStatus` · `DataOnDelete` · `CompositionField.Kind` · `SharedMemoryInfo.Kind` · `Hub.Kind`) — 낱말 그대로 드는 `RawRepresentable` 구조체 + 아는 상수 + `known`. 아는 낱말을 더하는 것은 부 판이다(파일 · 와이어의 글자가 그대로라 소비자 소스가 깨지지 않는다 — 소비자는 이 꼴을 `switch` 로 전수하지 않는다 · `default` 를 둔다).
+- **열린 꼴**(`FormFactor` · `ScaleKind` · `DataStatus` · `DataOnDelete` · `CompositionField.Kind` · `SharedMemoryInfo.Kind` · `Hub.Kind` · `ScreenEntry.Kind`) — 낱말 그대로 드는 `RawRepresentable` 구조체 + 아는 상수 + `known`. 아는 낱말을 더하는 것은 부 판이다(파일 · 와이어의 글자가 그대로라 소비자 소스가 깨지지 않는다 — 소비자는 이 꼴을 `switch` 로 전수하지 않는다 · `default` 를 둔다).
 - **페이로드 열거의 모르는 갈래**(`DataType.unknown` · `DataRuleCheck.other`) — 이 SDK 가 모르는 형 · 규칙을 읽은 그대로 든다(재지 않는다 · 경고). 닫힌 열거(`Message` · `Hello.Role` · `UpgradeEffect` · `FramePayload` · `ScreenComponent.Kind` · `FieldKind`)에 갈래를 더하거나 갈래의 연관값을 바꾸는 것은 주 판이다 — 소비자의 전수 `switch` 를 깬다(`ScreenComponent.Kind` 는 앱이 그리는 코드와 함께 오는 종류라 닫아 둔다 · 모르는 종류는 관대한 읽기가 건너뛴다). 1.x 에서 새 말이 필요하면 닫힌 열거를 늘리지 않고 있는 갈래의 몸(구조체)에 기본값 있는 새 칸을 더한다 — 옛 상대가 그 칸을 몰라 무시해도 뜻이 틀리지 않을 때만이고, 아니면 새 갈래는 다음 주 판(2.0)에 싣는다(예 — 문구는 `FieldKind` 의 갈래가 아니라 Style 서술의 기본값 있는 목록 `StyleSchema.texts` 다: 서술에 문구가 없는 호스트는 빈 목록과 같고 화면은 기본 글로 선다 · 와이어의 옛 엔진은 프로토콜 판이 막는다).
 - **공개 오류 열거도 닫힌 열거다**(`IsoDataError` · `ProtocolMismatch` · `UpgradeError` · `StyleSchemaError` · …) — 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판 · 게이트 `qa-sdk-build` ⑦ 이 깨짐으로 센다). 1.x 에서 새 오류는 **새 오류 타입**으로 더한다(부 판 — 예: 문구가 서지 않는 까닭은 `StyleSchemaError` 의 갈래가 아니라 새 타입 `StyleTextError`). 오류 · 문제의 사람 말(`description` · `reason`)은 계약 밖이다(문구를 고치는 것은 수 판).
 
