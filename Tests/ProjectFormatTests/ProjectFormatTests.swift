@@ -315,10 +315,10 @@ import Testing
     /// 진입 선택(`entry`) — 왕복 · 빈 요소는 적지 않는다 · 없으면 칸째 없다(옛 파일의 바이트 불변) · 모르는 종류 낱말 · 모르는 칸 보존.
     @Test func entryRoundTripsAndOldFilesStayByteForByte() throws {
         let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys]
-        let n = ScreenNode(id: "plans.detail", label: "상세", parent: "plans", via: "계획 › 행 plans.row", source: "s",
-                           entry: ScreenEntry(screen: "plans", kind: .row, element: "plans.row"))
+        let n = ScreenNode(id: "shelf.detail", label: "상세", parent: "shelf", via: "선반 › 행 shelf.row", source: "s",
+                           entry: ScreenEntry(screen: "shelf", kind: .row, element: "shelf.row"))
         let data = try enc.encode(n)
-        #expect(String(decoding: data, as: UTF8.self).contains(#""entry":{"element":"plans.row","kind":"row","screen":"plans"}"#))
+        #expect(String(decoding: data, as: UTF8.self).contains(#""entry":{"element":"shelf.row","kind":"row","screen":"shelf"}"#))
         #expect(try JSONDecoder().decode(ScreenNode.self, from: data) == n)
         #expect(String(decoding: try enc.encode(ScreenEntry(screen: "a", kind: .tab, element: "")), as: UTF8.self) == #"{"kind":"tab","screen":"a"}"#,
                 "빈 요소는 칸째 쓰지 않는다")

@@ -150,7 +150,7 @@ public struct ScreenData: Sendable, Equatable, Codable {
 /// 마디의 `entry` 칸 — 진입을 **두 단으로 고른 것**: 어느 화면에서(`screen` — 같은 문서의 마디 id) · 무엇을 눌러서(`kind` — 열린 낱말) ·
 /// 그 요소의 이름(`element` — 호스트의 요소 id(`ScreenMarks` 의 snap id)이거나 손으로 적은 글 · 선택).
 /// `screen` 이 문서에 있는가 · `screen` 이 부모가 아니면 그 길을 점프로도 긋는가는 쓰는 쪽(엔진의 편집)이 정한다 — 이 꼴은 읽은 그대로 든다.
-/// 파일 꼴 — `"entry": {"screen": "plans", "kind": "row", "element": "plans.row"}` · 빈 `element` 는 쓰지 않는다.
+/// 파일 꼴 — `"entry": {"screen": "shelf", "kind": "row", "element": "shelf.row"}` · 빈 `element` 는 쓰지 않는다.
 public struct ScreenEntry: Sendable, Equatable, Codable {
     /// 무엇을 눌러 여나 — 열린 꼴(모르는 낱말은 그대로 든다). 사람 말 이름은 읽는 쪽(엔진의 UI)의 몫이다.
     public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
