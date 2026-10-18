@@ -7,6 +7,7 @@ import Testing
 // Style 서술 — 프로젝트가 내는 데이터(칸 · 절 · 이름(선택) · 기본값)로 안 파일의 값을 잰다(`normalize`). 서술은 JSON 으로 오가도 같다(`hello` 에 실린다).
 // 칸 하나 바꾸기(`StyleEdit` — 프로젝트의 Style 타입에 Codable 왕복)도 여기서 잰다. 쓰임 셈은 엔진의 몫이라 엔진 쪽 시험이 잰다.
 // 문구(`StyleText`) — 선택 목록의 줄 꼴 · 저장 꼴(공백 · 최대 길이 · 빈 글 = 기본 글) · 관대한 읽개 · 옛 상대 둘(문구를 모르는 엔진은 판정이 막는다 ⟂ 호스트는 서술 밖 칸으로 뺀다) · 글자 엣지(자소 묶음 · 한 줄 라벨) · 안 파일의 값.
+// 자리(`StyleSlot`) — 선택 목록의 줄 꼴 · 저장 꼴(빈 글 ⟂ 받는 종류의 참조 · 빈 글은 값) · 이름 겹침 · 관대한 읽개 · 참조 풀기 · 옛 상대 둘 · 안 파일의 값.
 
 @Suite struct StyleSchemaTests {
     static let pot = StyleElement(id: "pot", label: "화분", snapPrefix: "plants.pot")
@@ -188,12 +189,12 @@ import Testing
     /// (화면은 기본 글 — 그 호스트에겐 문구 칸이 없으니 조절판에도 서지 않는다).
     @Test func olderEnginesAreRefusedAndOlderHostsDropTexts() throws {
         // (1) 문구를 모르는 엔진 — 판정이 막는다
-        #expect(PreviewProtocolVersion.current == 4, "문구 목록은 프로토콜 판 4 의 꼴")
+        #expect(PreviewProtocolVersion.current >= 4, "문구 목록은 프로토콜 판 4 부터의 꼴")
         let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
                                         screens: [ScreenInfo(name: "home", states: ["n"], style: Self.texted)]))
         let greeting = try ProtocolDialect.current.encode(hello)
         let engine3 = ProtocolJudge(version: 3, dialects: [])
-        #expect(throws: ProtocolMismatch.hostNewer(host: 4, engine: 3), "판 3 엔진은 판 4 호스트를 거절한다") { try engine3.dialect(greeting: greeting) }
+        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 3), "판 3 엔진은 판 4 이상 호스트를 거절한다") { try engine3.dialect(greeting: greeting) }
         // 읽기 방어 — 서술 디코더는 모르는 키를 넘긴다(판정을 거친 상대의 뜻밖의 칸을 잃지 않고 읽을 뿐 · 판을 올리지 않아도 된다는 뜻이 아니다)
         var wire = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.texted)) as? [String: Any])
         wire["future"] = ["shape": 1]
@@ -224,6 +225,135 @@ import Testing
         #expect(try DesignFile.fillMissingStyleKeys(&old, from: HomeStyle()) == 1)
         #expect(old["potTitle"] as? String == "화분 하나", "옛 안 파일은 기본 글로 채운다")
         #expect(try StyleEdit.setting(HomeStyle(), "potTitle", to: "새 글") == HomeStyle(potOn: true, potTitle: "새 글"))
+    }
+
+    // MARK: 자리
+
+    static let slotted = StyleSchema(
+        screen: "home", elements: [pot, color],
+        fields: StyleField.list([("potOn", .bool)], elements: [pot, color]),
+        texts: [StyleText(name: "potTitle", element: pot)],
+        slots: [StyleSlot(name: "potPicture", element: pot, snap: "plants.pot.picture", label: "그림"),
+                StyleSlot(name: "potBadge", element: pot, kinds: ["isomodel", "isoscene"])],
+        defaults: ["potOn": true, "potTitle": "화분", "potBadge": "isoscene:meadow"])
+
+    /// 자리 목록은 선택 칸 — 비면 줄에 쓰지 않고 · 없으면 빈 목록 · 있으면 왕복(종류가 없으면 기본 종류 · 표식 · 이름은 선택) ·
+    /// 모르는 절 · 칸 · 문구 · 다른 자리와 겹치는 이름 · 빈 종류 목록은 거부.
+    @Test func slotsAreAnOptionalListOnTheWire() throws {
+        let plain = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.texted)) as? [String: Any])
+        #expect(plain["slots"] == nil, "자리가 없으면 줄에 쓰지 않는다 — 자리를 모르는 상대와 같은 줄")
+        #expect(Self.texted.slots.isEmpty)
+
+        let data = try JSONEncoder().encode(Self.slotted)
+        let obj = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let slots = try #require(obj["slots"] as? [[String: Any]])
+        #expect(slots.map { $0["name"] as? String } == ["potPicture", "potBadge"])
+        #expect(slots.map { $0["element"] as? String } == ["pot", "pot"])
+        #expect(slots.first?["snap"] as? String == "plants.pot.picture" && slots.last?["snap"] == nil, "없는 표식은 쓰지 않는다")
+        #expect(slots.map { $0["kinds"] as? [String] } == [["isomodel"], ["isomodel", "isoscene"]])
+        #expect(try JSONDecoder().decode(StyleSchema.self, from: data) == Self.slotted)
+
+        func schema(_ slots: String, texts: String = "[]") -> Data {
+            Data(#"{"screen":"x","elements":[{"id":"q","label":"q","snapPrefix":""}],"fields":[{"name":"a","kind":"bool","element":"q"}],"texts":\#(texts),"slots":\#(slots),"defaults":{}}"#.utf8)
+        }
+        let bare = try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q"}]"#))
+        #expect(bare.slots.first?.kinds == StyleSlot.defaultKinds && bare.slots.first?.snap == nil && bare.slots.first?.label == nil)
+        #expect(throws: (any Error).self, "모르는 절") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"z"}]"#)) }
+        #expect(throws: (any Error).self, "칸과 겹침") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"a","element":"q"}]"#)) }
+        #expect(throws: (any Error).self, "문구와 겹침") {
+            try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"t","element":"q"}]"#, texts: #"[{"name":"t","element":"q"}]"#))
+        }
+        #expect(throws: (any Error).self, "자리끼리 겹침") {
+            try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q"},{"name":"p","element":"q"}]"#))
+        }
+        #expect(throws: (any Error).self, "받는 종류가 없다") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q","kinds":[]}]"#)) }
+    }
+
+    /// 자리의 저장 꼴 — 빈 글(원래 이미지)과 받는 종류의 참조는 그대로 · 없으면 기본 값(없으면 빈 글) · **빈 글은 기본 값으로 돌아가지 않는다** ·
+    /// 글자 아님 · 꼴 아님 · 경로 글자 · 받지 않는 종류는 `StyleSlotError` · 이름 겹침은 `nameTaken` · 다시 재도 같다.
+    @Test func normalizeKeepsSlotReferencesAndRefusesTheRest() throws {
+        let s = Self.slotted
+        let got = try s.normalize(["potPicture": "isomodel:fern", "stale": "isomodel:x"])
+        #expect(got == ["potOn": true, "potTitle": "화분", "potPicture": "isomodel:fern", "potBadge": "isoscene:meadow"])
+        #expect(try s.normalize([:])["potPicture"] == "", "기본 값이 없는 자리 = 빈 글(원래 이미지)")
+        #expect(try s.normalize(["potBadge": ""])["potBadge"] == "", "빈 글은 값이다 — 기본 값으로 돌아가지 않는다")
+        #expect(try s.normalize(["potBadge": "isomodel:fern"])["potBadge"] == "isomodel:fern")
+        #expect(try s.normalize(got) == got, "다시 재도 같다")
+        #expect(throws: StyleSlotError.self, "글자 아님") { try s.normalize(["potPicture": 3]) }
+        #expect(throws: StyleSlotError.self, "꼴 아님") { try s.normalize(["potPicture": "fern"]) }
+        #expect(throws: StyleSlotError.self, "이름 빔") { try s.normalize(["potPicture": "isomodel:"]) }
+        #expect(throws: StyleSlotError.self, "종류 빔") { try s.normalize(["potPicture": ":fern"]) }
+        #expect(throws: StyleSlotError.self, "받지 않는 종류") { try s.normalize(["potPicture": "photo:fern"]) }
+        #expect(throws: StyleSlotError.self, "받지 않는 종류(다른 자리는 받는다)") { try s.normalize(["potPicture": "isoscene:meadow"]) }
+        for bad in ["isomodel:../fern", "isomodel:a/b", "isomodel:a\\b", "isomodel:a..b", "isomodel:a\nb"] {
+            #expect(throws: StyleSlotError.self, "경로 글자 · 줄바꿈: \(bad)") { try s.normalize(["potPicture": .string(bad)]) }
+        }
+        do { _ = try s.normalize(["potPicture": "photo:fern"]); Issue.record("거부해야 한다") } catch let e as StyleSlotError {
+            guard case .kindNotAccepted("home", "potPicture", "photo") = e else { Issue.record("받지 않는 종류로 갈라야 한다: \(e)"); return }
+        }
+        let badDefault = StyleSchema(screen: "x", elements: [Self.pot], fields: [], texts: [],
+                                     slots: [StyleSlot(name: "potPicture", element: Self.pot)], defaults: ["potPicture": "photo:x"])
+        #expect(throws: StyleSlotError.self, "기본 값도 잰다") { try badDefault.normalize([:]) }
+        let clash = StyleSchema(screen: "x", elements: [Self.pot], fields: StyleField.list([("potOn", .bool)], elements: [Self.pot]), texts: [],
+                                slots: [StyleSlot(name: "potOn", element: Self.pot)], defaults: ["potOn": true])
+        #expect(throws: StyleSlotError.self, "칸과 겹치는 자리") { try clash.normalize([:]) }
+        let clashText = StyleSchema(screen: "x", elements: [Self.pot], fields: [], texts: [StyleText(name: "p", element: Self.pot)],
+                                    slots: [StyleSlot(name: "p", element: Self.pot)], defaults: ["p": "글"])
+        #expect(throws: StyleSlotError.self, "문구와 겹치는 자리") { try clashText.normalize([:]) }
+    }
+
+    /// 사전으로 다루는 화면 코드의 읽개 — 참조 그대로 · 없으면 기본 값 · 글자 아님 · 꼴 아님 · 받지 않는 종류는 빈 글(원래 이미지) · 서술에 없는 자리는 nil ·
+    /// 참조 풀기(`Reference.parse`)는 종류 · 이름으로 가른다.
+    @Test func slotReaderIsLenientAndReferencesParse() {
+        let s = Self.slotted
+        #expect(s.slot("potPicture", in: ["potPicture": "isomodel:fern"]) == "isomodel:fern")
+        #expect(s.slot("potPicture", in: [:]) == "")
+        #expect(s.slot("potBadge", in: nil) == "isoscene:meadow", "값이 없으면 기본 값")
+        #expect(s.slot("potBadge", in: ["potBadge": ""]) == "", "빈 글은 값이다")
+        #expect(s.slot("potPicture", in: ["potPicture": 7]) == "", "글자가 아니면 원래 이미지")
+        #expect(s.slot("potPicture", in: ["potPicture": "photo:x"]) == "", "받지 않는 종류면 원래 이미지")
+        #expect(s.slot("potTitle", in: [:]) == nil, "문구는 자리가 아니다")
+        #expect(s.slot("nope", in: [:]) == nil)
+
+        #expect(StyleSlot.Reference.parse("isomodel:fern") == StyleSlot.Reference(kind: "isomodel", name: "fern"))
+        #expect(StyleSlot.Reference.parse("isomodel:fern:two")?.name == "fern:two", "첫 `:` 에서 가른다")
+        #expect(StyleSlot.Reference.parse("isomodel:큰 화분")?.name == "큰 화분", "이름은 서가의 파일 이름 — 공백 · 한글을 받는다")
+        #expect(StyleSlot.Reference(kind: "isomodel", name: "fern").text == "isomodel:fern")
+        for bad in ["", "fern", ":fern", "isomodel:", "iso model:fern", "isomodel:../x", "isomodel:a/b", "isomodel:a\tb"] {
+            #expect(StyleSlot.Reference.parse(bad) == nil, "꼴 아님: \(bad)")
+        }
+    }
+
+    /// 옛 상대 둘 — (1) 자리를 모르는 엔진(프로토콜 판 4 이하)은 판정이 막는다(판 5 호스트를 `hostNewer`).
+    /// (2) 새 엔진이 자리 값을 실어 보내도 자리를 모르는 호스트(서술에 자리가 없다)는 서술 밖 칸으로 빼고 깨지지 않는다(화면은 원래 이미지).
+    @Test func olderEnginesAreRefusedAndOlderHostsDropSlots() throws {
+        #expect(PreviewProtocolVersion.current == 5, "자리 목록은 프로토콜 판 5 의 꼴")
+        let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
+                                        screens: [ScreenInfo(name: "home", states: ["n"], style: Self.slotted)]))
+        let greeting = try ProtocolDialect.current.encode(hello)
+        let engine4 = ProtocolJudge(version: 4, dialects: [])
+        #expect(throws: ProtocolMismatch.hostNewer(host: 5, engine: 4), "판 4 엔진은 판 5 호스트를 거절한다") { try engine4.dialect(greeting: greeting) }
+
+        let fromNewEngine = try Self.slotted.normalize(["potPicture": "isomodel:fern"])
+        #expect(try Self.texted.normalize(["potTitle": "화분"].merging(fromNewEngine) { a, _ in a })["potPicture"] == nil, "자리 값은 서술 밖 칸으로 빠진다")
+        struct OldStyle: Codable, Equatable { var potOn: Bool; var potTitle: String }
+        #expect(try JSONValue.object(fromNewEngine).decode(OldStyle.self) == OldStyle(potOn: true, potTitle: "화분"), "옛 Style 타입은 자리 칸을 넘긴다")
+    }
+
+    /// 안 파일의 값 — 자리는 Style 값 사전의 글자 칸 · 프로젝트의 Style 타입은 그것을 `String` 칸으로 든다(기본값 = 빈 글) ·
+    /// 바이트 규칙으로 쓰고 읽어도 같은 값 · 옛 안 파일(자리 없음)은 기본 값으로 채운다 · 조절판의 바꾸기도 같은 손(`StyleEdit`).
+    @Test func slotsLiveInTheDesignFileStyle() throws {
+        struct HomeStyle: Codable, Equatable { var potOn = true; var potPicture = "" }
+        let schema = StyleSchema(screen: "home", elements: [Self.pot], fields: StyleField.list([("potOn", .bool)], elements: [Self.pot]), texts: [],
+                                 slots: [StyleSlot(name: "potPicture", element: Self.pot)], defaults: try JSONValue.dictionary(from: HomeStyle()))
+        let saved = try schema.normalize(["potOn": false, "potPicture": "isomodel:fern"])
+        let bytes = try DesignFile.encoder().encode(["style": saved])
+        #expect(try DesignFile.decoder().decode([String: StyleValues].self, from: bytes)["style"] == saved)
+        #expect(try JSONValue.object(saved).decode(HomeStyle.self) == HomeStyle(potOn: false, potPicture: "isomodel:fern"), "앱의 Style 타입이 그대로 읽는다")
+        var old: [String: Any] = ["potOn": false]
+        #expect(try DesignFile.fillMissingStyleKeys(&old, from: HomeStyle()) == 1)
+        #expect(old["potPicture"] as? String == "", "옛 안 파일은 원래 이미지로 채운다")
+        #expect(try StyleEdit.setting(HomeStyle(), "potPicture", to: "isomodel:fern") == HomeStyle(potOn: true, potPicture: "isomodel:fern"))
     }
 
     /// 칸 하나 바꾸기 — Codable 왕복 · 없는 칸은 거부.

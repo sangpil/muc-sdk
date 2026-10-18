@@ -16,6 +16,9 @@ import ProjectFormat
 // 새 엔진 ⟂ 판 3 호스트는 서술에 문구가 없어 조절판에 문구 칸이 서지 않고, 실려 온 문구 값은 그 호스트가 서술 밖 칸으로 뺀다(화면은 기본 글).
 // 그 값을 프로젝트의 Style 타입에 넣는 손(`StyleEdit` — Codable 왕복)도 한 벌이다 — 호스트가 `patch` 를 받는 자리와 엔진의 조절판이 같은 손을 부른다.
 // 문구도 같은 손이다 — 프로젝트의 Style 타입이 문구를 `String` 칸으로 들면 앱 · 호스트의 화면 코드는 그 칸을 읽는다(사전으로 다루는 쪽은 `StyleSchema.text(_:in:)`).
+// 자리(이미지 자리 — `StyleSlot`)도 문구와 같은 꼴의 따로 선 목록(`slots`)이다 — 화면 코드만 아는 이미지 자리를 호스트가 선언하고, 값은 같은 사전의 글자 하나:
+// 빈 글(원래 이미지) ⟂ `<종류>:<서가 이름>`(`isomodel:plant` — 프로젝트 매니페스트의 모델 서가에 든 `<이름>.isomodel`). 그 값을 읽어 사진 대신 모델을 그리는 것은
+// 호스트 · 앱의 화면 코드다(엔진은 경계 위에 덮어 그리지 않는다). 자리를 모르는 엔진(프로토콜 판 4 이하)은 판정이 막는다(판 5 호스트를 `hostNewer` 로 거절).
 
 /// Style 값 사전 — 칸 이름 → 그 칸의 JSON 값(`style` 칸 한 덩이를 읽은 그대로).
 public typealias StyleValues = [String: JSONValue]
@@ -157,9 +160,60 @@ public struct StyleText: Identifiable, Equatable, Sendable {
     }
 }
 
+/// 조절판의 자리 칸 하나 — 화면의 이미지 자리(사진 · 그림이 서는 곳)를 디자이너가 다른 것(모델)으로 바꾸는 자리. 값은 Style 값 사전의 같은 이름 칸에 든 글자 하나:
+/// 빈 글 = 원래 이미지 ⟂ `<종류>:<이름>`(참조 — `Reference` · 종류는 `kinds` 의 낱말 · 이름은 서가 안의 파일 이름(확장자 없이 — 경로가 아니다)).
+/// 기본 값은 서술의 `defaults` 의 같은 칸(없으면 빈 글 — 자리를 선언만 한 호스트도 선다). 문구와 달리 **빈 글은 값이다**(원래 이미지를 고른 것) — 기본 값으로 돌아가지 않는다.
+/// `snap` 은 그 자리 요소의 표식(`snapID`) — 미리보기에서 그 요소를 누르면 엔진이 이 칸을 고른다(선택).
+public struct StyleSlot: Identifiable, Equatable, Sendable {
+    /// 파일 키 — Style 값 사전의 칸 이름(칸 `StyleField.name` · 문구 `StyleText.name` 과 겹치지 않는다).
+    public let name: String
+    public let element: StyleElement
+    /// 그 자리 요소의 표식(`snapID`) — 정확히 같은 글자 · nil 이면 절로만 선다.
+    public let snap: String?
+    /// 조절판 칸의 이름 — 호스트(프로젝트)가 지은 것 · nil 이면 엔진이 제 규칙으로 짓는다.
+    public let label: String?
+    /// 받는 종류(참조의 머리 낱말) — 열린 낱말 목록 · **1 개 이상**(비면 서지 않는다: 코드로 지으면 `precondition` · 줄에서 읽으면 디코드 오류).
+    public let kinds: [String]
+    public var id: String { name }
+    /// 종류를 적지 않은 자리가 받는 종류 — 줄에 `kinds` 가 없을 때도 이 값.
+    public static let defaultKinds = ["isomodel"]
+    public init(name: String, element: StyleElement, snap: String? = nil, label: String? = nil, kinds: [String] = StyleSlot.defaultKinds) {
+        precondition(!kinds.isEmpty, "자리 \(name) 이 받는 종류가 없다")
+        self.name = name; self.element = element; self.snap = snap; self.label = label; self.kinds = kinds
+    }
+
+    /// 자리 값의 참조 — `<종류>:<이름>`. 이름은 서가 안의 파일 이름(확장자 없이)이라 경로 글자(`/` · `\` · `..`) · 줄바꿈 · 제어 문자가 들지 않고 비지 않는다.
+    public struct Reference: Hashable, Sendable {
+        public let kind: String
+        public let name: String
+        public init(kind: String, name: String) { self.kind = kind; self.name = name }
+        /// 저장 꼴 글자 — `<종류>:<이름>`.
+        public var text: String { "\(kind):\(name)" }
+
+        /// 글자 하나 → 참조(꼴이 아니면 nil · 빈 글도 nil). 첫 `:` 앞이 종류(비지 않는 낱말 — 글자 · 숫자 · `-` · `_`) · 뒤가 이름.
+        public static func parse(_ text: String) -> Reference? {
+            guard let colon = text.firstIndex(of: ":") else { return nil }
+            let kind = String(text[..<colon]), name = String(text[text.index(after: colon)...])
+            guard !kind.isEmpty, kind.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }) else { return nil }
+            guard !name.isEmpty, !name.contains("/"), !name.contains("\\"), !name.contains(".."),
+                  !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }) else { return nil }
+            return Reference(kind: kind, name: name)
+        }
+    }
+
+    /// 값 하나의 저장 꼴 — 빈 글이거나 받는 종류의 참조면 그 글자 그대로 · 아니면 nil(꼴이 아니다 · 받지 않는 종류).
+    public func normalized(_ text: String) -> String? {
+        if text.isEmpty { return text }
+        guard let r = Reference.parse(text), kinds.contains(r.kind) else { return nil }
+        return text
+    }
+}
+
 /// 화면 하나(또는 화면 위에 얹는 층 하나)의 Style **서술** — 프로젝트가 내는 데이터. JSON 꼴:
-/// `{"screen":"…","elements":[{"id","label","snapPrefix"}],"fields":[{"name","kind","element","label"?}],"texts"?:[{"name","element","label"?,"maxLength"}],"defaults":{…}}`
-/// (칸의 `label` 은 선택 · `texts` 는 선택 — 없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다 · 문구의 `maxLength` 가 없으면 `StyleText.defaultMaxLength`).
+/// `{"screen":"…","elements":[{"id","label","snapPrefix"}],"fields":[{"name","kind","element","label"?}],"texts"?:[{"name","element","label"?,"maxLength"}],`
+/// `"slots"?:[{"name","element","snap"?,"label"?,"kinds"}],"defaults":{…}}`
+/// (칸의 `label` 은 선택 · `texts` · `slots` 는 선택 — 없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다 · 문구의 `maxLength` 가 없으면 `StyleText.defaultMaxLength` ·
+/// 자리의 `kinds` 가 없으면 `StyleSlot.defaultKinds`).
 /// `defaults` 는 화면의 기본값(파일에 없는 칸 · 문구를 채운다 — 칸이 늘어도 옛 안 파일이 읽힌다).
 public struct StyleSchema: Equatable, Sendable {
     public let screen: String
@@ -167,17 +221,24 @@ public struct StyleSchema: Equatable, Sendable {
     public let fields: [StyleField]
     /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술 · 판 3 의 줄에서 읽은 서술).
     public let texts: [StyleText]
+    /// 자리 칸 — 빈 목록이 기본(자리를 내지 않는 서술 · 판 4 이하의 줄에서 읽은 서술).
+    public let slots: [StyleSlot]
     public let defaults: StyleValues
     public init(screen: String, elements: [StyleElement], fields: [StyleField], defaults: StyleValues) {
-        self.init(screen: screen, elements: elements, fields: fields, texts: [], defaults: defaults)
+        self.init(screen: screen, elements: elements, fields: fields, texts: [], slots: [], defaults: defaults)
     }
     public init(screen: String, elements: [StyleElement], fields: [StyleField], texts: [StyleText], defaults: StyleValues) {
-        self.screen = screen; self.elements = elements; self.fields = fields; self.texts = texts; self.defaults = defaults
+        self.init(screen: screen, elements: elements, fields: fields, texts: texts, slots: [], defaults: defaults)
+    }
+    public init(screen: String, elements: [StyleElement], fields: [StyleField], texts: [StyleText], slots: [StyleSlot], defaults: StyleValues) {
+        self.screen = screen; self.elements = elements; self.fields = fields; self.texts = texts; self.slots = slots; self.defaults = defaults
     }
 
     /// 값 한 덩이를 서술로 잰다 — 없는 칸은 기본값으로 채우고 · 칸마다 꼴을 재 다시 쓰고(스칼라의 남는 열쇠는 떨어진다) · 서술에 없는 칸은 뺀다.
     /// 문구는 글자여야 하고(아니면 거부) 저장 꼴로 다시 쓴다(`StyleText.normalized` — 비면 기본 글 · 기본 글도 같은 꼴로 잰다).
-    /// 문구 이름이 칸 이름 · 다른 문구 이름과 겹치면 거부한다. 프로젝트의 Style 타입이 읽고 다시 쓴 것과 같은 값이다.
+    /// 문구 이름이 칸 이름 · 다른 문구 이름과 겹치면 거부한다. 자리는 글자여야 하고 빈 글 ⟂ 받는 종류의 참조여야 한다(아니면 `StyleSlotError`) ·
+    /// 없으면 기본 값(`defaults` 의 같은 칸 · 그것도 없으면 빈 글) · 이름이 칸 · 문구 · 다른 자리와 겹치면 거부한다.
+    /// 프로젝트의 Style 타입이 읽고 다시 쓴 것과 같은 값이다.
     public func normalize(_ style: StyleValues) throws -> StyleValues {
         var out: StyleValues = [:]
         for f in fields {
@@ -189,7 +250,29 @@ public struct StyleSchema: Equatable, Sendable {
             guard out[t.name] == nil else { throw StyleTextError.nameTaken(screen, t.name) }
             out[t.name] = .string(try resolved(t, style[t.name]))
         }
+        for slot in slots {
+            guard out[slot.name] == nil else { throw StyleSlotError.nameTaken(screen, slot.name) }
+            out[slot.name] = .string(try resolved(slot, style[slot.name] ?? defaults[slot.name] ?? ""))
+        }
         return out
+    }
+
+    /// 자리 하나의 값 — 사전의 그 칸(nil = 비었다 → 기본 값 · 기본 값도 없으면 빈 글)의 글자. 사전으로 다루는 화면 코드가 자리를 읽는 손이다.
+    /// 읽기는 관대하다 — 값이 글자가 아니거나 꼴이 아니면(받지 않는 종류 포함) 빈 글(원래 이미지)로 읽는다(거부는 `normalize` 의 몫). 서술에 없는 자리는 nil.
+    /// 참조로 풀려면 `StyleSlot.Reference.parse`.
+    public func slot(_ name: String, in style: StyleValues?) -> String? {
+        guard let s = slots.first(where: { $0.name == name }) else { return nil }
+        guard case .string(let v)? = style?[name] ?? defaults[name] else { return "" }
+        return s.normalized(v) ?? ""
+    }
+
+    private func resolved(_ s: StyleSlot, _ value: JSONValue) throws -> String {
+        guard case .string(let v) = value else { throw StyleSlotError.notText(screen, s.name, value) }
+        guard let n = s.normalized(v) else {
+            if let r = StyleSlot.Reference.parse(v) { throw StyleSlotError.kindNotAccepted(screen, s.name, r.kind) }
+            throw StyleSlotError.badReference(screen, s.name, v)
+        }
+        return n
     }
 
     /// 문구 하나의 글 — 값(사전의 그 칸 · nil = 비었다)을 저장 꼴로 · 비면 기본 글. 사전으로 다루는 화면 코드가 문구를 읽는 손이다
@@ -216,7 +299,8 @@ public struct StyleSchema: Equatable, Sendable {
 extension StyleSchema: Codable {
     private struct WireField: Codable { var name: String; var kind: FieldKind; var element: String; var label: String? }
     private struct WireText: Codable { var name: String; var element: String; var label: String?; var maxLength: Int? }
-    private enum Keys: String, CodingKey { case screen, elements, fields, texts, defaults }
+    private struct WireSlot: Codable { var name: String; var element: String; var snap: String?; var label: String?; var kinds: [String]? }
+    private enum Keys: String, CodingKey { case screen, elements, fields, texts, slots, defaults }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         screen = try c.decode(String.self, forKey: .screen)
@@ -241,6 +325,18 @@ extension StyleSchema: Codable {
             }
             return StyleText(name: w.name, element: e, label: w.label, maxLength: w.maxLength ?? StyleText.defaultMaxLength)
         }
+        slots = try (c.decodeIfPresent([WireSlot].self, forKey: .slots) ?? []).map { w in
+            guard let e = byID[w.element] else {
+                throw DecodingError.dataCorruptedError(forKey: .slots, in: c, debugDescription: "자리 \(w.name) 의 절 \(w.element) 이 elements 에 없다")
+            }
+            guard taken.insert(w.name).inserted else {
+                throw DecodingError.dataCorruptedError(forKey: .slots, in: c, debugDescription: "자리 \(w.name) 의 이름이 칸 · 문구 · 다른 자리와 겹친다")
+            }
+            if let k = w.kinds, k.isEmpty {
+                throw DecodingError.dataCorruptedError(forKey: .slots, in: c, debugDescription: "자리 \(w.name) 이 받는 종류가 없다")
+            }
+            return StyleSlot(name: w.name, element: e, snap: w.snap, label: w.label, kinds: w.kinds ?? StyleSlot.defaultKinds)
+        }
         defaults = try c.decode(StyleValues.self, forKey: .defaults)
     }
     public func encode(to encoder: Encoder) throws {
@@ -250,6 +346,9 @@ extension StyleSchema: Codable {
         try c.encode(fields.map { WireField(name: $0.name, kind: $0.kind, element: $0.element.id, label: $0.label) }, forKey: .fields)
         if !texts.isEmpty {
             try c.encode(texts.map { WireText(name: $0.name, element: $0.element.id, label: $0.label, maxLength: $0.maxLength) }, forKey: .texts)
+        }
+        if !slots.isEmpty {
+            try c.encode(slots.map { WireSlot(name: $0.name, element: $0.element.id, snap: $0.snap, label: $0.label, kinds: $0.kinds) }, forKey: .slots)
         }
         try c.encode(defaults, forKey: .defaults)
     }
@@ -294,6 +393,26 @@ public enum StyleTextError: Error, CustomStringConvertible {
         switch self {
         case .notText(let s, let t, let v): return "\(s) — 문구 \(t) 의 값이 글자가 아니다: \(v.text(pretty: false))"
         case .nameTaken(let s, let t): return "\(s) — 문구 \(t) 의 이름이 칸 · 다른 문구와 겹친다"
+        }
+    }
+}
+
+/// 자리가 서지 않는다(`StyleSchema.normalize`) — 자리의 오류는 칸 · 문구의 오류 열거(닫힌 열거)에 갈래를 더하지 않고 이 타입으로 낸다.
+public enum StyleSlotError: Error, CustomStringConvertible {
+    /// 자리의 값(또는 기본 값)이 글자가 아니다 — 화면 · 자리 이름 · 값.
+    case notText(String, String, JSONValue)
+    /// 빈 글도 `<종류>:<이름>` 꼴도 아니다(이름에 경로 글자 · 줄바꿈이 들었다 포함) — 화면 · 자리 이름 · 값.
+    case badReference(String, String, String)
+    /// 그 자리가 받지 않는 종류다(`StyleSlot.kinds` 밖) — 화면 · 자리 이름 · 종류.
+    case kindNotAccepted(String, String, String)
+    /// 자리 이름이 칸 · 문구 · 다른 자리와 겹친다 — 화면 · 자리 이름.
+    case nameTaken(String, String)
+    public var description: String {
+        switch self {
+        case .notText(let s, let n, let v): return "\(s) — 자리 \(n) 의 값이 글자가 아니다: \(v.text(pretty: false))"
+        case .badReference(let s, let n, let v): return "\(s) — 자리 \(n) 의 값이 빈 글도 <종류>:<이름> 꼴도 아니다: \(v)"
+        case .kindNotAccepted(let s, let n, let k): return "\(s) — 자리 \(n) 은 종류 \(k) 를 받지 않는다"
+        case .nameTaken(let s, let n): return "\(s) — 자리 \(n) 의 이름이 칸 · 문구 · 다른 자리와 겹친다"
         }
     }
 }
