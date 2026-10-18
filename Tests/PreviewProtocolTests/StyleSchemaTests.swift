@@ -267,10 +267,14 @@ import Testing
             try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q"},{"name":"p","element":"q"}]"#))
         }
         #expect(throws: (any Error).self, "받는 종류가 없다") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q","kinds":[]}]"#)) }
+        for bad in [#"[""]"#, #"["a:b"]"#, #"["모델"]"#, #"["iso model"]"#] {
+            #expect(throws: (any Error).self, "종류 낱말의 꼴: \(bad)") { try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q","kinds":"# + bad + "}]")) }
+        }
+        #expect(try JSONDecoder().decode(StyleSchema.self, from: schema(#"[{"name":"p","element":"q","kinds":["Iso_Model-2"]}]"#)).slots.first?.kinds == ["Iso_Model-2"])
     }
 
     /// 자리의 저장 꼴 — 빈 글(원래 이미지)과 받는 종류의 참조는 그대로 · 없으면 기본 값(없으면 빈 글) · **빈 글은 기본 값으로 돌아가지 않는다** ·
-    /// 글자 아님 · 꼴 아님 · 경로 글자 · 받지 않는 종류는 `StyleSlotError` · 이름 겹침은 `nameTaken` · 다시 재도 같다.
+    /// 받지 않는 종류의 참조는 빈 글(원래 이미지 — 문구의 강제 정규화와 같은 뜻) · 글자 아님 · 꼴 아님 · 경로 글자는 `StyleSlotError` · 이름 겹침은 `nameTaken` · 다시 재도 같다.
     @Test func normalizeKeepsSlotReferencesAndRefusesTheRest() throws {
         let s = Self.slotted
         let got = try s.normalize(["potPicture": "isomodel:fern", "stale": "isomodel:x"])
@@ -283,16 +287,22 @@ import Testing
         #expect(throws: StyleSlotError.self, "꼴 아님") { try s.normalize(["potPicture": "fern"]) }
         #expect(throws: StyleSlotError.self, "이름 빔") { try s.normalize(["potPicture": "isomodel:"]) }
         #expect(throws: StyleSlotError.self, "종류 빔") { try s.normalize(["potPicture": ":fern"]) }
-        #expect(throws: StyleSlotError.self, "받지 않는 종류") { try s.normalize(["potPicture": "photo:fern"]) }
-        #expect(throws: StyleSlotError.self, "받지 않는 종류(다른 자리는 받는다)") { try s.normalize(["potPicture": "isoscene:meadow"]) }
-        for bad in ["isomodel:../fern", "isomodel:a/b", "isomodel:a\\b", "isomodel:a..b", "isomodel:a\nb"] {
-            #expect(throws: StyleSlotError.self, "경로 글자 · 줄바꿈: \(bad)") { try s.normalize(["potPicture": .string(bad)]) }
+        #expect(try s.normalize(["potPicture": "photo:fern"])["potPicture"] == "", "받지 않는 종류 = 원래 이미지(안 파일이 통째로 막히지 않는다)")
+        #expect(try s.normalize(["potPicture": "isoscene:meadow"])["potPicture"] == "", "받지 않는 종류(다른 자리는 받는다)")
+        #expect(try s.normalize(["potPicture": "IsoModel:fern"])["potPicture"] == "", "종류는 대소문자를 가린다")
+        for bad in ["isomodel:../fern", "isomodel:a/b", "isomodel:a\\b", "isomodel:..", "isomodel:.", "isomodel:.hidden", "isomodel: fern", "isomodel:fern ",
+                    "isomodel:a\nb", "isomodel:a\u{202E}b", "isomodel:a\u{200B}b"] {
+            #expect(throws: StyleSlotError.self, "경로 글자 · 숨김 · 공백 · 제어 · 서식 문자: \(bad)") { try s.normalize(["potPicture": .string(bad)]) }
         }
-        do { _ = try s.normalize(["potPicture": "photo:fern"]); Issue.record("거부해야 한다") } catch let e as StyleSlotError {
-            guard case .kindNotAccepted("home", "potPicture", "photo") = e else { Issue.record("받지 않는 종류로 갈라야 한다: \(e)"); return }
+        #expect(try s.normalize(["potPicture": "isomodel:fern..2"])["potPicture"] == "isomodel:fern..2", "이름 안의 `..` 는 경로가 아니다")
+        do { _ = try s.normalize(["potPicture": "isomodel:.."]); Issue.record("거부해야 한다") } catch let e as StyleSlotError {
+            guard case .badReference("home", "potPicture", "isomodel:..") = e else { Issue.record("꼴 아님으로 갈라야 한다: \(e)"); return }
         }
+        let otherDefault = StyleSchema(screen: "x", elements: [Self.pot], fields: [], texts: [],
+                                       slots: [StyleSlot(name: "potPicture", element: Self.pot)], defaults: ["potPicture": "photo:x"])
+        #expect(try otherDefault.normalize([:])["potPicture"] == "", "기본 값도 같은 정규화")
         let badDefault = StyleSchema(screen: "x", elements: [Self.pot], fields: [], texts: [],
-                                     slots: [StyleSlot(name: "potPicture", element: Self.pot)], defaults: ["potPicture": "photo:x"])
+                                     slots: [StyleSlot(name: "potPicture", element: Self.pot)], defaults: ["potPicture": "isomodel:a/b"])
         #expect(throws: StyleSlotError.self, "기본 값도 잰다") { try badDefault.normalize([:]) }
         let clash = StyleSchema(screen: "x", elements: [Self.pot], fields: StyleField.list([("potOn", .bool)], elements: [Self.pot]), texts: [],
                                 slots: [StyleSlot(name: "potOn", element: Self.pot)], defaults: ["potOn": true])
@@ -319,7 +329,9 @@ import Testing
         #expect(StyleSlot.Reference.parse("isomodel:fern:two")?.name == "fern:two", "첫 `:` 에서 가른다")
         #expect(StyleSlot.Reference.parse("isomodel:큰 화분")?.name == "큰 화분", "이름은 서가의 파일 이름 — 공백 · 한글을 받는다")
         #expect(StyleSlot.Reference(kind: "isomodel", name: "fern").text == "isomodel:fern")
-        for bad in ["", "fern", ":fern", "isomodel:", "iso model:fern", "제목:글", "isomodel:../x", "isomodel:a/b", "isomodel:a\tb"] {
+        #expect(StyleSlot.Reference.parse("isomodel:v1..final")?.name == "v1..final", "이름 안의 `..` 는 받는다")
+        for bad in ["", "fern", ":fern", "isomodel:", "iso model:fern", "제목:글", "isomodel:../x", "isomodel:a/b", "isomodel:a\tb",
+                    "isomodel:..", "isomodel:.git", "isomodel:\u{202E}lmth", "isomodel:fern\u{FEFF}", "isomodel: x"] {
             #expect(StyleSlot.Reference.parse(bad) == nil, "꼴 아님: \(bad)")
         }
     }
