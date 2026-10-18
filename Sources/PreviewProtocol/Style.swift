@@ -190,11 +190,11 @@ public struct StyleSlot: Identifiable, Equatable, Sendable {
         /// 저장 꼴 글자 — `<종류>:<이름>`.
         public var text: String { "\(kind):\(name)" }
 
-        /// 글자 하나 → 참조(꼴이 아니면 nil · 빈 글도 nil). 첫 `:` 앞이 종류(비지 않는 낱말 — 글자 · 숫자 · `-` · `_`) · 뒤가 이름.
+        /// 글자 하나 → 참조(꼴이 아니면 nil · 빈 글도 nil). 첫 `:` 앞이 종류(비지 않는 ASCII 낱말 — 영문자 · 숫자 · `-` · `_`) · 뒤가 이름.
         public static func parse(_ text: String) -> Reference? {
             guard let colon = text.firstIndex(of: ":") else { return nil }
             let kind = String(text[..<colon]), name = String(text[text.index(after: colon)...])
-            guard !kind.isEmpty, kind.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }) else { return nil }
+            guard !kind.isEmpty, kind.unicodeScalars.allSatisfy({ $0.isASCII && (CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_") }) else { return nil }
             guard !name.isEmpty, !name.contains("/"), !name.contains("\\"), !name.contains(".."),
                   !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }) else { return nil }
             return Reference(kind: kind, name: name)

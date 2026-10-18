@@ -319,7 +319,7 @@ import Testing
         #expect(StyleSlot.Reference.parse("isomodel:fern:two")?.name == "fern:two", "첫 `:` 에서 가른다")
         #expect(StyleSlot.Reference.parse("isomodel:큰 화분")?.name == "큰 화분", "이름은 서가의 파일 이름 — 공백 · 한글을 받는다")
         #expect(StyleSlot.Reference(kind: "isomodel", name: "fern").text == "isomodel:fern")
-        for bad in ["", "fern", ":fern", "isomodel:", "iso model:fern", "isomodel:../x", "isomodel:a/b", "isomodel:a\tb"] {
+        for bad in ["", "fern", ":fern", "isomodel:", "iso model:fern", "제목:글", "isomodel:../x", "isomodel:a/b", "isomodel:a\tb"] {
             #expect(StyleSlot.Reference.parse(bad) == nil, "꼴 아님: \(bad)")
         }
     }
