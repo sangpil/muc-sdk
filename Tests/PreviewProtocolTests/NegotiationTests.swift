@@ -22,9 +22,9 @@ import Testing
         return l
     })
     /// 다음 판 엔진 — 제 판(N+1) · 판 N(지금 꼴 그대로) · 판 N-1(스텝 사슬)을 받는다.
-    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v3])
-    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → 4.
-    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4])
+    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v4])
+    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → 4 → 5.
+    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4, .v4to5])
 
     static func hello(_ version: Int?) -> Data {
         var top: [String: Any] = ["type": "hello", "role": "host", "pid": 1, "name": "h"]
@@ -92,20 +92,56 @@ import Testing
         #expect(try probe.decode(try JSONSerialization.data(withJSONObject: down)) == .bye(Bye(reason: "r")), "올리기는 차례대로")
     }
 
-    /// 스텝 사슬 — 1 → 2 → 3 → 4 를 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
+    /// 스텝 사슬 — 1 → 2 → 3 → 4 → 5 를 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
     @Test func chainedStepsEqualTheDirectWalk() throws {
         let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", ia: IAInfo(appScreens: ["a"], entryWords: [], entryHands: [:], aliases: [:], planned: []),
                                         frames: [], tokensBuilt: nil))
         let line = try ProtocolDialect.v1.encode(hello)
         let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(hello)) as? ProtocolDialect.Line)
-        let three = try #require(try ProtocolDialect.Step.v3to4.lower(native))
+        let four = try #require(try ProtocolDialect.Step.v4to5.lower(native))
+        let three = try #require(try ProtocolDialect.Step.v3to4.lower(four))
         let two = try #require(try ProtocolDialect.Step.v2to3.lower(three))
         let walked = try #require(try ProtocolDialect.Step.v1to2.lower(two))
         let chained = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
         #expect(NSDictionary(dictionary: chained) == NSDictionary(dictionary: walked))
         guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
         #expect(back.ia == nil && back.frames == nil, "판 1 은 프로젝트 데이터 칸이 없다")
-        #expect(ProtocolDialect.v1.version == 1 && ProtocolDialect.v2.version == 2 && ProtocolDialect.v3.version == 3)
+        #expect(ProtocolDialect.v1.version == 1 && ProtocolDialect.v2.version == 2 && ProtocolDialect.v3.version == 3 && ProtocolDialect.v4.version == 4)
+    }
+
+    /// 판 5 → 4 내리기 — hello 의 Style 서술마다 자리 목록을 걷는다(판 4 는 자리를 모른다 · 문구는 남는다) · 올리기는 그대로(자리 없는 서술 = 빈 목록) ·
+    /// `render` · `patch` 의 자리 값(Style 값 사전의 글자 칸)은 그대로 내려간다 — 판 4 의 호스트는 그것을 서술 밖 칸으로 뺀다(`StyleSchemaTests`).
+    @Test func loweringToFourDropsSlots() throws {
+        let el = StyleElement(id: "pot", label: "화분", snapPrefix: "pot")
+        let schema = StyleSchema(screen: "s", elements: [el], fields: [StyleField(name: "potOn", kind: .bool, element: el)],
+                                 texts: [StyleText(name: "potTitle", element: el, maxLength: 20)],
+                                 slots: [StyleSlot(name: "potPicture", element: el, snap: "pot.picture")],
+                                 defaults: ["potOn": true, "potTitle": "화분"])
+        let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", screens: [ScreenInfo(name: "s", states: [], style: schema)],
+                                        layers: [LayerInfo(name: "chrome", style: schema)]))
+        let line = try ProtocolDialect.v4.encode(hello)
+        let top = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+        for key in ["screens", "layers"] {
+            let style = try #require((top[key] as? [[String: Any]])?.first?["style"] as? [String: Any])
+            #expect(style["slots"] == nil, "\(key) 의 서술에서 자리 목록을 걷는다")
+            #expect(style["texts"] != nil && style["fields"] != nil && style["defaults"] != nil, "판 4 의 칸(문구 포함)은 남는다")
+        }
+        guard case .hello(let back) = try ProtocolDialect.v4.decode(line) else { Issue.record(); return }
+        #expect(back.screens?.first?.style.slots == [], "판 4 의 줄은 자리 없는 서술로 읽힌다")
+        #expect(back.screens?.first?.style.texts == schema.texts && back.screens?.first?.style.fields == schema.fields)
+
+        let render = Message.render(RenderRequest(seq: 2, screen: "s", state: "n", style: ["potOn": false, "potPicture": "isomodel:fern"], size: Size(w: 1, h: 1), scale: 1))
+        let patch = Message.patch(Patch(seq: 3, edits: [Edit(field: "potPicture", value: "")]))
+        for m in [render, patch] {
+            let down = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v4.encode(m)) as? [String: Any])
+            let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(m)) as? [String: Any])
+            #expect(NSDictionary(dictionary: down) == NSDictionary(dictionary: native), "\(m.type) 의 줄은 판 4 에서도 같다")
+            #expect(try ProtocolDialect.v4.decode(ProtocolDialect.v4.encode(m)) == m)
+        }
+        // 판 3 으로 내리면 자리 · 문구 둘 다 걷힌다
+        let three = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v3.encode(hello)) as? [String: Any])
+        let style3 = try #require((three["screens"] as? [[String: Any]])?.first?["style"] as? [String: Any])
+        #expect(style3["slots"] == nil && style3["texts"] == nil)
     }
 
     /// 판 4 → 3 내리기 — hello 의 Style 서술마다 문구 목록을 걷는다(판 3 은 문구를 모른다) · 올리기는 그대로(문구 없는 서술 = 빈 목록) ·
