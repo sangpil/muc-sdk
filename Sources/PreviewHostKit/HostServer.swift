@@ -8,6 +8,8 @@ import SwiftUI
 // 호스트의 몸 — 연결 하나(= 세션 하나)를 받아 메시지를 처리한다. 호스트 프로세스는 연결마다 몸 하나를 세운다(`HostListener`). 읽기 스레드는 받은 것을 **우편함**에 넣고 메인에 한 번만 깨운다.
 // 우편함은 연달아 온 patch 를 하나로 합친다(칸마다 마지막 값 · 입력 번호는 가장 큰 것) — 엔진이 최신값 우선으로 보내도
 // 메인이 바쁜 사이 둘 이상 쌓일 수 있다(진행 중 한도 > 1 · 엔진 재연결 직후). 한 바퀴에 렌더는 한 장.
+// 장을 그리기 전마다 세션의 준비(`PreviewSession.prepare` — 모델 그림 같은 비동기 원천)를 기다린다 — 처리는 메인 액터의 한 줄(`drain`)이라
+// 기다리는 동안 메인은 비고(원천의 일이 메인에서 돈다) · 뒤에 온 메시지는 차례대로 그 뒤에 선다(우편함이 받아 두고 patch 는 합친다).
 
 final class Mailbox: @unchecked Sendable {
     enum Item { case message(Message), patch(Patch) }
@@ -77,27 +79,42 @@ final class HostServer {
         conn.start(name: "preview-host.read", onInbound: { [self] inbound in
             let t = PreviewClock.now()
             if box.push(inbound.message, recv: t) {
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.conn = conn; self.drain() } }
+                Task { @MainActor in self.conn = conn; await self.drain() }
             }
         }, onClose: { _ in onClose() })
     }
 
-    func drain() {
-        let start = PreviewClock.now()
-        for (item, recv) in mailbox.drain() {
-            do {
-                switch item {
-                case .patch(let p): try handlePatch(p, recv: recv, start: start)
-                case .message(let m): try handle(m, recv: recv, start: start)
+    /// 우편함을 비울 때까지 차례대로 — 이미 도는 줄이 있으면 곧장 돌아온다(그 줄이 새로 온 것까지 집는다). 돌아오면 우편함이 비었다.
+    private var draining = false
+    func drain() async {
+        guard !draining else { return }
+        draining = true
+        defer { draining = false }
+        while true {
+            let items = mailbox.drain()
+            if items.isEmpty { return }
+            let start = PreviewClock.now()
+            for (item, recv) in items {
+                do {
+                    switch item {
+                    case .patch(let p): try await handlePatch(p, recv: recv, start: start)
+                    case .message(let m): try await handle(m, recv: recv, start: start)
+                    }
+                } catch {
+                    let seq: UInt64? = switch item { case .patch(let p): p.seq; case .message(let m): m.seq }
+                    _ = try? conn.send(.error(ErrorMessage(seq: seq, message: String(describing: error))))
                 }
-            } catch {
-                let seq: UInt64? = switch item { case .patch(let p): p.seq; case .message(let m): m.seq }
-                _ = try? conn.send(.error(ErrorMessage(seq: seq, message: String(describing: error))))
             }
         }
     }
 
-    private func handle(_ m: Message, recv: UInt64, start: UInt64) throws {
+    /// 세션의 준비를 기다린다 — 그 사이 세션이 닫히거나(`shutdown`) 다른 화면으로 갈렸으면 거짓(이 장은 그리지 않는다).
+    private func prepared(_ session: any PreviewSession) async -> Bool {
+        await session.prepare()
+        return current?.session === session
+    }
+
+    private func handle(_ m: Message, recv: UInt64, start: UInt64) async throws {
         switch m {
         case .hello(let h):
             // 판 — 엔진이 판정자다(새 엔진은 이 호스트의 판으로 말한다). 엔진이 옛 판이면 이 꼴을 모른다 — 사람 말을 오류로 보내고 끊는다(엔진의 떠남과 같은 길로 끝난다)
@@ -124,18 +141,22 @@ final class HostServer {
                 HostTrace.mark("세션 섬")
             }
             // 값은 render 가 갈아 끼운다(엔진이 안 파일에서 읽은 것 · 픽스처 갈아 끼우기) — 앞 patch 는 그 밑에 묻힌다
-            try current!.session.load(style: r.style, layers: r.layers ?? [], fixture: r.fixture)
+            let session = current!.session
+            try session.load(style: r.style, layers: r.layers ?? [], fixture: r.fixture)
+            guard await prepared(session) else { return }
             // 자기 창이 서 있으면 그 창도 새 값 · 틀로(답은 늘 그 값의 프레임 — 엔진이 창 밑에 둔다)
-            if let p = presenter { p.resize(to: CGSize(width: r.size.w, height: r.size.h)); p.update(current!.session.view(context(r, offscreen: false))) }
+            if let p = presenter { p.resize(to: CGSize(width: r.size.w, height: r.size.h)); p.update(session.view(context(r, offscreen: false))) }
             try produce(seq: r.seq, recv: recv, start: start)
             HostTrace.mark("프레임 보냄 \(r.seq)")
         case .tokensChanged(let t):
             onTokensChanged()
             renderer = FrameRenderer(); renderKey = nil   // 토큰 값이 바뀌었다 — 앞 장의 뷰 그래프를 버린다
+            if let cur = current { guard await prepared(cur.session) else { return } }
             if let p = presenter, let req = request, let cur = current { p.update(cur.session.view(context(req, offscreen: false))) }
             try produce(seq: t.seq, recv: recv, start: start)
         case .shot(let s):
             guard let req = request, let cur = current else { throw PreviewHostError.noSession }
+            guard await prepared(cur.session) else { return }
             let t0 = PreviewClock.now()
             let f = try renderer.render(cur.session.view(context(req, offscreen: true)), size: CGSize(width: req.size.w, height: req.size.h), scale: req.scale)
             try FrameRenderer.writePNG(f.image, to: URL(fileURLWithPath: s.path))
@@ -147,6 +168,7 @@ final class HostServer {
                 try conn.send(.ack(Ack(seq: w.seq, applied: appliedSeq, ms: PreviewClock.ms(start, PreviewClock.now()))))
                 return
             }
+            guard await prepared(cur.session) else { return }
             let size = CGSize(width: w.w ?? req.size.w, height: w.h ?? req.size.h)
             let p = presenter ?? WindowPresenter(size: size, origin: CGPoint(x: w.x, y: w.y))
             presenter = p
@@ -169,11 +191,12 @@ final class HostServer {
         region = nil; current = nil; request = nil; renderer = nil
     }
 
-    private func handlePatch(_ p: Patch, recv: UInt64, start: UInt64) throws {
+    private func handlePatch(_ p: Patch, recv: UInt64, start: UInt64) async throws {
         guard let cur = current else { throw PreviewHostError.noSession }
         let before = presenter == nil ? [] : cur.session.snapFrames()
         for e in p.edits { try cur.session.apply(e) }
         appliedSeq = max(appliedSeq, p.seq)
+        guard await prepared(cur.session) else { return }
         if let pres = presenter, let req = request {
             pres.update(cur.session.view(context(req, offscreen: false)))
             ackAfterCommit(seq: p.seq, recv: recv, start: start, before: before)

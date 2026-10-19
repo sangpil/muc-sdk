@@ -139,7 +139,7 @@
 | 이름 | 약속 | 무엇 |
 |---|---|---|
 | `PreviewHost` | 프로젝트 | 진입점 `PreviewHost.main(name:screens:layers:ia:frames:tokensBuilt:arguments:onTokensChanged:)`(`ia` · `frames` · `tokensBuilt` = hello 에 싣는 프로젝트 데이터 · 기본 nil · `arguments` 기본 = 실행 인자 · `onTokensChanged` = 엔진의 `tokensChanged` 를 받았을 때 프로젝트가 토큰을 다시 읽는 손 · 기본 빈 손) — `--socket <경로>` ⟂ `--folder <프로젝트 폴더>` · `--activity none` · 등록부 셈 · 소켓 듣기 · **연결 = 세션**(듣기는 프로세스 수명 동안 열려 있어 같은 자리로 연결을 여럿 받는다 — 세션마다 hello · seq · 공유 메모리 · 창이 따로 · 세션이 닫히면 그 세션의 창 · 칸을 거둔다) · `hello` 를 NSApplication 을 세우기 전에 · 엔진이 떠나면 끝난다(연결이 모두 끊기고 짧은 유예 안에 다시 붙지 않거나 · 붙기 전이라도 띄운 프로세스가 끝나면 — 고아로 남지 않는다 · 소켓 파일은 끝날 때 지운다) · 모르는 인자는 건너뛴다 |
-| `PreviewScreen` · `PreviewSession` · `RenderContext` · `PreviewHostError` | 프로젝트 | 프로젝트가 화면을 꽂는 자리 — 화면 하나의 `hello` 칸 · 상태로 서는 살아 있는 값(`render` 의 값 받기 `load(style:layers:fixture:)` — 같은 값이면 그대로 · 칸 바꾸기 · 틀까지 합친 뷰 · 요소 경계 · 요소 목록 · 층 보고 `layerReports`) · 한 장의 바깥 조건(크기 · 테마 · 층 · 창 없는 렌더 · 층만 · 앱 손 · 스크롤 흉내 · 요소 탭 통로) |
+| `PreviewScreen` · `PreviewSession` · `RenderContext` · `PreviewHostError` | 프로젝트 | 프로젝트가 화면을 꽂는 자리 — 화면 하나의 `hello` 칸 · 상태로 서는 살아 있는 값(`render` 의 값 받기 `load(style:layers:fixture:)` — 같은 값이면 그대로 · 칸 바꾸기 · 틀까지 합친 뷰 · 요소 경계 · 요소 목록 · 층 보고 `layerReports` · 그리기 전 준비 `prepare()` — 비동기 · 지금 값의 그림이 기다리는 원천(모델 그림 · 파일 읽기)이 끝날 때 돌아온다 · 실패한 원천은 대체 그림으로 두고 던지지 않는다 · 기본 구현은 곧장 · 호스트는 장을 그리기 전마다(`render` · `patch` · 토큰 바뀜 · `shot` · 자기 창) 기다리고 그 사이 온 메시지는 차례대로 뒤에 선다(patch 는 합쳐진다) — 창 없는 장도 첫 장부터 그 값의 그림 · 시간으로 기다리지 않는다 · 와이어는 그대로(프로토콜 판을 올리지 않는다)) · 한 장의 바깥 조건(크기 · 테마 · 층 · 창 없는 렌더 · 층만 · 앱 손 · 스크롤 흉내 · 요소 탭 통로) |
 | `FrameRenderer` | 프로젝트 | 창 없는 렌더 — `ImageRenderer.cgImage` 의 바이트 그대로(꼴이 다르면 바꿔 쓰지 않고 거절) · 렌더러 다시 쓰기(같은 render 와 그 위의 patch 사이에서만 — 다른 render 는 새 렌더러: 다시 쓴 렌더러는 앞 장의 뷰 그래프를 들고 있다) · 프로젝트의 호스트 시험이 같은 렌더러로 그린 장을 잰다. 그림을 파일로 쓰는 손(호스트의 `shot`)은 SDK 안의 손이다 |
 | `HostCommit` | 엔진 | 다음 커밋 뒤 한 번(`beforeWaiting` 관찰자 — 호스트 자기 창의 「창에 반영 끝」 · 엔진의 기준선 창도 같은 눈금을 쓴다). 자기 창(Xcode Previews 방식 — 활성화하지 않는 key 패널 · 엔진 창 번호 위 보통 층 · 보이는 부분만 덮기)은 SDK 안의 손이다 |
 | `FrameSink` · `View.collectFrames(into:)` | 프로젝트 | 프레임 수집 — `.snapID` 앵커를 뿌리에서 모아 `SnapFrame` 으로(`ImageRenderer` 안에서도 돈다 · 위 → 왼쪽 → id 차례) |
@@ -190,7 +190,7 @@
 
 ## 5. 판
 
-**SDK 판: 1.3.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 1.4.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 

@@ -8,7 +8,8 @@ import PreviewWire
 //   무엇       : 미리보기 호스트 런타임 — 진입점 · 화면 등록 프로토콜 · 창 없는 렌더 · 자기 창 · 프레임 수집.
 //   누가 부르나 : 프로젝트의 미리보기 호스트 실행물(`main.swift` 한 줄) · 프로젝트의 호스트 시험 · 엔진의 도구(창 없는 렌더 · 커밋 눈금).
 //                앱 제품은 물지 않는다.
-//   지키는 것   : 프로젝트를 모른다(등록부는 호스트 실행물이 넘긴다) · 연결 = 세션 · 엔진의 수명에 묶인다 · 프레임은 `ImageRenderer.cgImage` 바이트 그대로.
+//   지키는 것   : 프로젝트를 모른다(등록부는 호스트 실행물이 넘긴다) · 연결 = 세션 · 엔진의 수명에 묶인다 · 프레임은 `ImageRenderer.cgImage` 바이트 그대로 ·
+//                장을 그리기 전마다 세션의 준비(`PreviewSession.prepare`)를 기다린다 — 창 없는 장도 첫 장부터 그 값의 그림.
 //   시작점     : `PreviewHost` · `PreviewScreen` · `PreviewSession` · `FrameRenderer`
 //
 // 호스트 진입점 — 프로젝트의 `main.swift` 는 이 한 줄이다: `PreviewHost.main(name:, screens:, layers:)` — 프로젝트의 데이터(IA 낱말 · 기기 틀 ·

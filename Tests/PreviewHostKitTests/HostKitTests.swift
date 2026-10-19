@@ -8,7 +8,8 @@ import SwiftUI
 import Testing
 
 // 호스트 런타임 — 우편함이 연달아 온 patch 를 하나로 합친다 · 프레임 수집함의 차례 · 자기 창의 보이는 부분 · 엔진 hello 의 판(옛 엔진은 거절) ·
-// 연결 = 세션(한 호스트가 같은 소켓 자리로 연결을 여럿 받고 세션마다 따로 그린다 · 모두 닫히면 끝).
+// 연결 = 세션(한 호스트가 같은 소켓 자리로 연결을 여럿 받고 세션마다 따로 그린다 · 모두 닫히면 끝) ·
+// 그리기 전 준비(세션의 `prepare` 가 끝난 뒤에야 장을 그린다 — 첫 장부터 그 값의 그림 · 그 사이 온 메시지는 차례대로 뒤에 선다).
 // 앵커를 모으는 손(`collectFrames`)은 프로젝트의 화면 코드가 `.snapID` 를 단 빌드(트레이트 `ActiveMarks`)에서만 값이 차므로 그 프로젝트 쪽 시험이 잰다.
 
 @Suite struct HostKitTests {
@@ -51,7 +52,7 @@ import Testing
     }
 
     /// 엔진 hello 의 판 — 같거나 새 판이면 받는다(새 엔진은 호스트의 판으로 말한다 · 엔진이 판정자) · 옛 판이면 사람 말을 오류로 보내고 끊는다.
-    @MainActor @Test func hostRefusesAnOlderEngineAndTakesANewerOne() throws {
+    @MainActor @Test func hostRefusesAnOlderEngineAndTakesANewerOne() async throws {
         let now = PreviewProtocolVersion.current
         for (engine, refused) in [(now - 1, true), (now, false), (now + 1, false)] {
             let (a, b) = try UnixSocket.pair()
@@ -61,7 +62,7 @@ import Testing
             let got = Inbox()
             engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
             _ = server.mailbox.push(.hello(Hello(role: .engine, protocolVersion: engine, pid: 1, name: "e")), recv: 0)
-            server.drain()
+            await server.drain()
             if refused {
                 #expect(got.waitClosed(), "옛 엔진 \(engine) — 끊었다")
                 #expect(got.messages == [.error(ErrorMessage(seq: nil, message: ProtocolMismatch.hostNewer(host: now, engine: engine).description))])
@@ -74,7 +75,7 @@ import Testing
     }
 
     /// 모르는 공유 메모리 종류 — 칸을 열지 않고(오류 없이) 프레임을 소켓으로 보낸다(전송 A).
-    @MainActor @Test func anUnknownSharedMemoryKindFallsBackToTheSocket() throws {
+    @MainActor @Test func anUnknownSharedMemoryKindFallsBackToTheSocket() async throws {
         let (a, b) = try UnixSocket.pair()
         let server = HostServer(screens: [], onTokensChanged: {})
         server.conn = Connection(fd: a)
@@ -83,7 +84,7 @@ import Testing
         engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
         let shared = SharedMemoryInfo(kind: SharedMemoryInfo.Kind(rawValue: "mach"), name: "x", slotBytes: 1, slots: 1)
         _ = server.mailbox.push(.hello(Hello(role: .engine, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "e", shared: shared)), recv: 0)
-        server.drain()
+        await server.drain()
         #expect(server.region == nil)
         #expect(!got.waitClosed(timeout: 0.1) && got.messages.isEmpty, "오류 없이 받았다")
         engineSide.close(); server.conn.close()
@@ -184,6 +185,104 @@ import Testing
         #expect(!emptied.isSet, "유예 안에 다시 붙었다 — 끝나지 않는다")
         c.close()
         #expect(await Self.until { emptied.isSet })
+    }
+}
+
+/// 그리기 전 준비 — 세션의 비동기 원천(모델 그림)이 차기 전에는 장을 그리지 않는다. 시간으로 기다리지 않는다: 원천의 끝을 시험이 손으로 연다.
+@Suite(.serialized) struct HostPrepareTests {
+    /// 값을 받으면 원천을 기다려야 하는 세션 — 준비가 열리기 전의 그림은 「빈 자리」 · 연 뒤는 「찬 자리」. 그린 장마다 그때 찼었나를 적는다.
+    @MainActor final class Slow: PreviewSession {
+        var filled = false
+        var drawn: [Bool] = []
+        var prepares = 0
+        /// 준비가 기다리는 손 — 시험이 연다(`open`). nil = 기다리는 중이 아님.
+        var gate: CheckedContinuation<Void, Never>?
+        func load(style: StyleValues?, layers: [LayerState], fixture: JSONValue?) throws { filled = false }
+        func apply(_ edit: Edit) throws { filled = false }
+        func prepare() async {
+            prepares += 1
+            guard !filled else { return }
+            await withCheckedContinuation { gate = $0 }
+            filled = true
+        }
+        func open() { gate?.resume(); gate = nil }
+        func view(_ context: RenderContext) -> AnyView {
+            drawn.append(filled)
+            return AnyView((filled ? Color.red : Color.clear).frame(width: context.size.width, height: context.size.height))
+        }
+        func snapFrames() -> [SnapFrame] { [] }
+        func elementIDs() -> [String] { [] }
+        func layerReports() -> [LayerReport] { [] }
+    }
+    struct Screen: PreviewScreen {
+        let name = "slow"
+        let made: Made
+        func info() throws -> ScreenInfo { ScreenInfo(name: name, states: ["n"], style: StyleSchema(screen: name, elements: [], fields: [], defaults: [:])) }
+        func session(state: String) throws -> any PreviewSession { MainActor.assumeIsolated { made.make() } }
+    }
+    @MainActor final class Made: @unchecked Sendable {
+        var session: Slow?
+        func make() -> Slow { let s = Slow(); session = s; return s }
+    }
+    /// 이 액터의 다른 일(우편함을 비우는 줄)에 차례를 넘기며 조건을 기다린다 — 시간이 아니라 차례로.
+    @MainActor static func until(_ cond: () -> Bool) async -> Bool {
+        for _ in 0..<10_000 { if cond() { return true }; await Task.yield() }
+        return cond()
+    }
+    static func frames(_ got: Inbox) -> [UInt64] { got.messages.compactMap { if case .frame(let f) = $0 { f.seq } else { nil } } }
+
+    /// render — 준비가 열리기 전에는 장이 없고 · 연 뒤의 첫 장이 찬 그림이다 · 기다리는 사이 온 patch 는 그 뒤에 차례대로(그것도 찬 그림).
+    @MainActor @Test func theFirstFrameWaitsForThePreparation() async throws {
+        let (a, b) = try UnixSocket.pair()
+        let made = Made()
+        let server = HostServer(screens: [Screen(made: made)], onTokensChanged: {})
+        server.conn = Connection(fd: a)
+        let engineSide = Connection(fd: b)
+        let got = Inbox()
+        engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
+        defer { engineSide.close(); server.conn.close() }
+
+        _ = server.mailbox.push(.render(RenderRequest(seq: 1, screen: "slow", state: "n", size: Size(w: 4, h: 4), scale: 1)), recv: 0)
+        let loop = Task { @MainActor in await server.drain() }
+        #expect(await Self.until { made.session?.gate != nil }, "준비가 원천을 기다린다")
+        let session = try #require(made.session)
+        #expect(session.drawn.isEmpty, "준비가 열리기 전에는 그리지 않는다")
+        // 기다리는 사이 온 patch — 우편함에 선다(도는 줄이 집는다)
+        _ = server.mailbox.push(.patch(Patch(seq: 2, edits: [Edit(field: "x", value: .bool(true))])), recv: 0)
+        session.open()
+        #expect(await Self.until { session.gate != nil }, "patch 도 제 준비를 기다린다")
+        #expect(session.drawn == [true])
+        session.open()
+        await loop.value
+        #expect(session.drawn == [true, true], "장마다 찬 그림")
+        #expect(Self.waitFrames(got, [1, 2]), "장은 차례대로 — render 다음 patch")
+    }
+
+    /// 준비하는 사이 세션이 닫히면 그 장은 그리지 않는다(닫힌 연결에 쓰지 않는다).
+    @MainActor @Test func aSessionClosedWhilePreparingDrawsNothing() async throws {
+        let (a, b) = try UnixSocket.pair()
+        let made = Made()
+        let server = HostServer(screens: [Screen(made: made)], onTokensChanged: {})
+        server.conn = Connection(fd: a)
+        let engineSide = Connection(fd: b)
+        let got = Inbox()
+        engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
+        defer { engineSide.close(); server.conn.close() }
+        _ = server.mailbox.push(.render(RenderRequest(seq: 1, screen: "slow", state: "n", size: Size(w: 4, h: 4), scale: 1)), recv: 0)
+        let loop = Task { @MainActor in await server.drain() }
+        #expect(await Self.until { made.session?.gate != nil })
+        let session = try #require(made.session)
+        server.shutdown()
+        session.open()
+        await loop.value
+        #expect(session.drawn.isEmpty)
+        #expect(!got.waitClosed(timeout: 0.1) && got.messages.isEmpty, "보낸 것 없음")
+    }
+
+    /// 프레임은 엔진 쪽 읽기 스레드가 받는다 — 보내기는 이미 끝났고 받는 줄만 기다린다(장이 이미 왔으면 곧장).
+    static func waitFrames(_ got: Inbox, _ want: [UInt64]) -> Bool {
+        for _ in 0..<200 { if frames(got) == want { return true }; usleep(10_000) }
+        return frames(got) == want
     }
 }
 

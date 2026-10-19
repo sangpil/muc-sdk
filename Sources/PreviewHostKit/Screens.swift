@@ -29,7 +29,7 @@ public struct RenderContext: Sendable {
     }
 }
 
-/// 화면 하나의 살아 있는 값 — 상태(픽스처) 하나로 서고, `render` 마다 값(엔진이 안 파일에서 읽은 것)을 받고 `patch` 를 그 위에 쌓는다. 메인 스레드에서만.
+/// 화면 하나의 살아 있는 값 — 상태(픽스처) 하나로 서고, `render` 마다 값(엔진이 안 파일에서 읽은 것)을 받고 `patch` 를 그 위에 쌓는다 · 그리기 전에 비동기 원천을 기다린다(`prepare`). 메인 스레드에서만.
 /// 호스트는 프로젝트 문서(안 파일)를 열지 않는다 — 값은 언제나 엔진이 보낸다.
 @MainActor
 public protocol PreviewSession: AnyObject {
@@ -46,6 +46,17 @@ public protocol PreviewSession: AnyObject {
     func elementIDs() -> [String]
     /// 지금 겹친 층마다 낸 것 — 요소 id · 푼 자료(`FrameHeader.layers`).
     func layerReports() -> [LayerReport]
+    /// 이번 장을 그리기 전에 기다릴 것 — 지금 값(`load` · `apply` 뒤)의 그림이 비동기 원천(모델 그림 · 파일 읽기)을 기다리면 그것이 다 찰 때 돌아온다.
+    /// 호스트는 장을 그리기 전마다(`render` · `patch` · 토큰 바뀜 · `shot` · 자기 창) 이것을 기다리고, 그동안 온 메시지는 차례대로 뒤에 선다(patch 는 합쳐진다) —
+    /// 창 없는 렌더(`ImageRenderer` — 동기 · 그 장 뒤의 그림을 기다리지 못한다)도 첫 장부터 그 값의 그림이다. 시간으로 기다리지 않는다 — 원천의 끝(성공 ⟂ 실패)이 신호다.
+    /// 실패한 원천은 그 값의 대체 그림(원래 이미지)으로 서게 두고 돌아온다(던지지 않는다 · 끝나지 않는 원천은 엔진의 시한에 걸린다).
+    /// 기본 = 기다릴 것 없음(곧장) — 이것을 구현하지 않은 세션은 이 손이 없던 판과 같은 장을 낸다.
+    func prepare() async
+}
+
+extension PreviewSession {
+    /// 기다릴 것 없음 — 그림이 값만으로 서는 세션(비동기 원천이 없다).
+    public func prepare() async {}
 }
 
 public protocol PreviewScreen: Sendable {
