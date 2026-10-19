@@ -10,6 +10,8 @@ import SwiftUI
 // 메인이 바쁜 사이 둘 이상 쌓일 수 있다(진행 중 한도 > 1 · 엔진 재연결 직후). 한 바퀴에 렌더는 한 장.
 // 장을 그리기 전마다 세션의 준비(`PreviewSession.prepare` — 모델 그림 같은 비동기 원천)를 기다린다 — 처리는 메인 액터의 한 줄(`drain`)이라
 // 기다리는 동안 메인은 비고(원천의 일이 메인에서 돈다) · 뒤에 온 메시지는 차례대로 그 뒤에 선다(우편함이 받아 두고 patch 는 합친다).
+// 준비에는 시한이 있다(`prepareLimit` — 넘기면 취소하고 그때의 값으로 그린다) · 세션이 닫히면 기다리던 준비를 놓고 남은 우편을 버린다(닫힌 세션을 되살리지 않는다) ·
+// 한 바퀴마다 메인을 한 번 내준다(쉬지 않는 연결이 다른 세션 · 이벤트를 굶기지 않게).
 
 final class Mailbox: @unchecked Sendable {
     enum Item { case message(Message), patch(Patch) }
@@ -86,15 +88,18 @@ final class HostServer {
 
     /// 우편함을 비울 때까지 차례대로 — 이미 도는 줄이 있으면 곧장 돌아온다(그 줄이 새로 온 것까지 집는다). 돌아오면 우편함이 비었다.
     private var draining = false
+    /// 세션이 닫혔다(`shutdown`) — 줄은 남은 우편을 버리고 끝난다.
+    private(set) var closed = false
     func drain() async {
         guard !draining else { return }
         draining = true
         defer { draining = false }
         while true {
             let items = mailbox.drain()
-            if items.isEmpty { return }
+            if items.isEmpty || closed { return }
             let start = PreviewClock.now()
             for (item, recv) in items {
+                if closed { return }
                 do {
                     switch item {
                     case .patch(let p): try await handlePatch(p, recv: recv, start: start)
@@ -105,13 +110,44 @@ final class HostServer {
                     _ = try? conn.send(.error(ErrorMessage(seq: seq, message: String(describing: error))))
                 }
             }
+            await Task.yield()   // 한 바퀴마다 메인을 내준다 — 기다릴 것 없는 준비는 멈추지 않으므로 이것이 없으면 쉬지 않는 연결이 메인을 쥔다
         }
     }
 
-    /// 세션의 준비를 기다린다 — 그 사이 세션이 닫히거나(`shutdown`) 다른 화면으로 갈렸으면 거짓(이 장은 그리지 않는다).
-    private func prepared(_ session: any PreviewSession) async -> Bool {
-        await session.prepare()
-        return current?.session === session
+    /// 준비 하나의 시한 — 엔진이 장을 기다리는 시한(원격 장 30 s) 안. 넘기면 준비를 취소하고 그때의 값으로 그린다.
+    package static var prepareLimit: Duration = .seconds(20)
+    /// 지금 기다리는 준비 — 닫힐 때 놓는다.
+    private var waiting: PrepareWait?
+
+    /// 준비 하나의 끝 — 준비가 돌아옴 ⟂ 시한 ⟂ 닫힘 중 먼저 온 것 하나만 기다림을 푼다.
+    @MainActor final class PrepareWait {
+        private var continuation: CheckedContinuation<Void, Never>?
+        var work: Task<Void, Never>?
+        var timer: Task<Void, Never>?
+        func arm(_ c: CheckedContinuation<Void, Never>) { continuation = c }
+        func finish() {
+            guard let c = continuation else { return }
+            continuation = nil
+            work?.cancel(); timer?.cancel()
+            c.resume()
+        }
+    }
+
+    /// 세션의 준비를 이 틀로 기다린다(시한 · 닫힘이 먼저면 취소하고 놓는다) — 그 사이 세션이 닫히거나(`shutdown`) 다른 화면으로 갈렸으면 거짓(이 장은 그리지 않는다).
+    private func prepared(_ session: any PreviewSession, _ ctx: RenderContext) async -> Bool {
+        let wait = PrepareWait()
+        waiting = wait
+        let limit = Self.prepareLimit
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            wait.arm(c)
+            wait.work = Task { @MainActor in await session.prepare(ctx); wait.finish() }
+            wait.timer = Task { @MainActor in
+                guard (try? await Task.sleep(for: limit)) != nil else { return }
+                wait.finish()
+            }
+        }
+        if waiting === wait { waiting = nil }
+        return !closed && current?.session === session
     }
 
     private func handle(_ m: Message, recv: UInt64, start: UInt64) async throws {
@@ -143,7 +179,7 @@ final class HostServer {
             // 값은 render 가 갈아 끼운다(엔진이 안 파일에서 읽은 것 · 픽스처 갈아 끼우기) — 앞 patch 는 그 밑에 묻힌다
             let session = current!.session
             try session.load(style: r.style, layers: r.layers ?? [], fixture: r.fixture)
-            guard await prepared(session) else { return }
+            guard await prepared(session, context(r, offscreen: true)) else { return }
             // 자기 창이 서 있으면 그 창도 새 값 · 틀로(답은 늘 그 값의 프레임 — 엔진이 창 밑에 둔다)
             if let p = presenter { p.resize(to: CGSize(width: r.size.w, height: r.size.h)); p.update(session.view(context(r, offscreen: false))) }
             try produce(seq: r.seq, recv: recv, start: start)
@@ -151,12 +187,12 @@ final class HostServer {
         case .tokensChanged(let t):
             onTokensChanged()
             renderer = FrameRenderer(); renderKey = nil   // 토큰 값이 바뀌었다 — 앞 장의 뷰 그래프를 버린다
-            if let cur = current { guard await prepared(cur.session) else { return } }
+            if let cur = current, let req = request { guard await prepared(cur.session, context(req, offscreen: true)) else { return } }
             if let p = presenter, let req = request, let cur = current { p.update(cur.session.view(context(req, offscreen: false))) }
             try produce(seq: t.seq, recv: recv, start: start)
         case .shot(let s):
             guard let req = request, let cur = current else { throw PreviewHostError.noSession }
-            guard await prepared(cur.session) else { return }
+            guard await prepared(cur.session, context(req, offscreen: true)) else { return }
             let t0 = PreviewClock.now()
             let f = try renderer.render(cur.session.view(context(req, offscreen: true)), size: CGSize(width: req.size.w, height: req.size.h), scale: req.scale)
             try FrameRenderer.writePNG(f.image, to: URL(fileURLWithPath: s.path))
@@ -168,7 +204,7 @@ final class HostServer {
                 try conn.send(.ack(Ack(seq: w.seq, applied: appliedSeq, ms: PreviewClock.ms(start, PreviewClock.now()))))
                 return
             }
-            guard await prepared(cur.session) else { return }
+            guard await prepared(cur.session, context(req, offscreen: false)) else { return }
             let size = CGSize(width: w.w ?? req.size.w, height: w.h ?? req.size.h)
             let p = presenter ?? WindowPresenter(size: size, origin: CGPoint(x: w.x, y: w.y))
             presenter = p
@@ -187,6 +223,9 @@ final class HostServer {
 
     /// 세션이 닫혔다 — 자기 창을 내리고 · 공유 메모리 칸 · 세션 값 · 렌더러를 놓는다(메인에서 · 연결이 닫힌 뒤 한 번).
     func shutdown() {
+        closed = true
+        waiting?.finish(); waiting = nil   // 기다리던 준비를 취소하고 놓는다 — 줄은 닫힘을 보고 남은 우편을 버린다
+        _ = mailbox.drain()
         presenter?.hide(); presenter = nil
         region = nil; current = nil; request = nil; renderer = nil
     }
@@ -196,7 +235,7 @@ final class HostServer {
         let before = presenter == nil ? [] : cur.session.snapFrames()
         for e in p.edits { try cur.session.apply(e) }
         appliedSeq = max(appliedSeq, p.seq)
-        guard await prepared(cur.session) else { return }
+        if let req = request { guard await prepared(cur.session, context(req, offscreen: presenter == nil)) else { return } }
         if let pres = presenter, let req = request {
             pres.update(cur.session.view(context(req, offscreen: false)))
             ackAfterCommit(seq: p.seq, recv: recv, start: start, before: before)
