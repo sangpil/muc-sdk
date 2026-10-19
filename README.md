@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.3.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -60,7 +60,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.3.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -102,6 +102,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 1.2 는 IA 문서에 선택 칸 하나(`ScreenNode.entry` — 어느 화면 · 무엇을 · 요소)를 더한다 — 프로토콜 판 4 · IA 형식 판 1 그대로 · 1.1 읽개는 모르는 칸으로 보존한다.
 - **SDK 1.3 adds image slots to the style schema** (`StyleSlot` · `StyleSchema.slots` — the host declares where an image sits; the value is one string in the style dictionary: empty = the original image, or `isomodel:<name>`). The shelf is a folder the project chooses; the name is a file name in that folder without its extension, and resolving it is up to the host and the app — the SDK promises only the value's shape. The host and the app draw the model in that place. This moves the preview host to protocol version 5 even if it declares no slots — the builder must be on SDK 1.3 or newer too.
   SDK 1.3 은 Style 서술에 이미지 자리를 더한다(`StyleSlot` · `StyleSchema.slots` — 호스트가 이미지 자리를 선언 · 값은 Style 값 사전의 글자 하나: 빈 글 = 원래 이미지 ⟂ `isomodel:<이름>`). 서가는 프로젝트가 정하는 폴더 — 이름은 그 폴더의 파일 이름(확장자 없이)이고 풀이는 호스트 · 앱 몫(SDK 는 값의 꼴만 약속한다). 그 자리에 모델을 그리는 것은 호스트와 앱 — 자리를 선언하지 않아도 호스트는 프로토콜 판 5 · 빌더도 1.3 이상이어야 한다.
+- **SDK 1.4 lets a preview session wait before a frame** (`PreviewSession.prepare(_ context: RenderContext)` — async, default returns at once; the context is the frame's size · theme · offscreen flag, so a session warms the picture for that appearance — key its cache by name *and* appearance). The host awaits it before every picture it draws (`render` · `patch` · tokens changed · `shot` · its own window), so an offscreen frame shows a slot's model from the first frame instead of an empty slot while the model is still being drawn. Messages that arrive meanwhile wait their turn (patches merge). A preparation that outlives the host's limit (20 s, inside the engine's wait) or a session that closes meanwhile is cancelled — cooperative cancellation; a frame cut at the limit is final (no redraw signal follows), and a source that ignores cancellation may be asked again while still running, so share in-flight work. Nothing on the wire changes — the protocol stays at version 5, so a 1.4 host works with a 1.3 builder and a 1.3 host works with a 1.4 builder (it draws as before). A session that implements nothing draws exactly what it drew on 1.3.
+  SDK 1.4 는 미리보기 세션이 장을 그리기 전에 기다릴 손을 더한다(`PreviewSession.prepare(_ context: RenderContext)` — 비동기 · 기본은 곧장 · 문맥 = 그 장의 크기 · 테마 · 창 없는 렌더인가 — 그 외양의 그림을 데운다 · 캐시는 이름과 외양으로). 호스트가 그리기 전마다(`render` · `patch` · 토큰 바뀜 · `shot` · 자기 창) 기다려서, 창 없는 장도 모델을 그리는 중의 빈 자리가 아니라 첫 장부터 자리의 모델을 그린다. 그 사이 온 메시지는 차례대로 뒤에 선다(patch 는 합쳐진다). 호스트의 시한(20 초 — 엔진이 기다리는 시한 안)을 넘긴 준비 · 그 사이 닫힌 세션의 준비는 취소된다(협력 취소 — 시한에 잘린 장은 끝난 장이고 다시 그리라는 신호가 없다 · 취소를 무시한 원천은 다음 준비와 겹쳐 불릴 수 있어 진행 중인 일을 나눠 기다린다). 와이어는 그대로다 — 프로토콜 판 5 라 1.4 호스트 ⟂ 1.3 빌더 · 1.3 호스트 ⟂ 1.4 빌더가 다 선다(1.3 호스트는 예전처럼 그린다). 아무것도 구현하지 않은 세션은 1.3 과 같은 장을 낸다.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
