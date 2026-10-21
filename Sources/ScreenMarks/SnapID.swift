@@ -43,13 +43,14 @@ private struct SnapIDModifier: ViewModifier {
     @Environment(\.snapTap) private var tap
     func body(content: Content) -> some View {
         // transform 이어야 한다 — `anchorPreference` 는 자식의 값을 **덮어써서** 뿌리 두 개만 남는다(자식의 표지가 사라진다).
-        let marked = content.transformAnchorPreference(key: SnapPreferenceKey.self, value: .bounds) { $0[id] = $1 }
-        // 탭은 받는 손(`snapTap`)이 있을 때만 건다 — 없는데도 걸면 앱의 손(펼침 `onTapGesture`)이 가려진다(미리보기 호스트의 자기 창 · 만지며 보기)
-        if let tap {
-            marked.contentShape(Rectangle()).onTapGesture { tap(id) }
-        } else {
-            marked
-        }
+        // 몸은 갈래 없는 한 줄이다 — `if` / `else`(뷰 타입이 갈리는 `_ConditionalContent`)는 안쪽 `.alignmentGuide` 를 바깥(overlay 등)에 넘기지 않아
+        // 표식이 켜진 빌드에서만 레이아웃이 달라진다(표식은 레이아웃을 바꾸지 않는다 — `ScreenMarksTests`).
+        // 탭은 받는 손(`snapTap`)이 있을 때만 선다 — 없는데도 서면 앱의 손(펼침 `onTapGesture`)이 가려진다(미리보기 호스트의 자기 창 · 만지며 보기):
+        // 손이 없으면 모양의 종류를 비우고(`[]` — 맞힘 영역을 바꾸지 않는다) 제스처는 끈 채 자식의 제스처만 둔다(`.subviews`).
+        content
+            .transformAnchorPreference(key: SnapPreferenceKey.self, value: .bounds) { $0[id] = $1 }
+            .contentShape(tap == nil ? [] : .interaction, Rectangle())
+            .gesture(TapGesture().onEnded { tap?(id) }, including: tap == nil ? .subviews : .all)
     }
 }
 #endif
