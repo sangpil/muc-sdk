@@ -54,7 +54,7 @@ import Testing
         let render = Message.render(RenderRequest(seq: 3, screen: "home", state: "normal", size: Size(w: 1, h: 1), scale: 2,
                                                   layers: [LayerState(name: "chrome")]))
         #expect(try ProtocolDialect.v1.decode(ProtocolDialect.v1.encode(render)) == render)
-        #expect(PreviewProtocolVersion.previous.map(\.version) == [2, 3, 4], "엔진은 바닥(판 2)부터 받는다 — 판 1 의 말은 사슬로만 선다")
+        #expect(PreviewProtocolVersion.previous.map(\.version) == [2, 3, 4, 5], "엔진은 바닥(판 2)부터 받는다 — 판 1 의 말은 사슬로만 선다")
     }
 
     @Test func builtTokensDifferOnlyWhenAValueOrderOrThemeSetDiffers() {

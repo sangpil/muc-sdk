@@ -153,11 +153,21 @@ public struct RenderRequest: Codable, Equatable, Sendable {
     public var fixture: JSONValue?
     /// 층만 그린다 — 화면 본체 · 바탕 없이 투명한 장에 `layers` 만(엔진이 본체와 층 사이에 제 그림 — 구성요소 — 을 끼울 때). nil = 본체 + 층.
     public var layersOnly: Bool?
+    /// 그린 글줄 · 요소 바탕도 실을까(`FrameHeader.texts` · `styles`) — 호스트가 그 장을 벡터로 한 번 더 그려 읽는다(장마다 값이 드는 일이라 찍기처럼 한 장을 남길 때만 켠다).
+    /// nil = 싣지 않음.
+    public var drawn: Bool?
     public init(seq: UInt64, screen: String, state: String, style: StyleValues? = nil, theme: String? = nil, size: Size, scale: Double,
                 layers: [LayerState]? = nil, frames: Bool? = nil, scroll: Double? = nil, fixture: JSONValue? = nil, layersOnly: Bool? = nil) {
+        self.init(seq: seq, screen: screen, state: state, style: style, theme: theme, size: size, scale: scale, layers: layers, frames: frames,
+                  scroll: scroll, fixture: fixture, layersOnly: layersOnly, drawn: nil)
+    }
+    /// 그린 글줄 · 요소 바탕을 청하는 꼴 — `drawn` 은 기본값 없이 받는다(위의 손과 겹치지 않게 · 1.x 의 공개 손은 그대로 둔다).
+    public init(seq: UInt64, screen: String, state: String, style: StyleValues? = nil, theme: String? = nil, size: Size, scale: Double,
+                layers: [LayerState]? = nil, frames: Bool? = nil, scroll: Double? = nil, fixture: JSONValue? = nil, layersOnly: Bool? = nil,
+                drawn: Bool?) {
         self.seq = seq; self.screen = screen; self.state = state; self.style = style; self.theme = theme
         self.size = size; self.scale = scale; self.layers = layers; self.frames = frames; self.scroll = scroll
-        self.fixture = fixture; self.layersOnly = layersOnly
+        self.fixture = fixture; self.layersOnly = layersOnly; self.drawn = drawn
     }
 }
 
@@ -237,14 +247,26 @@ public struct FrameHeader: Codable, Equatable, Sendable {
     public var elements: [String]?
     /// 층마다 낸 것(요소 · 푼 자료 — `frames` 를 청한 render 의 답에만) — 화면 본체의 요소 = `elements` 에서 층의 것을 뺀 나머지
     public var layers: [LayerReport]?
+    /// 그린 글줄 전부(그린 차례 · `drawn` 을 청한 render 의 답에만) — 요소 경계 · 요소 목록과 따로 선 목록이다(경계 수 대조에 들지 않는다)
+    public var texts: [DrawnText]?
+    /// 바탕을 칠한 요소마다 바탕 색 · 모서리(요소 경계의 차례 · `drawn` 을 청한 render 의 답에만)
+    public var styles: [DrawnStyle]?
     /// 호스트 렌더 소요(ms)
     public var ms: Double
     public var payload: FramePayload
     public var timing: HostTiming?
     public init(seq: UInt64, applied: UInt64, w: Int, h: Int, stride: Int, scale: Double, format: FrameFormat, snapFrames: [SnapFrame],
                 elements: [String]? = nil, layers: [LayerReport]? = nil, ms: Double, payload: FramePayload, timing: HostTiming? = nil) {
+        self.init(seq: seq, applied: applied, w: w, h: h, stride: stride, scale: scale, format: format, snapFrames: snapFrames, elements: elements,
+                  layers: layers, texts: nil, styles: nil, ms: ms, payload: payload, timing: timing)
+    }
+    /// 그린 글줄 · 요소 바탕을 싣는 꼴 — `texts` · `styles` 는 기본값 없이 받는다(위의 손과 겹치지 않게 · 1.x 의 공개 손은 그대로 둔다).
+    public init(seq: UInt64, applied: UInt64, w: Int, h: Int, stride: Int, scale: Double, format: FrameFormat, snapFrames: [SnapFrame],
+                elements: [String]? = nil, layers: [LayerReport]? = nil, texts: [DrawnText]?, styles: [DrawnStyle]?,
+                ms: Double, payload: FramePayload, timing: HostTiming? = nil) {
         self.seq = seq; self.applied = applied; self.w = w; self.h = h; self.stride = stride; self.scale = scale; self.format = format
-        self.snapFrames = snapFrames; self.elements = elements; self.layers = layers; self.ms = ms; self.payload = payload; self.timing = timing
+        self.snapFrames = snapFrames; self.elements = elements; self.layers = layers; self.texts = texts; self.styles = styles
+        self.ms = ms; self.payload = payload; self.timing = timing
     }
 
     /// 화면 본체가 낸 요소 — 그린 요소에서 층의 것을 뺀 것(차례 그대로).
