@@ -7,7 +7,8 @@ import Testing
 
 // 효과(머티리얼 · 유리 · 그림자)가 있는 장의 그린 글줄 · 바탕 — 같은 카드(글줄 둘 · 모서리 12)를 효과만 바꿔 그려 그림자 기준과 같은 글줄을 내는지 잰다.
 // 진짜 머티리얼은 수집 그림(PDF)을 그 장 통째로 래스터 한 장으로 만든다(글 · 칠 0) — 수집 그림에서만 비활성 외양으로 그려 벡터로 남긴다(`FrameRenderer.DrawnRoot`).
-// 유리는 창 없는 그림에서 제 안의 내용까지 그리지 않는다(그린 PNG 에도 없다) — 수집도 그린 것만 싣는다 · 유리를 바탕 층에 깐 꼴은 글줄이 그대로다.
+// 유리는 공개 손으로 끌 수 없다 — 창이 선 프로세스에서는 유리가 있는 장이 통째로 래스터 한 장(글줄 · 바탕 0) · 창이 없는 프로세스에서는 유리와 그 안의
+// 내용이 그림에도 없다. 그래서 프로젝트가 창 없는 장에서 유리를 근사로 그린다 — 시험은 그 한계와 근사 꼴의 수집을 붙든다.
 
 enum Effects {
     /// 바탕(그라디언트) 위 카드(20,20 · 200×100) — `effect` 가 카드 내용에 효과를 입힌다 · 카드 밖 글줄 하나 · 경계 없는 초록 칸.
@@ -74,9 +75,9 @@ enum Effects {
         #expect(page.styles.map(\.id) == ["card"])
     }
 
-    /// 그린 PNG 는 바꾸지 않는다 — 머티리얼 카드의 PNG 가 맨 `ImageRenderer` 의 것과 같은 바이트 · 수집 뒤 다시 그려도 같은 그림(렌더러의 내용을 되돌린다).
-    /// 수집 뒤는 낱 차 1 까지 — 같은 렌더러에 내용을 다시 넣기만 해도(수집 없이) 그라디언트 낱이 1 씩 흔들린다(실측 · 수집과 무관). 비활성 외양이 새면
-    /// 카드 자리가 반투명 분홍에서 불투명 회색으로 바뀌어 낱 차가 수십이다.
+    /// 그린 PNG 는 바꾸지 않는다 — 머티리얼 카드의 PNG 가 맨 `ImageRenderer` 의 것과 같은 그림 · 수집 뒤 다시 그려도 같은 그림(렌더러의 내용을 되돌린다).
+    /// 낱 차 4 까지 — 머티리얼의 래스터는 같은 뷰를 새 렌더러로 그려도 낱이 2 까지 흔들린다(실측 · 수집과 무관). 비활성 외양이 새면 카드 자리가
+    /// 반투명 분홍에서 불투명 회색으로 바뀌어 낱 차가 수십이다 — 그 기준(새는 그림)과의 차가 문턱보다 큰지도 잰다(문턱이 헛돌지 않게).
     @MainActor @Test func drawnPixelsStayTheSame() throws {
         let view = Effects.card { $0.background(.ultraThinMaterial, in: Effects.shape) }
         let bare = ImageRenderer(content: AnyView(view))
@@ -84,30 +85,37 @@ enum Effects {
         bare.scale = 2
         let img = try #require(bare.cgImage)
         let want = try #require(img.dataProvider?.data) as Data
+        func worst(_ a: Data) -> Int { a.count == want.count ? zip(a, want).map { abs(Int($0) - Int($1)) }.max() ?? 0 : .max }
         let r = FrameRenderer()
-        #expect(try Effects.pixels(r, view) == want, "수집 뿌리가 그린 그림을 바꾸지 않는다")
+        #expect(worst(try Effects.pixels(r, view)) <= 4, "수집 뿌리가 그린 그림을 바꾸지 않는다")
         _ = r.drawn(frames: Card.frames)
-        let after = try Effects.pixels(r, view)
-        #expect(after.count == want.count)
-        let worst = zip(after, want).map { abs(Int($0) - Int($1)) }.max() ?? 0
-        #expect(worst <= 1, "수집 뒤에도 같은 그림 — 가장 큰 낱 차 \(worst)")
+        let after = worst(try Effects.pixels(r, view))
+        #expect(after <= 4, "수집 뒤에도 같은 그림 — 가장 큰 낱 차 \(after)")
+        if #available(macOS 15, *) {
+            let leaked = worst(try Effects.pixels(FrameRenderer(), view.environment(\.materialActiveAppearance, .inactive)))
+            #expect(leaked > 30, "새는 그림은 문턱 밖 — \(leaked)")
+        }
     }
 
-    /// 유리를 바탕 층에 깐 카드 — 그림자 기준과 같은 글줄(유리 칠은 창 없는 그림에 그려지지 않는다 — 바탕 없음).
-    @MainActor @Test func glassBehindKeepsLines() throws {
+    /// 유리 — 창이 하나라도 선 프로세스(호스트의 자기 창)에서는 `ImageRenderer` 가 유리를 진짜로 그리고, 그 장의 벡터 그림은 통째로 래스터 한 장이다
+    /// (글줄 · 바탕 0 — 내용에 씌운 유리 ⟂ 바탕 층에 깐 유리 모두). 유리를 끄는 공개 환경값이 없다(비활성 외양 · 창 활성 · 휘도 · 대비 · 끔 모두 같음 — 실측).
+    /// 창이 없는 프로세스에서는 유리와 그 안의 내용이 그림에도 수집에도 없다 — 어느 쪽이든 프로젝트는 창 없는 장(`RenderContext.offscreen`)에서 유리를
+    /// 근사로 그린다(SDK.md). 시험은 창을 먼저 세워 상태를 하나로 고정한다(다른 시험이 창을 세우면 프로세스가 되돌아오지 않는다).
+    @MainActor @Test func glassPageIsOneImageOnceAWindowExists() throws {
         guard #available(macOS 26, *) else { return }
-        let page = try Card.read(Effects.card { $0.background { Effects.shape.fill(.clear).glassEffect(.regular, in: Effects.shape) } })
+        _ = WindowPresenter(size: CGSize(width: 10, height: 10), origin: .zero)
+        let around = try Card.read(Effects.card { $0.glassEffect(.regular, in: Effects.shape) })
+        #expect(around.texts.isEmpty && around.styles.isEmpty, "\(around.texts.map(\.text))")
+        let behind = try Card.read(Effects.card { $0.background { Effects.shape.fill(.clear).glassEffect(.regular, in: Effects.shape) } })
+        #expect(behind.texts.isEmpty && behind.styles.isEmpty, "\(behind.texts.map(\.text))")
+    }
+
+    /// 유리의 근사(반투명 칠 + 테두리 — 창 없는 장의 갈래) — 그림자 기준과 같은 글줄 · 카드 바탕은 그 칠.
+    @MainActor @Test func glassApproximationKeepsLines() throws {
+        _ = WindowPresenter(size: CGSize(width: 10, height: 10), origin: .zero)
+        let page = try Card.read(Effects.card { $0.background(Effects.shape.fill(Color.white.opacity(0.55)).overlay(Effects.shape.stroke(Color.white, lineWidth: 1))) })
         #expect(page.texts.map(\.text) == Effects.lines)
-    }
-
-    /// 내용에 바로 씌운 유리 — 창 없는 그림은 유리와 그 안의 내용을 그리지 않는다(그린 PNG = 카드를 뺀 그림) · 수집도 그린 것만(카드 밖 글줄 하나).
-    /// 프로젝트는 창 없는 장(`RenderContext.offscreen`)에서 유리를 근사로 그린다(SDK.md) — 이 시험은 그 까닭을 붙든다.
-    @MainActor @Test func glassAroundContentIsNotDrawnOffscreen() throws {
-        guard #available(macOS 26, *) else { return }
-        let glass = Effects.card { $0.glassEffect(.regular, in: Effects.shape) }
-        let none = Effects.card { _ in Color.clear.frame(width: 200, height: 100) }
-        #expect(try Effects.pixels(FrameRenderer(), glass) == Effects.pixels(FrameRenderer(), none), "유리 카드는 그린 PNG 에도 없다")
-        #expect(try Card.read(glass).texts.map(\.text) == ["Outside"])
+        #expect(page.styles.map(\.background) == ["#ffffff8c"])
     }
 
     /// 겹친 칠의 합성 — 불투명 칠 위 옅은 겹칠은 합성한 불투명 색 · 반투명 칠 하나는 그대로 · 맨 위 색을 모르면 nil · 맨 위가 불투명이면 그 색.

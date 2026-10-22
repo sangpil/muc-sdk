@@ -27,7 +27,7 @@ public final class FrameRenderer {
     }
 
     private var renderer: ImageRenderer<DrawnRoot>?
-    /// The view of the frame just rendered — `drawn` puts it back into the same renderer with only the material appearance changed.
+    /// 방금 그린 장의 뷰 — 수집(`drawn`)이 같은 렌더러에 머티리얼 외양만 바꿔 다시 넣는다.
     private var view: AnyView?
 
     public init() {}
@@ -50,9 +50,8 @@ public final class FrameRenderer {
 
     /// 방금 그린 장을 벡터(PDF 한 쪽)로 한 번 더 그려 그린 글줄 · 요소 바탕을 읽는다(`DrawnMarks` · `render.drawn`) — `render(_:size:scale:)` 뒤에 같은 렌더러로.
     /// `frames` = 그 장의 요소 경계(소속 요소 · 바탕을 가린다). 그린 장이 없으면 빈 것.
-    /// Only this vector pass draws materials in their inactive appearance (solid fills — vector, `DrawnRoot`): with a real material the PDF becomes one
-    /// raster image of the whole frame, so no lines and no backgrounds. The rendered PNG (`render`) is untouched. The renderer's content is restored
-    /// afterwards (same root type — the view graph and its state stay).
+    /// 이 벡터 그림에서만 머티리얼을 비활성 외양(단색 칠 — 벡터)으로 그린다(`DrawnRoot`) — 진짜 머티리얼이 있으면 PDF 가 그 장 통째로 래스터 한 장이 되어
+    /// 글줄 · 바탕이 0 이다. 그린 PNG(`render`)는 그대로다. 수집 뒤 렌더러의 내용을 원래 값으로 돌린다(같은 뿌리 꼴 — 뷰 그래프 · 상태는 그대로).
     func drawn(frames: [SnapFrame]) -> DrawnMarks.Page {
         guard let r = renderer, let view else { return DrawnMarks.Page(texts: [], styles: []) }
         r.content = DrawnRoot(content: view, collecting: true)
@@ -69,10 +68,9 @@ public final class FrameRenderer {
         return DrawnMarks.read(pdf: data as Data, frames: frames)
     }
 
-    /// The renderer's root — the PNG pass leaves the content as it is (the environment is not touched); the vector pass draws materials in their
-    /// inactive appearance (`materialActiveAppearance` — public, macOS 15+). Measured on macOS 27: with any real material, the PDF from
-    /// `ImageRenderer.render` is the whole frame as one image (`/Im1 Do` — no text, no fills); with the inactive appearance the material is an opaque
-    /// fill plus a faint veil of the same shape and everything else stays vector. The root type never changes, so toggling does not rebuild the graph.
+    /// 렌더러의 뿌리 — 그린 PNG 는 내용 그대로(환경을 건드리지 않는다) · 수집 그림은 머티리얼을 비활성 외양으로(`materialActiveAppearance` — 공개 ·
+    /// macOS 15 이상). 실측(macOS 27): 진짜 머티리얼이 하나라도 있으면 `ImageRenderer.render` 의 PDF 는 그 장 전부를 이미지 한 장(`/Im1 Do`)으로 그린다(글 · 칠 0) ·
+    /// 비활성 외양이면 머티리얼이 불투명 칠 + 같은 모양의 옅은 겹칠로 그려지고 나머지는 벡터로 남는다. 뿌리 꼴이 늘 같아 켜고 끌 때 뷰 그래프가 다시 서지 않는다.
     struct DrawnRoot: View {
         let content: AnyView
         let collecting: Bool

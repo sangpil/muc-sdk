@@ -18,12 +18,12 @@ import PreviewProtocol
 //   굵기    : 글꼴 이름의 굵기 축 값(`wght<16진 고정소수>` — 가변 인스턴스 이름) ⟂ 이름 꼬리의 굵기 낱말 ⟂ 400.
 //   바탕    : 요소 경계와 네 변이 0.5 pt 안으로 맞는 채운 면 중 가장 위(마지막에 칠한 것) — 색 · 모서리(위 변의 곧은 선이 모서리에서 떨어진 거리 —
 //             모서리마다 곡선이 셋 이상이면 연속 곡률 모서리라 그 거리를 그 곡률의 비(`continuousExtent`)로 나눈다).
-//             Color: fills stacked on that same box are composited from the top down until opaque (`composite`).
+//             색은 그 경계에 겹친 칠을 위에서부터 불투명해질 때까지 합성한 것이다(`composite`).
 //   못 잡는 것 : 래스터로만 그리는 것(이미지 안의 글 · AppKit 을 감싼 뷰) · 단색이 아닌 글(그라디언트 — 색 nil) · 테두리만 그린 바탕(채움 아님).
-//   Effects : materials are drawn in their inactive appearance in this pass only (`FrameRenderer.DrawnRoot`, macOS 15+) — a material element's
-//             background is that solid approximation, not the blur in the PNG; before macOS 15 a frame with a material is one raster image here
-//             (no lines, no backgrounds). Glass wrapped around content is not drawn offscreen at all — neither in the PNG nor here; glass laid as a
-//             background layer leaves the content (lines) and draws no fill.
+//   효과    : 이 그림에서만 머티리얼을 비활성 외양으로 그린다(`FrameRenderer.DrawnRoot` · macOS 15 이상) — 머티리얼 요소의 바탕은 그 단색 근사다(PNG 의
+//             흐림이 아니다) · macOS 14 에서는 머티리얼이 있는 장이 래스터 한 장이라 글줄 · 바탕이 0. 유리는 공개 손으로 끌 수 없다 — 창이 하나라도 선
+//             프로세스(호스트의 자기 창)에서는 유리가 진짜로 그려지고 그 장이 통째로 래스터 한 장(글줄 · 바탕 0) · 창이 없는 프로세스에서는 유리와 그 안의
+//             내용이 PNG 에도 여기에도 없다. 프로젝트가 창 없는 장(`RenderContext.offscreen`)에서 유리를 근사로 그려야 선다.
 //
 // 앱 빌드에는 값이 0이다 — 이 모듈(런타임)은 앱이 링크하지 않고, 엔진이 `drawn` 을 청한 장에서만 돈다.
 
@@ -57,16 +57,15 @@ enum DrawnMarks {
         return Page(texts: texts, styles: styles)
     }
 
-    /// The visible color of fills stacked on the same box — composite "over" from the topmost (last) fill downwards and stop once opaque (an opaque
-    /// top fill is its own color). A translucent top fill with nothing below stays translucent. An unknown top color (pattern) gives nil — never fall
-    /// through to a covered color. Why: a material in its inactive appearance (`FrameRenderer.DrawnRoot`) is an opaque fill plus a faint veil
-    /// (alpha 0.05) on the same box — reading only the top would report the veil as the background.
+    /// 같은 자리에 겹친 칠의 보이는 색 — 가장 위(마지막) 칠부터 아래로 「위에 얹기」로 합성하다 불투명해지면 멈춘다(불투명한 맨 위 칠이면 그 색 그대로).
+    /// 맨 위가 반투명이고 아래에 같은 자리 칠이 없으면 반투명 색 그대로다. 맨 위 칠의 색을 모르면(무늬) nil — 아래 칠로 내려가지 않는다(가려진 색을 바탕으로 삼지 않는다).
+    /// 근거: 비활성 외양의 머티리얼(`FrameRenderer.DrawnRoot`)은 불투명 칠 + 같은 자리의 옅은 겹칠(불투명도 0.05)로 그려진다 — 맨 위만 읽으면 겹칠의 색이 바탕이 된다.
     static func composite(_ stack: [Fill]) -> [CGFloat]? {
         var out: [CGFloat]?
         for fill in stack.reversed() {
             guard let c = fill.rgba else { return out }
             guard let o = out else { out = c; if c[3] >= 1 { break } else { continue } }
-            // o over c (straight alpha · sRGB components)
+            // o 가 c 위에 얹힌다(앞곱 아님 · sRGB 성분 그대로)
             let a = o[3] + c[3] * (1 - o[3])
             guard a > 0 else { continue }
             let under = c[3] * (1 - o[3])
@@ -168,7 +167,7 @@ enum DrawnMarks {
     /// 채운 면 하나 — 쪽 좌표(아래 원점).
     struct Fill {
         var box: CGRect
-        /// Four sRGB components (0–1) — nil for a pattern or an unknown space
+        /// sRGB 성분 넷(0–1) — 무늬 · 모르는 공간은 nil
         var rgba: [CGFloat]?
         var radius: Double
         func matches(_ r: CGRect, height: CGFloat) -> Bool {
@@ -343,7 +342,7 @@ final class PageWalk {
 
     var fillColor: String? { fillRGBA.map(Self.hex) }
 
-    /// The current fill color — four sRGB components (red · green · blue · alpha, 0–1). nil for a pattern or an unknown space.
+    /// 지금 채움 색 — sRGB 성분 넷(빨강 · 초록 · 파랑 · 불투명도 · 0–1). 무늬 · 모르는 공간은 nil.
     var fillRGBA: [CGFloat]? {
         guard !state.pattern, let space = state.space, space.numberOfComponents == state.components.count else { return nil }
         guard let color = CGColor(colorSpace: space, components: state.components + [state.alpha]) else { return nil }
