@@ -1,6 +1,7 @@
 // qa-sdk-build.mjs — SDK(이 패키지 · 공개 저장소 `muc-sdk`)의 빌드 · 시험 · 경계 · 공개 적합 · 판 꼬리표 게이트. 이 저장소 안의 것만 읽는다(다른 저장소의 자리 0).
 //
 //   ① **혼자 선다** — `swift build` · `swift test` · 시험 대상(`Tests/*`)마다 0건이 아니다(0건 통과는 통과가 아니다 · Swift Testing 요약은 대상마다 한 줄).
+//      + 표식 켠 빌드 — `swift test --traits ActiveMarks`(표식 시험만 · 빌드 자리 `.build/active-marks`) · 켠 빌드에만 있는 시험이 돌았다.
 //   ② **잎** — `swift package show-dependencies` 의 의존 0 · 매니페스트 의존 0 · 모든 타깃에 `unsafeFlags` 0(태그 의존으로 받는 패키지라 SwiftPM 이 거부한다).
 //   ③ **갈래**(계약 ⟂ 런타임 ⟂ 시험 — 아래 `CONTRACT` · `RUNTIME` · `TEST` · 새 모듈은 한쪽에 적어야 선다 · 정본 `Docs/SDK.md` §1):
 //      ⓐ 계약 소스의 `import` = Foundation · CryptoKit · CoreGraphics · SwiftUI · 계약 모듈 · 계약이 런타임 모듈을 물지 않는다
@@ -83,7 +84,15 @@ const testTargets = dump.targets.filter((x) => x.type === "test").map((x) => x.n
 const nonEmpty = runs.filter((m) => Number(m[1]) > 0).length;
 const total = runs.reduce((n, m) => n + Number(m[1]), 0);
 if (nonEmpty < testTargets.length) { explain(t.out); fail(`시험 대상 ${testTargets.length} 중 ${nonEmpty} 만 돌았다 — 대상마다 0건이면 빨강(${testTargets.join(" · ")})`); }
-console.log(`  ✓ ① 혼자 선다 · swift test ${total}건 · 대상 ${testTargets.length}(${b.sec + t.sec}s)`);
+// ①′ 표식 켠 빌드 — 트레이트 `ActiveMarks` 를 켜야 서는 표식 시험(표식은 레이아웃을 바꾸지 않는다 · 경계를 올린다)이 여기서만 돈다.
+//     빌드 자리를 따로 둔다(`.build/active-marks`) — 트레이트가 다른 두 그래프가 한 자리를 번갈아 덮어 증분을 잃지 않게.
+//     켜진 것의 증거 = 켠 빌드에만 있는 시험 `markRaisesBoundsWhenOn` 이 돌았다(트레이트 배선이 끊겨 끈 빌드로 돌면 빨강).
+const a = run(["swift", "test", ...JOBS, "--traits", "ActiveMarks", "--scratch-path", join(ROOT, ".build", "active-marks"), "--filter", "ScreenMarksTests"]);
+const aRuns = [...a.out.matchAll(/Test run with (\d+) tests? in \d+ suites? (passed|failed)/g)];
+if (!a.ok || !aRuns.length || aRuns.some((m) => m[2] !== "passed")) { explain(a.out); fail(`swift test --traits ActiveMarks 실패 (${a.sec}s)`); }
+if (!/Test markRaisesBoundsWhenOn\(\) passed/.test(a.out)) { explain(a.out); fail("swift test --traits ActiveMarks — 켠 빌드 시험 markRaisesBoundsWhenOn 이 돌지 않았다(트레이트가 서지 않음)"); }
+const aTotal = aRuns.reduce((n, m) => n + Number(m[1]), 0);
+console.log(`  ✓ ① 혼자 선다 · swift test ${total}건 · 대상 ${testTargets.length} · 표식 켠 빌드 ${aTotal}건(${b.sec + t.sec + a.sec}s)`);
 
 // ② 잎 · unsafeFlags 0
 const deps = JSON.parse(run(["swift", "package", "show-dependencies", "--format", "json"]).out.replace(/^[^{]*/, "")).dependencies;

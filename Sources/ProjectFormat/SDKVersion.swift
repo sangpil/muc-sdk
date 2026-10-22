@@ -4,5 +4,5 @@ import Foundation
 /// 저장소의 판 꼬리표도 이 값이다(공개 저장소 `muc-sdk` — 게이트 `qa/qa-sdk-build.mjs` 가 맞댄다).
 /// 엔진이 이 값을 읽어 싣는다(개선 요청의 맥락 `ctx.sdk`). 판을 올리는 규칙은 `Docs/SDK.md` §5 의 표.
 public enum SDKVersion {
-    public static let current = "1.4.0"
+    public static let current = "1.4.1"
 }

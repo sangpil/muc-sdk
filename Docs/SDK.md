@@ -190,7 +190,7 @@
 
 ## 5. 판
 
-**SDK 판: 1.4.0** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 1.4.1** — 계약 동결(아래 「1.0 의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 
