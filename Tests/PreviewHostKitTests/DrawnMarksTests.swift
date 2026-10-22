@@ -99,7 +99,7 @@ enum Card {
         .frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
         // 표식 없이 읽으면 붙은 같은 꼴의 조각은 한 줄 — 이 시험의 기준이 헛돌지 않는다(형제 둘이 실제로 이어 붙을 만큼 가깝다)
         let bare = try Card.read(view, frames: [])
-        #expect(bare.texts.map(\.text) == ["Alpha Beta", "Gamma Delta"] || bare.texts.map(\.text) == ["AlphaBeta", "GammaDelta"], "\(bare.texts.map(\.text))")
+        #expect(bare.texts.map(\.text) == ["Alpha Beta", "Gamma Delta"], "벌어진 조각 사이는 공백 하나 — \(bare.texts.map(\.text))")
         // 윗줄의 두 글에 표식을 단다 — 각 글의 상자(한 줄의 조각을 PDF 에서 읽은 자리)를 경계로
         let line = try #require(bare.texts.first)
         let split = line.rect.minX + line.rect.width * 0.5
@@ -130,6 +130,27 @@ enum Card {
         #expect(page.texts.count > 1, "\(page.texts.map(\.text))")
         #expect(page.texts.map(\.text).joined(separator: " ") == words)
         #expect(zip(page.texts, page.texts.dropFirst()).allSatisfy { $0.y < $1.y }, "위에서 아래로")
+    }
+
+    /// 줄 안 공백 — 공백 · 줄바꿈 없는 공백 · 탭 · 여러 칸 공백 · 한영 섞인 줄 · 앞뒤 공백.
+    /// 그린 공백 낱은 낱마다 U+0020 하나(줄바꿈 없는 공백 · 탭도 — PDF 의 글 추출이 공백의 종류를 가르지 않는다) · 시스템 글꼴의 한글 사이 공백은
+    /// 그려지지 않고 벌림만 남는다(공백만인 대체 런) — 그 벌림이 공백 하나 · 앞뒤 공백은 다듬는다.
+    @MainActor @Test(arguments: [
+        ("식물 목록", "식물 목록"), ("가 나 다 라", "가 나 다 라"),
+        ("A\u{00A0}B", "A B"), ("A\tB", "A B"), ("A   B", "A   B"),
+        ("Plant 목록 3개", "Plant 목록 3개"), ("  lead trail  ", "lead trail"),
+    ])
+    func spacesInsideALine(source: String, expected: String) throws {
+        let view = Text(source).font(.system(size: 13)).frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        #expect(try Card.read(view, frames: []).texts.map(\.text) == [expected])
+    }
+
+    /// 한 글꼴로 그린 한글 줄(대체 런 없음) — 공백은 CID 글자로 그려진다 · 여러 칸 공백도 칸 수대로.
+    @MainActor @Test(arguments: [("식물 목록", "식물 목록"), ("식물   목록", "식물   목록"), ("식물\u{00A0}목록", "식물 목록"), ("가\t나", "가 나")])
+    func spacesInsideASingleFontHangulLine(source: String, expected: String) throws {
+        let view = Text(source).font(.custom("AppleSDGothicNeo-Regular", size: 13))
+            .frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        #expect(try Card.read(view, frames: []).texts.map(\.text) == [expected])
     }
 
     /// 이름 · 굵기 — 묶음 표지와 가변 인스턴스 꼬리를 걷는다 · 굵기 축 값(16.16 고정소수) ⟂ 이름 꼬리의 낱말 ⟂ 400.
