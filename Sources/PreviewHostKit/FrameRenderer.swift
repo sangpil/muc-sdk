@@ -26,13 +26,17 @@ public final class FrameRenderer {
         public var base: UnsafeRawPointer { UnsafeRawPointer(CFDataGetBytePtr(data)!) }
     }
 
-    private var renderer: ImageRenderer<AnyView>?
+    private var renderer: ImageRenderer<DrawnRoot>?
+    /// 방금 그린 장의 뷰 — 수집(`drawn`)이 같은 렌더러에 머티리얼 외양만 바꿔 다시 넣는다.
+    private var view: AnyView?
 
     public init() {}
 
     public func render(_ view: AnyView, size: CGSize, scale: CGFloat) throws -> Frame {
-        let r: ImageRenderer<AnyView>
-        if let old = renderer { old.content = view; r = old } else { r = ImageRenderer(content: view); renderer = r }
+        let r: ImageRenderer<DrawnRoot>
+        let root = DrawnRoot(content: view, collecting: false)
+        if let old = renderer { old.content = root; r = old } else { r = ImageRenderer(content: root); renderer = r }
+        self.view = view
         r.proposedSize = ProposedViewSize(size)
         r.scale = scale
         guard let img = r.cgImage else { throw PreviewHostError.renderFailed("ImageRenderer 가 이미지를 내지 않았다") }
@@ -46,8 +50,12 @@ public final class FrameRenderer {
 
     /// 방금 그린 장을 벡터(PDF 한 쪽)로 한 번 더 그려 그린 글줄 · 요소 바탕을 읽는다(`DrawnMarks` · `render.drawn`) — `render(_:size:scale:)` 뒤에 같은 렌더러로.
     /// `frames` = 그 장의 요소 경계(소속 요소 · 바탕을 가린다). 그린 장이 없으면 빈 것.
+    /// 이 벡터 그림에서만 머티리얼을 비활성 외양(단색 칠 — 벡터)으로 그린다(`DrawnRoot`) — 진짜 머티리얼이 있으면 PDF 가 그 장 통째로 래스터 한 장이 되어
+    /// 글줄 · 바탕이 0 이다. 그린 PNG(`render`)는 그대로다. 수집 뒤 렌더러의 내용을 원래 값으로 돌린다(같은 뿌리 꼴 — 뷰 그래프 · 상태는 그대로).
     func drawn(frames: [SnapFrame]) -> DrawnMarks.Page {
-        guard let r = renderer else { return DrawnMarks.Page(texts: [], styles: []) }
+        guard let r = renderer, let view else { return DrawnMarks.Page(texts: [], styles: []) }
+        r.content = DrawnRoot(content: view, collecting: true)
+        defer { r.content = DrawnRoot(content: view, collecting: false) }
         let data = NSMutableData()
         r.render { size, draw in
             var box = CGRect(origin: .zero, size: size)
@@ -58,6 +66,21 @@ public final class FrameRenderer {
             ctx.closePDF()
         }
         return DrawnMarks.read(pdf: data as Data, frames: frames)
+    }
+
+    /// 렌더러의 뿌리 — 그린 PNG 는 내용 그대로(환경 값을 바꾸지 않는다) · 수집 그림은 머티리얼을 비활성 외양으로(`materialActiveAppearance` — 공개 ·
+    /// macOS 15 이상). 실측(macOS 27): 진짜 머티리얼이 하나라도 있으면 `ImageRenderer.render` 의 PDF 는 그 장 전부를 이미지 한 장(`/Im1 Do`)으로 그린다(글 · 칠 0) ·
+    /// 비활성 외양이면 머티리얼이 불투명 칠 + 같은 모양의 옅은 겹칠로 그려지고 나머지는 벡터로 남는다. 뿌리 꼴이 늘 같아 켜고 끌 때 뷰 그래프가 다시 서지 않는다.
+    struct DrawnRoot: View {
+        let content: AnyView
+        let collecting: Bool
+        var body: some View {
+            if #available(macOS 15, *) {
+                content.transformEnvironment(\.materialActiveAppearance) { if collecting { $0 = .inactive } }
+            } else {
+                content
+            }
+        }
     }
 
     /// PNG 쓰기 — 호스트의 `shot` 이 쓴다(SDK 안 손 · 폴더가 없으면 만든다). 메인 액터 밖에서도 부른다.

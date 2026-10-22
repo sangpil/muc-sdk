@@ -18,7 +18,12 @@ import PreviewProtocol
 //   굵기    : 글꼴 이름의 굵기 축 값(`wght<16진 고정소수>` — 가변 인스턴스 이름) ⟂ 이름 꼬리의 굵기 낱말 ⟂ 400.
 //   바탕    : 요소 경계와 네 변이 0.5 pt 안으로 맞는 채운 면 중 가장 위(마지막에 칠한 것) — 색 · 모서리(위 변의 곧은 선이 모서리에서 떨어진 거리 —
 //             모서리마다 곡선이 셋 이상이면 연속 곡률 모서리라 그 거리를 그 곡률의 비(`continuousExtent`)로 나눈다).
+//             색은 그 경계에 겹친 칠을 위에서부터 불투명해질 때까지 합성한 것이다(`composite`).
 //   못 잡는 것 : 래스터로만 그리는 것(이미지 안의 글 · AppKit 을 감싼 뷰) · 단색이 아닌 글(그라디언트 — 색 nil) · 테두리만 그린 바탕(채움 아님).
+//   효과    : 이 그림에서만 머티리얼을 비활성 외양으로 그린다(`FrameRenderer.DrawnRoot` · macOS 15 이상) — 머티리얼 요소의 바탕은 그 단색 근사다(PNG 의
+//             흐림이 아니다) · macOS 14 에서는 머티리얼이 있는 장이 래스터 한 장이라 글줄 · 바탕이 0. 유리는 공개 손으로 끌 수 없다 — 창이 하나라도 선
+//             프로세스(호스트의 자기 창)에서는 유리가 진짜로 그려지고 그 장이 통째로 래스터 한 장(글줄 · 바탕 0) · 창이 없는 프로세스에서는 유리와 그 안의
+//             내용이 PNG 에도 여기에도 없다(실측 · macOS 27 · 시험 밖 — 한 프로세스에서 선 창은 되돌릴 수 없어 창 없는 상태는 시험이 붙들지 못한다). 프로젝트가 창 없는 장(`RenderContext.offscreen`)에서 유리를 근사로 그려야 선다.
 //
 // 앱 빌드에는 값이 0이다 — 이 모듈(런타임)은 앱이 링크하지 않고, 엔진이 `drawn` 을 청한 장에서만 돈다.
 
@@ -45,10 +50,31 @@ enum DrawnMarks {
         let chars = PDFDocument(data: pdf)?.page(at: 0).map(Self.characters) ?? []
         let texts = lines(walk.pieces, chars: chars, glyphs: walk.glyphs, height: box.height, frames: frames)
         let styles = frames.compactMap { f -> DrawnStyle? in
-            guard let fill = walk.fills.last(where: { $0.matches(f.rect, height: box.height) }), let color = fill.color else { return nil }
-            return DrawnStyle(id: f.id, background: color, radius: fill.radius)
+            let stack = walk.fills.filter { $0.matches(f.rect, height: box.height) }
+            guard let top = stack.last, let color = Self.composite(stack) else { return nil }
+            return DrawnStyle(id: f.id, background: PageWalk.hex(color), radius: top.radius)
         }
         return Page(texts: texts, styles: styles)
+    }
+
+    /// 같은 자리에 겹친 칠의 보이는 색 — 가장 위(마지막) 칠부터 아래로 「위에 얹기」로 합성하다 불투명해지면 멈춘다(불투명한 맨 위 칠이면 그 색 그대로).
+    /// 맨 위가 반투명이고 아래에 같은 자리 칠이 없으면 반투명 색 그대로다. 맨 위 칠의 색을 모르면(무늬) nil — 아래 칠로 내려가지 않는다(가려진 색을 바탕으로 삼지 않는다).
+    /// 중간 · 아래 칠의 색을 모르면 거기서 멈추고 그때까지 합성한 색을 낸다(반투명일 수 있다 — 모르는 칠 밑은 보지 않는다).
+    /// 근거: 비활성 외양의 머티리얼(`FrameRenderer.DrawnRoot`)은 불투명 칠 + 같은 자리의 옅은 겹칠(불투명도 0.05)로 그려진다 — 맨 위만 읽으면 겹칠의 색이 바탕이 된다.
+    static func composite(_ stack: [Fill]) -> [CGFloat]? {
+        var out: [CGFloat]?
+        for fill in stack.reversed() {
+            guard let c = fill.rgba else { return out }   // 색을 모르는 칠 — 맨 위면 nil · 아래면 지금까지의 합성(반투명일 수 있다)
+            guard let o = out else { out = c; if c[3] >= 1 { break } else { continue } }
+            // o 가 c 위에 얹힌다(앞곱 아님 · sRGB 성분 그대로)
+            let a = o[3] + c[3] * (1 - o[3])
+            guard a > 0 else { continue }
+            let under = c[3] * (1 - o[3])
+            let rgb: [CGFloat] = (0..<3).map { k in (o[k] * o[3] + c[k] * under) / a }
+            out = rgb + [a]
+            if a >= 1 { break }
+        }
+        return out
     }
 
     /// 글자 하나 — 쪽 글(`PDFPage.string`)의 UTF-16 낱 차례 · 상자(쪽 좌표 · 아래 원점 — 줄바꿈 · 상자 없는 낱은 nil).
@@ -142,7 +168,8 @@ enum DrawnMarks {
     /// 채운 면 하나 — 쪽 좌표(아래 원점).
     struct Fill {
         var box: CGRect
-        var color: String?
+        /// sRGB 성분 넷(0–1) — 무늬 · 모르는 공간은 nil
+        var rgba: [CGFloat]?
         var radius: Double
         func matches(_ r: CGRect, height: CGFloat) -> Bool {
             let top = height - box.maxY
@@ -314,15 +341,18 @@ final class PageWalk {
 
     // MARK: 색
 
-    var fillColor: String? {
+    var fillColor: String? { fillRGBA.map(Self.hex) }
+
+    /// 지금 채움 색 — sRGB 성분 넷(빨강 · 초록 · 파랑 · 불투명도 · 0–1). 무늬 · 모르는 공간은 nil.
+    var fillRGBA: [CGFloat]? {
         guard !state.pattern, let space = state.space, space.numberOfComponents == state.components.count else { return nil }
         guard let color = CGColor(colorSpace: space, components: state.components + [state.alpha]) else { return nil }
-        return Self.hex(color)
-    }
-
-    static func hex(_ color: CGColor) -> String? {
         guard let srgb = CGColorSpace(name: CGColorSpace.sRGB), let c = color.converted(to: srgb, intent: .defaultIntent, options: nil),
               let v = c.components, v.count == 4 else { return nil }
+        return v.map { min(1, max(0, $0)) }
+    }
+
+    static func hex(_ v: [CGFloat]) -> String {
         let b = v.map { Int((min(1, max(0, $0)) * 255).rounded()) }
         let rgb = String(format: "#%02x%02x%02x", b[0], b[1], b[2])
         return b[3] == 255 ? rgb : rgb + String(format: "%02x", b[3])
@@ -440,7 +470,7 @@ final class PageWalk {
         guard path.count >= 3 else { return }
         let box = Self.bounds(path)
         guard box.width > 0, box.height > 0 else { return }
-        fills.append(DrawnMarks.Fill(box: box, color: fillColor, radius: Double(radius(box))))
+        fills.append(DrawnMarks.Fill(box: box, rgba: fillRGBA, radius: Double(radius(box))))
     }
 
     /// 모서리 반경 — 위 변 위의 곡선 위 점 중 가장 왼쪽이 모서리에서 떨어진 거리(곧은 선의 시작) · 모서리마다 곡선 셋 이상이면 연속 곡률.
