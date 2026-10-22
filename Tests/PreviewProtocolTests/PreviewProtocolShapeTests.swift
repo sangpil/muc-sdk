@@ -29,6 +29,8 @@ import Testing
                                     slots: [StyleSlot(name: "cardPicture", element: element, snap: "card.picture", label: "그림", kinds: ["isomodel"])],
                                     defaults: values)
     static let timing = HostTiming(recv: 1, start: 2, rendered: 3, sent: 4)
+    static let text = DrawnText(text: "t", rect: CGRect(x: 0, y: 0, width: 1, height: 1), font: "F", size: 1, weight: 400, color: "#000000", element: "a")
+    static let style = DrawnStyle(id: "a", background: "#ffffff", radius: 1)
     static let shared = SharedMemoryInfo(kind: .posix, name: "/m", slotBytes: 1, slots: 3)
     static let ia = IAInfo(appScreens: ["s"], entryWords: [.init(control: "plus", label: "＋")], entryHands: ["s": ["plus"]],
                            aliases: ["old": "s"], planned: ["p"])
@@ -50,14 +52,17 @@ import Testing
                      layers: [LayerInfo(name: "chrome", style: schema, composition: composition)],
                      formats: [.rgba8sRGB], shared: shared, ia: ia, frames: [frame], tokensBuilt: built)),
         .render(RenderRequest(seq: 1, screen: "s", state: "normal", style: values, theme: "dark", size: Size(w: 1, h: 1), scale: 2,
-                              layers: [LayerState(name: "chrome", style: values, data: json)], frames: true, scroll: 1, fixture: json, layersOnly: true)),
+                              layers: [LayerState(name: "chrome", style: values, data: json)], frames: true, scroll: 1, fixture: json, layersOnly: true,
+                              drawn: true)),
         .frame(FrameHeader(seq: 1, applied: 1, w: 1, h: 1, stride: 4, scale: 2, format: .rgba8sRGB,
                            snapFrames: [SnapFrame(id: "a", rect: CGRect(x: 0, y: 0, width: 1, height: 1))], elements: ["a"],
-                           layers: [LayerReport(name: "chrome", elements: ["a"], data: json, cover: Insets(top: 1))], ms: 0,
+                           layers: [LayerReport(name: "chrome", elements: ["a"], data: json, cover: Insets(top: 1))],
+                           texts: [text], styles: [style], ms: 0,
                            payload: .inline(bytes: 4), timing: timing)),
         .frame(FrameHeader(seq: 1, applied: 1, w: 1, h: 1, stride: 4, scale: 2, format: .rgba8sRGB,
                            snapFrames: [SnapFrame(id: "a", rect: CGRect(x: 0, y: 0, width: 1, height: 1))], elements: ["a"],
-                           layers: [LayerReport(name: "chrome", elements: ["a"], data: json, cover: Insets(top: 1))], ms: 0,
+                           layers: [LayerReport(name: "chrome", elements: ["a"], data: json, cover: Insets(top: 1))],
+                           texts: [text], styles: [style], ms: 0,
                            payload: .slot(index: 0, bytes: 4), timing: timing)),
         .patch(Patch(seq: 1, edits: [Edit(field: "cardGap", value: json, layer: "chrome")])),
         .tokensChanged(TokensChanged(seq: 1)),

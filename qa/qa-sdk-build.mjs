@@ -45,7 +45,8 @@ const CONTRACT = ["ProjectFormat", "ScreenMarks", "DesignTokens", "LaunchTrace",
 const RUNTIME = ["CShm", "PreviewWire", "PreviewHostKit"];
 const TEST = ["TestScratch"];
 const CONTRACT_IMPORTS = new Set(["Foundation", "CryptoKit", "CoreGraphics", "SwiftUI", "Testing", ...CONTRACT]);
-const PLATFORM = ["Darwin", "AppKit", "Observation", "ImageIO", "UniformTypeIdentifiers"];
+// PDFKit — 호스트가 청한 장을 벡터 한 쪽으로 다시 그려 글의 문자열을 글꼴의 문자표로 푼다(그린 글줄 읽기 · `PreviewHostKit` 의 `DrawnMarks`)
+const PLATFORM = ["Darwin", "AppKit", "Observation", "ImageIO", "UniformTypeIdentifiers", "PDFKit"];
 const RUNTIME_IMPORTS = new Set([...CONTRACT_IMPORTS, ...PLATFORM, ...RUNTIME]);
 const TEST_IMPORTS = new Set(["Foundation"]);
 

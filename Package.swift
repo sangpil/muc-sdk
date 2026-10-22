@@ -17,14 +17,15 @@ import PackageDescription
 //                     `EnumScaleProvider`). 값(생성물 · 실행 시점 등록부 · SwiftUI 색으로 옮기는 플랫폼 손)은 프로젝트의 것이다. Foundation · SwiftUI(`ColorScheme`).
 //   LaunchTrace     : 창 열기 실측 훅(`OpenTrace` — `MUC_OPEN_TRACE=1` ∧ DEBUG 일 때만) — 프로젝트의 화면 코드와 엔진의 도구가 같은 눈금에 표지를 남긴다. Foundation 만.
 //   PreviewProtocol : 엔진 ⟂ 미리보기 호스트의 말(프로토콜 판 `PreviewProtocolVersion` — 한 자리) — 메시지 열(Codable · 평평한 `type` 칸) · 줄 JSON + 길이 접두
-//                     프레이밍 · 최신값 우선(`Coalescer`) · 프레임 형식 · 시계 · 소켓 경로 규칙 · 요소 경계(`SnapFrame`) · Style 서술(`StyleSchema` · 칸 · 절 · 칸 종류 —
+//                     프레이밍 · 최신값 우선(`Coalescer`) · 프레임 형식 · 시계 · 소켓 경로 규칙 · 요소 경계(`SnapFrame`) · 그린 글줄과 요소 바탕(`DrawnText` · `DrawnStyle`) · Style 서술(`StyleSchema` · 칸 · 절 · 칸 종류 —
 //                     `hello` 에 실리고 엔진이 안 파일을 재는 잣대). Foundation · SDK `ProjectFormat`(JSON 값) · `DesignTokens`(스케일 종류).
 //
 // 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
 //   PreviewWire     : 전송 — 유닉스 소켓 상주 연결(`Connection` · `UnixSocket`) · 공유 메모리 칸(`SharedRegion` — POSIX shm ⟂ `/tmp` mmap). 엔진 · 호스트가 함께 문다.
 //   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:ia:frames:tokensBuilt:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
-//                     (`ImageRenderer.cgImage` 바이트 그대로) · 연결 = 세션(듣기 하나에 연결 여럿) · 자기 창 모드 · 프레임 수집(`FrameSink` · `collectFrames`). **프로젝트를 모른다.**
+//                     (`ImageRenderer.cgImage` 바이트 그대로) · 연결 = 세션(듣기 하나에 연결 여럿) · 자기 창 모드 · 프레임 수집(`FrameSink` · `collectFrames`) ·
+//                     그린 글줄 · 요소 바탕 읽기(청한 장을 벡터 한 쪽으로 다시 그려 CoreGraphics PDF 걷기 · PDFKit 으로). **프로젝트를 모른다.**
 //
 // 시험(시험 타깃만 문다 — 제품 타깃이 물면 무는 쪽의 경계 게이트가 빨강):
 //   TestScratch     : 시험의 임시 자리 한 벌 — 임시 폴더 · 파일 자리 · 설정 도메인(임시 폴더 안의 plist)을 만들고 끝에 지운다. 엔진 · 프로젝트의 시험이 다 이것만 쓴다

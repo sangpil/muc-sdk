@@ -167,7 +167,7 @@ final class HostServer {
             request = r
             appliedSeq = max(appliedSeq, r.seq)
             var fresh = r
-            fresh.seq = 0; fresh.frames = nil
+            fresh.seq = 0; fresh.frames = nil; fresh.drawn = nil
             if fresh != renderKey { renderer = FrameRenderer(); renderKey = fresh }
             let key = "\(r.screen)|\(r.state)"
             if current?.key != key {
@@ -274,8 +274,12 @@ final class HostServer {
         // 층만 그린 장은 층의 요소만 낸다(본체를 그리지 않았다 — 경계 수 대조가 그 장에서도 선다)
         let reports = wantsFrames ? cur.session.layerReports() : nil
         let elements = wantsFrames ? (req.layersOnly == true ? (reports ?? []).flatMap(\.elements) : cur.session.elementIDs()) : nil
+        let snaps = wantsFrames || req.drawn == true ? cur.session.snapFrames() : []
+        // 그린 글줄 · 요소 바탕 — 같은 렌더러로 벡터 한 장을 더 그려 읽는다(청한 장만 · 렌더 소요 `ms` 밖)
+        let drawn = req.drawn == true ? renderer.drawn(frames: snaps) : nil
         let header = FrameHeader(seq: seq, applied: appliedSeq, w: f.w, h: f.h, stride: f.stride, scale: req.scale, format: .rgba8sRGB,
-                                 snapFrames: wantsFrames ? cur.session.snapFrames() : [], elements: elements, layers: reports,
+                                 snapFrames: wantsFrames ? snaps : [], elements: elements, layers: reports,
+                                 texts: drawn?.texts, styles: drawn?.styles,
                                  ms: PreviewClock.ms(t0, t1), payload: payload,
                                  timing: HostTiming(recv: recv, start: start, rendered: rendered, sent: PreviewClock.now()))
         _ = try withExtendedLifetime(f) { try conn.send(.frame(header), payload: body) }

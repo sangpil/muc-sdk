@@ -2,6 +2,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import PreviewProtocol
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -41,6 +42,22 @@ public final class FrameRenderer {
               let data = img.dataProvider?.data, CFDataGetLength(data) >= img.bytesPerRow * img.height
         else { throw PreviewHostError.renderFailed("ImageRenderer 꼴이 RGBA8 앞곱 sRGB 가 아니다: \(img.bitmapInfo.rawValue) · \(String(describing: img.colorSpace?.name))") }
         return Frame(image: img, data: data, w: img.width, h: img.height, stride: img.bytesPerRow)
+    }
+
+    /// 방금 그린 장을 벡터(PDF 한 쪽)로 한 번 더 그려 그린 글줄 · 요소 바탕을 읽는다(`DrawnMarks` · `render.drawn`) — `render(_:size:scale:)` 뒤에 같은 렌더러로.
+    /// `frames` = 그 장의 요소 경계(소속 요소 · 바탕을 가린다). 그린 장이 없으면 빈 것.
+    func drawn(frames: [SnapFrame]) -> DrawnMarks.Page {
+        guard let r = renderer else { return DrawnMarks.Page(texts: [], styles: []) }
+        let data = NSMutableData()
+        r.render { size, draw in
+            var box = CGRect(origin: .zero, size: size)
+            guard let consumer = CGDataConsumer(data: data as CFMutableData), let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) else { return }
+            ctx.beginPDFPage(nil)
+            draw(ctx)
+            ctx.endPDFPage()
+            ctx.closePDF()
+        }
+        return DrawnMarks.read(pdf: data as Data, frames: frames)
     }
 
     /// PNG 쓰기 — 호스트의 `shot` 이 쓴다(SDK 안 손 · 폴더가 없으면 만든다). 메인 액터 밖에서도 부른다.

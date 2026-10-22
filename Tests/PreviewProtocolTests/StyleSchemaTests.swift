@@ -339,12 +339,12 @@ import Testing
     /// 옛 상대 둘 — (1) 자리를 모르는 엔진(프로토콜 판 4 이하)은 판정이 막는다(판 5 호스트를 `hostNewer`).
     /// (2) 새 엔진이 자리 값을 실어 보내도 자리를 모르는 호스트(서술에 자리가 없다)는 서술 밖 칸으로 빼고 깨지지 않는다(화면은 원래 이미지).
     @Test func olderEnginesAreRefusedAndOlderHostsDropSlots() throws {
-        #expect(PreviewProtocolVersion.current == 5, "자리 목록은 프로토콜 판 5 의 꼴")
+        #expect(PreviewProtocolVersion.current >= 5, "자리 목록은 프로토콜 판 5 부터의 꼴")
         let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
                                         screens: [ScreenInfo(name: "home", states: ["n"], style: Self.slotted)]))
         let greeting = try ProtocolDialect.current.encode(hello)
         let engine4 = ProtocolJudge(version: 4, dialects: [])
-        #expect(throws: ProtocolMismatch.hostNewer(host: 5, engine: 4), "판 4 엔진은 판 5 호스트를 거절한다") { try engine4.dialect(greeting: greeting) }
+        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 4), "판 4 엔진은 판 5 이상의 호스트를 거절한다") { try engine4.dialect(greeting: greeting) }
 
         let fromNewEngine = try Self.slotted.normalize(["potPicture": "isomodel:fern"])
         #expect(try Self.texted.normalize(["potTitle": "화분"].merging(fromNewEngine) { a, _ in a })["potPicture"] == nil, "자리 값은 서술 밖 칸으로 빠진다")
