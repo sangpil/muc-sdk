@@ -26,13 +26,17 @@ public final class FrameRenderer {
         public var base: UnsafeRawPointer { UnsafeRawPointer(CFDataGetBytePtr(data)!) }
     }
 
-    private var renderer: ImageRenderer<AnyView>?
+    private var renderer: ImageRenderer<DrawnRoot>?
+    /// The view of the frame just rendered — `drawn` puts it back into the same renderer with only the material appearance changed.
+    private var view: AnyView?
 
     public init() {}
 
     public func render(_ view: AnyView, size: CGSize, scale: CGFloat) throws -> Frame {
-        let r: ImageRenderer<AnyView>
-        if let old = renderer { old.content = view; r = old } else { r = ImageRenderer(content: view); renderer = r }
+        let r: ImageRenderer<DrawnRoot>
+        let root = DrawnRoot(content: view, collecting: false)
+        if let old = renderer { old.content = root; r = old } else { r = ImageRenderer(content: root); renderer = r }
+        self.view = view
         r.proposedSize = ProposedViewSize(size)
         r.scale = scale
         guard let img = r.cgImage else { throw PreviewHostError.renderFailed("ImageRenderer 가 이미지를 내지 않았다") }
@@ -46,8 +50,13 @@ public final class FrameRenderer {
 
     /// 방금 그린 장을 벡터(PDF 한 쪽)로 한 번 더 그려 그린 글줄 · 요소 바탕을 읽는다(`DrawnMarks` · `render.drawn`) — `render(_:size:scale:)` 뒤에 같은 렌더러로.
     /// `frames` = 그 장의 요소 경계(소속 요소 · 바탕을 가린다). 그린 장이 없으면 빈 것.
+    /// Only this vector pass draws materials in their inactive appearance (solid fills — vector, `DrawnRoot`): with a real material the PDF becomes one
+    /// raster image of the whole frame, so no lines and no backgrounds. The rendered PNG (`render`) is untouched. The renderer's content is restored
+    /// afterwards (same root type — the view graph and its state stay).
     func drawn(frames: [SnapFrame]) -> DrawnMarks.Page {
-        guard let r = renderer else { return DrawnMarks.Page(texts: [], styles: []) }
+        guard let r = renderer, let view else { return DrawnMarks.Page(texts: [], styles: []) }
+        r.content = DrawnRoot(content: view, collecting: true)
+        defer { r.content = DrawnRoot(content: view, collecting: false) }
         let data = NSMutableData()
         r.render { size, draw in
             var box = CGRect(origin: .zero, size: size)
@@ -58,6 +67,22 @@ public final class FrameRenderer {
             ctx.closePDF()
         }
         return DrawnMarks.read(pdf: data as Data, frames: frames)
+    }
+
+    /// The renderer's root — the PNG pass leaves the content as it is (the environment is not touched); the vector pass draws materials in their
+    /// inactive appearance (`materialActiveAppearance` — public, macOS 15+). Measured on macOS 27: with any real material, the PDF from
+    /// `ImageRenderer.render` is the whole frame as one image (`/Im1 Do` — no text, no fills); with the inactive appearance the material is an opaque
+    /// fill plus a faint veil of the same shape and everything else stays vector. The root type never changes, so toggling does not rebuild the graph.
+    struct DrawnRoot: View {
+        let content: AnyView
+        let collecting: Bool
+        var body: some View {
+            if #available(macOS 15, *) {
+                content.transformEnvironment(\.materialActiveAppearance) { if collecting { $0 = .inactive } }
+            } else {
+                content
+            }
+        }
     }
 
     /// PNG 쓰기 — 호스트의 `shot` 이 쓴다(SDK 안 손 · 폴더가 없으면 만든다). 메인 액터 밖에서도 부른다.
