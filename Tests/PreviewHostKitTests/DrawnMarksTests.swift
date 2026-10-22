@@ -145,6 +145,24 @@ enum Card {
         #expect(try Card.read(view, frames: []).texts.map(\.text) == [expected])
     }
 
+    /// 자간 · 커닝이 큰 글 — 글자 사이 벌림은 공백이 아니다(그린 조각의 진행 폭에 자간이 든다) · 그리지 않은 공백의 벌림은 자간을 빼고 잰다
+    /// (자간 6 의 「식물 목록」 — 벌림 = 공백 + 자간 0.737 em 이 줄을 가르지 않고 공백 하나).
+    @MainActor @Test(arguments: [("HELLO", 3.0, false), ("HELLO", 8.0, true), ("가나다라", 6.0, false), ("식물목록", 8.0, true), ("Plant 목록", 6.0, false),
+                                 ("식물 목록", 6.0, false)])
+    func wideTrackingAddsNoSpaces(source: String, amount: Double, kerning: Bool) throws {
+        let text = kerning ? Text(source).kerning(amount) : Text(source).tracking(amount)
+        let view = text.font(.system(size: 13)).frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        #expect(try Card.read(view, frames: []).texts.map(\.text) == [source])
+    }
+
+    /// 간격 0 · 1 로 붙여 놓은 글자 조각(글자마다 따로 놓인 글) — 벌림 0.02–0.12 em 라 공백이 끼지 않는다.
+    @MainActor @Test(arguments: [0.0, 1.0])
+    func lettersPlacedApartAddNoSpaces(spacing: Double) throws {
+        let view = HStack(spacing: spacing) { ForEach(Array("HELLO".enumerated()), id: \.offset) { Text(String($0.element)) } }
+            .font(.system(size: 13)).frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        #expect(try Card.read(view, frames: []).texts.map(\.text) == ["HELLO"])
+    }
+
     /// 한 글꼴로 그린 한글 줄(대체 런 없음) — 공백은 CID 글자로 그려진다 · 여러 칸 공백도 칸 수대로.
     @MainActor @Test(arguments: [("식물 목록", "식물 목록"), ("식물   목록", "식물   목록"), ("식물\u{00A0}목록", "식물 목록"), ("가\t나", "가 나")])
     func spacesInsideASingleFontHangulLine(source: String, expected: String) throws {

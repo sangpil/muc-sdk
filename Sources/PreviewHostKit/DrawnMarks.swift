@@ -13,8 +13,8 @@ import PreviewProtocol
 //   글줄    : 같은 기준선 · 같은 크기 · 같은 색으로 이어진 조각을 한 줄로 묶는다(한 줄에 섞인 대체 글꼴은 이어 붙는다) · 감긴 글은 줄마다 하나.
 //   공백    : 그린 공백 글자는 그린 낱마다 하나 — PDFKit 의 글이 잇닿은 공백 글자를 낱 하나로 접으므로 그 낱의 상자 안에 그린 글자 수로 편다(줄바꿈 없는 공백 ·
 //             탭은 PDFKit 이 U+0020 으로 푼다 — 탭은 공백 글자 하나 + 탭 자리까지의 벌림으로 그려진다). 그리지 않은 공백 — 글꼴 대체 경계에서 공백만인 런
-//             (시스템 글꼴의 한글 낱말 사이)은 그려지지 않고 벌림만 남는다 — 이어 붙이는 두 조각 사이가 0.15 em 이상 벌고 양쪽 끝이 공백이 아니면 공백 하나
-//             (몇 칸이었는지는 PDF 에 남지 않는다 · 0.6 em 를 넘는 벌림은 줄을 가른다 — 붙어 선 다른 글과 가를 수 없다). 줄의 앞뒤 공백은 다듬는다.
+//             (시스템 글꼴의 한글 낱말 사이)은 그려지지 않고 벌림만 남는다 — 이어 붙이는 두 조각 사이가 (앞 조각의 자간을 빼고) 0.15 em 이상 벌고 양쪽 끝이 공백이 아니면 공백 하나
+//             (몇 칸이었는지는 PDF 에 남지 않는다 · 0.6 em 을 넘는 벌림은 줄을 가른다 — 붙어 선 다른 글과 가를 수 없다). 줄의 앞뒤 공백은 다듬는다.
 //   굵기    : 글꼴 이름의 굵기 축 값(`wght<16진 고정소수>` — 가변 인스턴스 이름) ⟂ 이름 꼬리의 굵기 낱말 ⟂ 400.
 //   바탕    : 요소 경계와 네 변이 0.5 pt 안으로 맞는 채운 면 중 가장 위(마지막에 칠한 것) — 색 · 모서리(위 변의 곧은 선이 모서리에서 떨어진 거리 —
 //             모서리마다 곡선이 셋 이상이면 연속 곡률 모서리라 그 거리를 그 곡률의 비(`continuousExtent`)로 나눈다).
@@ -71,8 +71,8 @@ enum DrawnMarks {
         }
     }
 
-    /// 조각에 글자를 붙이고 줄로 묶는다 — `glyphs` = 그린 글자마다 그 진행 폭의 가운데(쪽 좌표 · 공백 낱을 그린 수만큼 편다).
-    static func lines(_ pieces: [Piece], chars: [Character], glyphs: [CGPoint], height: CGFloat, frames: [SnapFrame]) -> [DrawnText] {
+    /// 조각에 글자를 붙이고 줄로 묶는다 — `glyphs` = 조각마다 그린 글자의 진행 폭 가운데(쪽 좌표 · 조각과 같은 차례 · 공백 낱을 그린 수만큼 편다).
+    static func lines(_ pieces: [Piece], chars: [Character], glyphs: [[CGPoint]], height: CGFloat, frames: [SnapFrame]) -> [DrawnText] {
         var text = Array(repeating: "", count: pieces.count)
         var last: Int?
         for c in chars {
@@ -85,7 +85,7 @@ enum DrawnMarks {
             let hits = pieces.indices.filter { pieces[$0].box.insetBy(dx: -0.5, dy: -0.5).contains(p) }
             guard let i = hits.min(by: { pieces[$0].box.width * pieces[$0].box.height < pieces[$1].box.width * pieces[$1].box.height }) else { last = nil; continue }
             // 공백 낱은 상자 안에 그린 글자 수만큼(PDFKit 이 잇닿은 공백을 낱 하나로 접는다 — 못 세면 하나)
-            let n = c.isSpace ? glyphs.filter { b.insetBy(dx: -0.5, dy: -0.5).contains($0) }.count : 1
+            let n = c.isSpace && i < glyphs.count ? glyphs[i].filter { b.insetBy(dx: -0.5, dy: -0.5).contains($0) }.count : 1
             text[i] += String(repeating: c.unit, count: max(1, n))
             last = i
         }
@@ -97,7 +97,7 @@ enum DrawnMarks {
             return frames.filter { $0.rect.contains(mid) }.min { $0.w * $0.h < $1.w * $1.h }?.id
         }
         var out: [DrawnText] = []
-        var cur: (piece: Piece, box: CGRect, text: String, end: CGFloat, owner: String?)?
+        var cur: (piece: Piece, box: CGRect, text: String, end: CGFloat, tracking: CGFloat, owner: String?)?
         func flush() {
             guard let c = cur else { return }
             cur = nil
@@ -110,13 +110,15 @@ enum DrawnMarks {
         for (i, p) in pieces.enumerated() {
             let o = owner(p.box)
             if let c = cur, c.owner == o, abs(c.piece.baseline - p.baseline) <= 0.5, abs(c.piece.size - p.size) < 0.01, c.piece.color == p.color,
-               p.start >= c.end - 1, p.start <= c.end + p.size * 0.6 {
-                // 그리지 않은 공백 — 벌림만 남은 자리(양쪽 끝에 그린 공백이 있으면 그것이 그 자리다)
-                let gap = p.start - c.end >= p.size * 0.15 && c.text.last?.isWhitespace == false && text[i].first?.isWhitespace == false
-                cur = (c.piece, c.box.union(p.box), c.text + (gap ? " " : "") + text[i], p.end, o)
+               p.start >= c.end - 1, p.start - c.end - c.tracking <= p.size * 0.6 {
+                // 그리지 않은 공백 — 벌림만 남은 자리(양쪽 끝에 그린 공백이 있으면 그것이 그 자리다). 벌림에서 앞 조각의 자간(`Tc`)을 뺀다 —
+                // 그리지 않은 공백 낱도 자간을 받는다. 0.15 em 근거(실측 · 13 pt 시스템 글꼴): 그리지 않은 공백 0.275 em(SF 공백 0.281 em + Tc) ⟂
+                // 붙어 그린 조각 사이(대체 경계 · 커닝) 0.001 em · 간격 0 으로 붙여 놓은 글자 조각 0.02–0.05 em — 둘 사이.
+                let gap = p.start - c.end - c.tracking >= p.size * 0.15 && c.text.last?.isWhitespace == false && text[i].first?.isWhitespace == false
+                cur = (c.piece, c.box.union(p.box), c.text + (gap ? " " : "") + text[i], p.end, p.tracking, o)
             } else {
                 flush()
-                cur = (p, p.box, text[i], p.end, o)
+                cur = (p, p.box, text[i], p.end, p.tracking, o)
             }
         }
         flush()
@@ -133,6 +135,8 @@ enum DrawnMarks {
         var font: Font
         var size: Double
         var color: String?
+        /// 글자마다 더한 자간(`Tc` — 쪽 좌표 · 그리지 않은 공백의 벌림에서 뺀다)
+        var tracking: CGFloat = 0
     }
 
     /// 채운 면 하나 — 쪽 좌표(아래 원점).
@@ -281,8 +285,8 @@ final class PageWalk {
     var streams: [CGPDFContentStreamRef] = []
     var fonts: [CGPDFDictionaryRef: DrawnMarks.Font] = [:]
     var pieces: [DrawnMarks.Piece] = []
-    /// 그린 글자마다 그 진행 폭의 가운데(쪽 좌표 — 공백 낱을 편다)
-    var glyphs: [CGPoint] = []
+    /// 조각마다 그린 글자의 진행 폭 가운데(쪽 좌표 · `pieces` 와 같은 차례 — 공백 낱을 편다)
+    var glyphs: [[CGPoint]] = []
     var fills: [DrawnMarks.Fill] = []
     /// 겹친 양식의 깊이 — 스스로를 부르는 양식에서 멈춘다
     var depth = 0
@@ -386,6 +390,7 @@ final class PageWalk {
         let m = start.concatenating(state.ctm)
         let lo = f.descent / 1000 * fs + state.rise, hi = f.ascent / 1000 * fs + state.rise
         var advance: CGFloat = 0
+        var points: [CGPoint] = []
         for part in parts {
             switch part {
             case .adjust(let n): advance -= n / 1000 * fs * th
@@ -396,7 +401,7 @@ final class PageWalk {
                     for k in 0..<f.bytesPerCode { code = code << 8 | Int(bytes[i + k]) }
                     let word = f.bytesPerCode == 1 && code == 32 ? state.wordSpacing : 0
                     let w = f.width(code) / 1000 * fs * th
-                    glyphs.append(CGPoint(x: advance + w / 2, y: (lo + hi) / 2).applying(m))
+                    points.append(CGPoint(x: advance + w / 2, y: (lo + hi) / 2).applying(m))
                     advance += w + (state.charSpacing + word) * th
                     i += f.bytesPerCode
                 }
@@ -407,7 +412,9 @@ final class PageWalk {
         let origin = CGPoint(x: 0, y: state.rise).applying(m), end = CGPoint(x: advance, y: state.rise).applying(m)
         let size = Double(fs * (m.c * m.c + m.d * m.d).squareRoot())
         pieces.append(DrawnMarks.Piece(box: Self.bounds(corners), baseline: origin.y, start: min(origin.x, end.x), end: max(origin.x, end.x),
-                                       font: f, size: size, color: fillColor))
+                                       font: f, size: size, color: fillColor,
+                                       tracking: state.charSpacing * th * (m.a * m.a + m.b * m.b).squareRoot()))
+        glyphs.append(points)
     }
 
     enum ShowPart { case bytes([UInt8]), adjust(CGFloat) }
