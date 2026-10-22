@@ -87,12 +87,18 @@ enum Effects {
         let want = try #require(img.dataProvider?.data) as Data
         func worst(_ a: Data) -> Int { a.count == want.count ? zip(a, want).map { abs(Int($0) - Int($1)) }.max() ?? 0 : .max }
         let r = FrameRenderer()
-        #expect(worst(try Effects.pixels(r, view)) <= 4, "수집 뿌리가 그린 그림을 바꾸지 않는다")
+        // 호스트의 실제 차례(`HostServer.produce` — 인라인 전송은 `drawn()` 뒤에 먼저 낸 Frame 의 `base` 를 보낸다): 수집이 그 바이트를 건드리지 않는다
+        let frame = try r.render(AnyView(view), size: Card.size, scale: 2)
+        let sent = Data(bytes: frame.base, count: frame.bytes)
+        _ = r.drawn(frames: Card.frames)
+        #expect(Data(bytes: frame.base, count: frame.bytes) == sent, "수집 뒤에도 먼저 낸 Frame 의 바이트 그대로")
+        #expect(worst(sent) <= 4, "수집 뿌리가 그린 그림을 바꾸지 않는다")
         _ = r.drawn(frames: Card.frames)
         let after = worst(try Effects.pixels(r, view))
         #expect(after <= 4, "수집 뒤에도 같은 그림 — 가장 큰 낱 차 \(after)")
         if #available(macOS 15, *) {
             let leaked = worst(try Effects.pixels(FrameRenderer(), view.environment(\.materialActiveAppearance, .inactive)))
+            // 30 은 이 장면(머티리얼 하나 · 단색에 가까운 그라디언트 바탕) 기준이다 — 다른 장면의 문턱이 아니다
             #expect(leaked > 30, "새는 그림은 문턱 밖 — \(leaked)")
         }
     }
@@ -101,8 +107,8 @@ enum Effects {
     /// (글줄 · 바탕 0 — 내용에 씌운 유리 ⟂ 바탕 층에 깐 유리 모두). 유리를 끄는 공개 환경값이 없다(비활성 외양 · 창 활성 · 휘도 · 대비 · 끔 모두 같음 — 실측).
     /// 창이 없는 프로세스에서는 유리와 그 안의 내용이 그림에도 수집에도 없다 — 어느 쪽이든 프로젝트는 창 없는 장(`RenderContext.offscreen`)에서 유리를
     /// 근사로 그린다(SDK.md). 시험은 창을 먼저 세워 상태를 하나로 고정한다(다른 시험이 창을 세우면 프로세스가 되돌아오지 않는다).
-    @MainActor @Test func glassPageIsOneImageOnceAWindowExists() throws {
-        guard #available(macOS 26, *) else { return }
+    @MainActor @Test(.enabled(if: Self.hasGlass, "유리 API 는 macOS 26 이상")) func glassPageIsOneImageOnceAWindowExists() throws {
+        guard #available(macOS 26, *) else { return }   // 위 조건과 같다 — 컴파일러가 API 가용성을 보게
         _ = WindowPresenter(size: CGSize(width: 10, height: 10), origin: .zero)
         let around = try Card.read(Effects.card { $0.glassEffect(.regular, in: Effects.shape) })
         #expect(around.texts.isEmpty && around.styles.isEmpty, "\(around.texts.map(\.text))")
@@ -127,7 +133,11 @@ enum Effects {
         #expect(DrawnMarks.composite([veil]).map(PageWalk.hex) == "#bfbfbf0d")
         #expect(DrawnMarks.composite([base, F(box: box, rgba: nil, radius: 0)]) == nil)
         #expect(DrawnMarks.composite([veil, F(box: box, rgba: [1, 0, 0, 1], radius: 0)]).map(PageWalk.hex) == "#ff0000")
+        // 중간 · 아래 칠의 색을 모르면 거기서 멈추고 그때까지 합성한 반투명 색
+        #expect(DrawnMarks.composite([base, F(box: box, rgba: nil, radius: 0), veil]).map(PageWalk.hex) == "#bfbfbf0d", "중간이 무늬")
+        #expect(DrawnMarks.composite([F(box: box, rgba: nil, radius: 0), veil, veil]).map(PageWalk.hex) == PageWalk.hex([0.75, 0.75, 0.75, 0.0975]), "맨 아래가 무늬")
     }
 
+    static var hasGlass: Bool { if #available(macOS 26, *) { true } else { false } }
     static var hasMaterialAppearance: Bool { if #available(macOS 15, *) { true } else { false } }
 }

@@ -68,7 +68,7 @@ public final class FrameRenderer {
         return DrawnMarks.read(pdf: data as Data, frames: frames)
     }
 
-    /// 렌더러의 뿌리 — 그린 PNG 는 내용 그대로(환경을 건드리지 않는다) · 수집 그림은 머티리얼을 비활성 외양으로(`materialActiveAppearance` — 공개 ·
+    /// 렌더러의 뿌리 — 그린 PNG 는 내용 그대로(환경 값을 바꾸지 않는다) · 수집 그림은 머티리얼을 비활성 외양으로(`materialActiveAppearance` — 공개 ·
     /// macOS 15 이상). 실측(macOS 27): 진짜 머티리얼이 하나라도 있으면 `ImageRenderer.render` 의 PDF 는 그 장 전부를 이미지 한 장(`/Im1 Do`)으로 그린다(글 · 칠 0) ·
     /// 비활성 외양이면 머티리얼이 불투명 칠 + 같은 모양의 옅은 겹칠로 그려지고 나머지는 벡터로 남는다. 뿌리 꼴이 늘 같아 켜고 끌 때 뷰 그래프가 다시 서지 않는다.
     struct DrawnRoot: View {

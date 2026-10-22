@@ -23,7 +23,7 @@ import PreviewProtocol
 //   효과    : 이 그림에서만 머티리얼을 비활성 외양으로 그린다(`FrameRenderer.DrawnRoot` · macOS 15 이상) — 머티리얼 요소의 바탕은 그 단색 근사다(PNG 의
 //             흐림이 아니다) · macOS 14 에서는 머티리얼이 있는 장이 래스터 한 장이라 글줄 · 바탕이 0. 유리는 공개 손으로 끌 수 없다 — 창이 하나라도 선
 //             프로세스(호스트의 자기 창)에서는 유리가 진짜로 그려지고 그 장이 통째로 래스터 한 장(글줄 · 바탕 0) · 창이 없는 프로세스에서는 유리와 그 안의
-//             내용이 PNG 에도 여기에도 없다. 프로젝트가 창 없는 장(`RenderContext.offscreen`)에서 유리를 근사로 그려야 선다.
+//             내용이 PNG 에도 여기에도 없다(실측 · macOS 27 · 시험 밖 — 한 프로세스에서 선 창은 되돌릴 수 없어 창 없는 상태는 시험이 붙들지 못한다). 프로젝트가 창 없는 장(`RenderContext.offscreen`)에서 유리를 근사로 그려야 선다.
 //
 // 앱 빌드에는 값이 0이다 — 이 모듈(런타임)은 앱이 링크하지 않고, 엔진이 `drawn` 을 청한 장에서만 돈다.
 
@@ -59,11 +59,12 @@ enum DrawnMarks {
 
     /// 같은 자리에 겹친 칠의 보이는 색 — 가장 위(마지막) 칠부터 아래로 「위에 얹기」로 합성하다 불투명해지면 멈춘다(불투명한 맨 위 칠이면 그 색 그대로).
     /// 맨 위가 반투명이고 아래에 같은 자리 칠이 없으면 반투명 색 그대로다. 맨 위 칠의 색을 모르면(무늬) nil — 아래 칠로 내려가지 않는다(가려진 색을 바탕으로 삼지 않는다).
+    /// 중간 · 아래 칠의 색을 모르면 거기서 멈추고 그때까지 합성한 색을 낸다(반투명일 수 있다 — 모르는 칠 밑은 보지 않는다).
     /// 근거: 비활성 외양의 머티리얼(`FrameRenderer.DrawnRoot`)은 불투명 칠 + 같은 자리의 옅은 겹칠(불투명도 0.05)로 그려진다 — 맨 위만 읽으면 겹칠의 색이 바탕이 된다.
     static func composite(_ stack: [Fill]) -> [CGFloat]? {
         var out: [CGFloat]?
         for fill in stack.reversed() {
-            guard let c = fill.rgba else { return out }
+            guard let c = fill.rgba else { return out }   // 색을 모르는 칠 — 맨 위면 nil · 아래면 지금까지의 합성(반투명일 수 있다)
             guard let o = out else { out = c; if c[3] >= 1 { break } else { continue } }
             // o 가 c 위에 얹힌다(앞곱 아님 · sRGB 성분 그대로)
             let a = o[3] + c[3] * (1 - o[3])
