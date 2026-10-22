@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.1"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -49,7 +49,9 @@ Toolchain: Swift 6.1 or newer — this package's manifest is `swift-tools-versio
 
 `.snapID` is an empty modifier unless the `ActiveMarks` trait is on (and only on macOS — iOS is always off).
 Pass it from a trait of your own, so your app build never carries it and your tool build does. Using traits needs `swift-tools-version: 6.1` in your manifest too.
+A mark never changes layout — with the trait on or off, the marked view keeps the same frame and its alignment guides still reach the parent (overlays included).
 `.snapID` 는 트레이트 `ActiveMarks` 가 켜졌을 때만(그리고 macOS 에서만 — iOS 는 늘 꺼짐) 앵커 · 탭을 건다. 제 패키지의 트레이트로 넘긴다 — 앱 빌드엔 없고 도구 빌드에만 선다.
+표식은 레이아웃을 바꾸지 않는다 — 트레이트가 켜지든 꺼지든 표식 단 뷰의 프레임이 같고, 정렬 안내선이 바깥(overlay 포함)에 그대로 닿는다.
 
 ```swift
 // swift-tools-version: 6.1
@@ -60,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.4.1",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
