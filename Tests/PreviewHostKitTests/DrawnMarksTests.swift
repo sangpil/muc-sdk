@@ -89,6 +89,38 @@ enum Card {
         #expect(page.texts.isEmpty)
     }
 
+    /// 붙어 선 형제 요소 — 같은 꼴(12 pt · 같은 색)의 글이 간격 4 로 붙어 있어도 소속이 다르면 줄 둘 · 소속 둘(합친 상자 가운데로 한쪽에 붙지 않는다) ·
+    /// 표식 없는 글끼리는 지금처럼 잇는다.
+    @MainActor @Test func siblingsWithTheSameStyleStayApart() throws {
+        let view = VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 4) { Text("Alpha").font(.system(size: 12)); Text("Beta").font(.system(size: 12)) }
+            HStack(spacing: 4) { Text("Gamma").font(.system(size: 12)); Text("Delta").font(.system(size: 12)) }
+        }
+        .frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        // 표식 없이 읽으면 붙은 같은 꼴의 조각은 한 줄 — 이 시험의 기준이 헛돌지 않는다(형제 둘이 실제로 이어 붙을 만큼 가깝다)
+        let bare = try Card.read(view, frames: [])
+        #expect(bare.texts.map(\.text) == ["Alpha Beta", "Gamma Delta"] || bare.texts.map(\.text) == ["AlphaBeta", "GammaDelta"], "\(bare.texts.map(\.text))")
+        // 윗줄의 두 글에 표식을 단다 — 각 글의 상자(한 줄의 조각을 PDF 에서 읽은 자리)를 경계로
+        let line = try #require(bare.texts.first)
+        let split = line.rect.minX + line.rect.width * 0.5
+        let frames = [SnapFrame(id: "a", rect: CGRect(x: line.rect.minX - 1, y: line.rect.minY - 1, width: split - line.rect.minX - 2, height: line.rect.height + 2)),
+                      SnapFrame(id: "b", rect: CGRect(x: split, y: line.rect.minY - 1, width: line.rect.maxX - split + 1, height: line.rect.height + 2))]
+        let page = try Card.read(view, frames: frames)
+        let marked = page.texts.filter { $0.element != nil }
+        #expect(marked.map(\.text) == ["Alpha", "Beta"], "\(page.texts.map(\.text))")
+        #expect(marked.map(\.element) == ["a", "b"])
+        #expect(page.texts.filter { $0.element == nil }.map(\.text) == [bare.texts[1].text], "표식 없는 조각은 지금처럼 잇는다")
+    }
+
+    /// 같은 면적의 경계가 겹치면 경계 목록에서 앞선 것이 소속이다.
+    @MainActor @Test func anOwnershipTieGoesToTheFirstFrame() throws {
+        let view = Text("Tie").font(.system(size: 12)).frame(width: 60, height: 20, alignment: .leading)
+            .frame(width: Card.size.width, height: Card.size.height, alignment: .topLeading)
+        let rect = CGRect(x: 0, y: 0, width: 60, height: 20)
+        #expect(try Card.read(view, frames: [SnapFrame(id: "first", rect: rect), SnapFrame(id: "second", rect: rect)]).texts.first?.element == "first")
+        #expect(try Card.read(view, frames: [SnapFrame(id: "second", rect: rect), SnapFrame(id: "first", rect: rect)]).texts.first?.element == "second")
+    }
+
     /// 감긴 글 — 줄마다 하나 · 이어 붙이면 원래 글.
     @MainActor @Test func wrappedTextGivesOneLinePerLine() throws {
         let words = "one two three four five six seven"

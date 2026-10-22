@@ -46,7 +46,8 @@ public struct DrawnText: Codable, Equatable, Sendable {
     public var weight: Int
     /// 글자 색(`#rrggbb` ⟂ 불투명이 아니면 `#rrggbbaa` · sRGB · 겹친 불투명도까지 곱한 것) — nil = 단색이 아니다(그라디언트 · 무늬)
     public var color: String?
-    /// 이 줄을 품은 가장 안쪽 요소(`snapFrames` 의 id — 줄의 가운데를 품는 경계 중 가장 작은 것) — nil = 어느 요소 안도 아니다
+    /// 이 줄을 품은 가장 안쪽 요소(`snapFrames` 의 id — 줄의 가운데를 품는 경계 중 가장 작은 것 · 같은 면적이면 경계 목록에서 앞선 것) — nil = 어느 요소 안도 아니다.
+    /// 한 줄은 한 요소 안의 글만 잇는다 — 붙어 선 두 요소의 같은 꼴 글은 줄 둘이다
     public var element: String?
     public init(text: String, rect: CGRect, font: String, size: Double, weight: Int, color: String?, element: String?) {
         self.text = text

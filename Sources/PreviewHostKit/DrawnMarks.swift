@@ -75,26 +75,32 @@ enum DrawnMarks {
             text[i] += c.unit
             last = i
         }
+        /// 화면 좌표(위 원점)의 상자.
+        func top(_ box: CGRect) -> CGRect { CGRect(x: box.minX, y: height - box.maxY, width: box.width, height: box.height) }
+        /// 소속 — 가운데를 품는 경계 중 가장 작은 것(같은 면적이면 경계 목록에서 앞선 것 — `min(by:)` 는 처음 만난 최소를 낸다).
+        func owner(_ box: CGRect) -> String? {
+            let r = top(box), mid = CGPoint(x: r.midX, y: r.midY)
+            return frames.filter { $0.rect.contains(mid) }.min { $0.w * $0.h < $1.w * $1.h }?.id
+        }
         var out: [DrawnText] = []
-        var cur: (piece: Piece, box: CGRect, text: String, end: CGFloat)?
+        var cur: (piece: Piece, box: CGRect, text: String, end: CGFloat, owner: String?)?
         func flush() {
             guard let c = cur else { return }
             cur = nil
             let t = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !t.isEmpty else { return }
-            let rect = CGRect(x: c.box.minX, y: height - c.box.maxY, width: c.box.width, height: c.box.height)
-            let mid = CGPoint(x: rect.midX, y: rect.midY)
-            let owner = frames.filter { $0.rect.contains(mid) }.min { $0.w * $0.h < $1.w * $1.h }
-            out.append(DrawnText(text: t, rect: rect, font: c.piece.font.name, size: c.piece.size, weight: c.piece.font.weight,
-                                 color: c.piece.color, element: owner?.id))
+            out.append(DrawnText(text: t, rect: top(c.box), font: c.piece.font.name, size: c.piece.size, weight: c.piece.font.weight,
+                                 color: c.piece.color, element: c.owner))
         }
+        // 조각마다 소속을 먼저 정하고 같은 소속끼리만 잇는다 — 붙어 선 형제 요소의 같은 꼴 글이 한 줄로 합쳐져 한쪽에 붙지 않게(둘 다 nil 이면 잇는다)
         for (i, p) in pieces.enumerated() {
-            if let c = cur, abs(c.piece.baseline - p.baseline) <= 0.5, abs(c.piece.size - p.size) < 0.01, c.piece.color == p.color,
+            let o = owner(p.box)
+            if let c = cur, c.owner == o, abs(c.piece.baseline - p.baseline) <= 0.5, abs(c.piece.size - p.size) < 0.01, c.piece.color == p.color,
                p.start >= c.end - 1, p.start <= c.end + p.size * 0.6 {
-                cur = (c.piece, c.box.union(p.box), c.text + text[i], p.end)
+                cur = (c.piece, c.box.union(p.box), c.text + text[i], p.end, o)
             } else {
                 flush()
-                cur = (p, p.box, text[i], p.end)
+                cur = (p, p.box, text[i], p.end, o)
             }
         }
         flush()
@@ -241,6 +247,8 @@ final class PageWalk {
         var components: [CGFloat] = [0]
         var pattern = false
         var alpha: CGFloat = 1
+        /// 이 양식에 들어올 때의 불투명도 — `gs` 의 `ca` 는 대입이라 그 위에 곱한다(양식 밖이면 1)
+        var groupAlpha: CGFloat = 1
         var font: DrawnMarks.Font = .unknown
         var fontSize: CGFloat = 0
         var charSpacing: CGFloat = 0, wordSpacing: CGFloat = 0, hScale: CGFloat = 1, leading: CGFloat = 0, rise: CGFloat = 0
@@ -335,7 +343,7 @@ final class PageWalk {
         var d: CGPDFDictionaryRef?
         guard CGPDFObjectGetValue(obj, .dictionary, &d), let d else { return }
         var ca: CGPDFReal = 1
-        if CGPDFDictionaryGetNumber(d, "ca", &ca) { state.alpha *= ca }
+        if CGPDFDictionaryGetNumber(d, "ca", &ca) { state.alpha = state.groupAlpha * ca }
     }
 
     // MARK: 글
@@ -447,6 +455,7 @@ final class PageWalk {
         saved.append(state)
         let (savedTM, savedTLM, savedPath, savedEnds, savedCurves) = (tm, tlm, path, ends, curves)
         state.ctm = m.concatenating(state.ctm)
+        state.groupAlpha = state.alpha
         depth += 1
         run(cs)
         depth -= 1
