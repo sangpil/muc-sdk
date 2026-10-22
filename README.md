@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.1"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.1",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -108,6 +108,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 1.4 는 미리보기 세션이 장을 그리기 전에 기다릴 손을 더한다(`PreviewSession.prepare(_ context: RenderContext)` — 비동기 · 기본은 곧장 · 문맥 = 그 장의 크기 · 테마 · 창 없는 렌더인가 — 그 외양의 그림을 데운다 · 캐시는 이름과 외양으로). 호스트가 그리기 전마다(`render` · `patch` · 토큰 바뀜 · `shot` · 자기 창) 기다려서, 창 없는 장도 모델을 그리는 중의 빈 자리가 아니라 첫 장부터 자리의 모델을 그린다. 그 사이 온 메시지는 차례대로 뒤에 선다(patch 는 합쳐진다). 호스트의 시한(20 초 — 엔진이 기다리는 시한 안)을 넘긴 준비 · 그 사이 닫힌 세션의 준비는 취소된다(협력 취소 — 시한에 잘린 장은 끝난 장이고 다시 그리라는 신호가 없다 · 취소를 무시한 원천은 다음 준비와 겹쳐 불릴 수 있어 진행 중인 일을 나눠 기다린다). 와이어는 그대로다 — 프로토콜 판 5 라 1.4 호스트 ⟂ 1.3 빌더 · 1.3 호스트 ⟂ 1.4 빌더가 다 선다(1.3 호스트는 예전처럼 그린다). 아무것도 구현하지 않은 세션은 1.3 과 같은 장을 낸다.
 - **SDK 1.5 reads back the text and backgrounds a screen drew** — a render may ask for them (`RenderRequest.drawn`); the host draws that frame once more as a vector page and reads it (public CoreGraphics PDF scanning · PDFKit), and the frame header carries every drawn text line (`DrawnText` — string · box · font name · size · weight · color · the innermost marked element around it) and, per marked element, the fill painted exactly on its bounds (`DrawnStyle` — color · corner radius). Screen code adds nothing — no new modifier; elements already marked with `.snapID` get their text and background. Protocol version 6 (a 1.5 host needs a 1.5 builder; a 1.5 builder still talks to 1.3 · 1.4 hosts and reads "no text" from them).
   SDK 1.5 는 화면이 그린 글줄 · 바탕을 읽어 싣는다 — render 가 청하면(`RenderRequest.drawn`) 호스트가 그 장을 벡터 한 쪽으로 한 번 더 그려 읽고(공개 CoreGraphics PDF 걷기 · PDFKit), 프레임 머리에 그린 글줄 전부(`DrawnText` — 글 · 상자 · 글꼴 이름 · 크기 · 굵기 · 색 · 그 줄을 품은 가장 안쪽 표식 요소)와 표식 요소마다 그 경계에 칠한 바탕(`DrawnStyle` — 색 · 모서리 반경)을 싣는다. 화면 코드는 아무것도 달지 않는다 — 새 모디파이어 없음 · `.snapID` 를 이미 단 요소의 글자 · 바탕이 잡힌다. 프로토콜 판 6(1.5 호스트는 1.5 빌더가 받는다 · 1.5 빌더는 1.3 · 1.4 호스트와도 말하고 그 호스트의 머리는 글줄 없음).
+  **1.5.1** keeps the spaces inside a drawn line — one space per drawn space glyph (a non-breaking space or a tab comes as one U+0020), one space where a font-fallback run left only a gap (between Hangul words in the system font), leading and trailing spaces trimmed — and reading a drawn page leaves no CoreGraphics PDF error line on stderr. Protocol stays at version 6.
+  **1.5.1** 은 그린 글줄 안의 공백을 싣는다 — 그린 공백 글자마다 공백 하나(줄바꿈 없는 공백 · 탭은 U+0020 하나) · 글꼴 대체 런이 벌림만 남긴 자리(시스템 글꼴의 한글 낱말 사이)에 공백 하나 · 앞뒤 공백은 다듬는다 — 호스트가 stderr 에 CoreGraphics PDF 오류 줄을 찍지 않는다. 프로토콜 판은 6 그대로.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
