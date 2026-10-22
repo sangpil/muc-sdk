@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import ScreenMarks
 import SwiftUI
 import Testing
@@ -6,6 +7,7 @@ import Testing
 // 화면 요소 표식 — 이 모듈이 약속하는 것만 잰다: 키 · 탭 환경값의 꼴은 트레이트와 무관하게 늘 서고 비어 있다 ·
 // 표식이 꺼진 빌드(트레이트 `ActiveMarks` 없음 — 시험의 기본)에서 `.snapID` 는 뷰를 그대로 돌려주고 경계를 올리지 않는다(값이 0).
 // 표식은 레이아웃을 바꾸지 않는다 — 켜진 빌드(`swift test --traits ActiveMarks`)와 꺼진 빌드 둘 다에서 같은 뷰를 표식 있음 ⟂ 없음으로 그려 맞댄다.
+// 그린 것도 바꾸지 않는다 — 같은 카드의 벡터 장(내용 흐름)이 표식 있음 ⟂ 없음으로 같다(호스트가 그린 글줄 · 바탕을 그 장에서 읽는다).
 // 켜진 빌드에서는 표식이 경계를 올린다는 것까지만 잰다 — 경계 수집의 쓰임은 표식을 단 화면 코드가 있는 쪽(프로젝트 · 엔진의 도구)의 시험이 잰다.
 
 /// 렌더 중에 읽은 표식 수 — 레이아웃 중 동기 호출로 찬다.
@@ -70,6 +72,35 @@ private struct Bare: ViewModifier {
     return frames.rects
 }
 
+/// 뷰를 벡터 한 쪽(PDF)에 그려 내용 흐름을 꺼낸다 — 쪽의 흐름 + 쪽이 부르는 양식의 흐름(이름 차례).
+@MainActor private func vectorPage(_ view: some View) -> [Data] {
+    let data = NSMutableData()
+    ImageRenderer(content: view).render { size, draw in
+        var box = CGRect(origin: .zero, size: size)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData), let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) else { return }
+        ctx.beginPDFPage(nil); draw(ctx); ctx.endPDFPage(); ctx.closePDF()
+    }
+    guard let provider = CGDataProvider(data: data as CFData), let page = CGPDFDocument(provider)?.page(at: 1), let dict = page.dictionary else { return [] }
+    func bytes(_ stream: CGPDFStreamRef) -> Data {
+        var format = CGPDFDataFormat.raw
+        return CGPDFStreamCopyData(stream, &format).map { $0 as Data } ?? Data()
+    }
+    var out: [Data] = []
+    var contents: CGPDFStreamRef?
+    if CGPDFDictionaryGetStream(dict, "Contents", &contents), let contents { out.append(bytes(contents)) }
+    var resources: CGPDFDictionaryRef?, forms: CGPDFDictionaryRef?
+    if CGPDFDictionaryGetDictionary(dict, "Resources", &resources), let resources, CGPDFDictionaryGetDictionary(resources, "XObject", &forms), let forms {
+        var named: [(String, Data)] = []
+        CGPDFDictionaryApplyBlock(forms, { key, object, _ in
+            var stream: CGPDFStreamRef?
+            if CGPDFObjectGetValue(object, .stream, &stream), let stream { named.append((String(cString: key), bytes(stream))) }
+            return true
+        }, nil)
+        out += named.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+    return out
+}
+
 @Suite struct ScreenMarksTests {
     /// 키의 꼴 — 기본값은 빈 사전 · 빈 값끼리 합쳐도 비어 있다.
     @Test func preferenceKeyStartsEmpty() {
@@ -99,6 +130,29 @@ private struct Bare: ViewModifier {
         #expect(over.minX == host.minX - 3 && over.minY == host.minY - 4)
         #expect(bare.count == 5)
         let marked = layout(Mark(), tap: tap)
+        #expect(marked == bare)
+    }
+
+    /// 표식은 그린 것을 바꾸지 않는다 — 같은 카드(글줄 둘 · 바탕 · 모서리)를 표식 있음 ⟂ 없음으로 벡터 한 쪽에 그려 내용 흐름(쪽 · 양식)이 같다.
+    /// 호스트가 그린 글줄 · 바탕을 이 벡터 장에서 읽으므로(`PreviewHostKit`) 표식을 단 요소의 글자 · 바탕도 표식 없는 앱 빌드와 같은 것이 읽힌다(켜진 빌드 · 꺼진 빌드 둘 다).
+    @Test(arguments: [false, true]) @MainActor func markKeepsTheDrawing(tap: Bool) {
+        func page<M: ViewModifier>(_ mark: M) -> [Data] {
+            var handler: (@MainActor (String) -> Void)? = nil
+            if tap { handler = { (_: String) in } }
+            let card = VStack(alignment: .leading, spacing: 4) {
+                Text("Title").font(.system(size: 17, weight: .semibold)).modifier(mark)
+                Text("Body").font(.system(size: 12)).foregroundStyle(Color.black.opacity(0.5))
+            }
+            .padding(12)
+            .background(Color(red: 0, green: 0, blue: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .modifier(mark)
+            .frame(width: 200, height: 100)
+            .environment(\.snapTap, handler)
+            return vectorPage(card)
+        }
+        let bare = page(Bare()), marked = page(Mark())
+        #expect(!bare.isEmpty && bare.contains { !$0.isEmpty }, "기준이 헛돌지 않는다 — 벡터 장에 내용이 있다")
         #expect(marked == bare)
     }
 
