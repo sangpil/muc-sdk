@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.1"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.5.1",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -110,6 +110,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 1.5 는 화면이 그린 글줄 · 바탕을 읽어 싣는다 — render 가 청하면(`RenderRequest.drawn`) 호스트가 그 장을 벡터 한 쪽으로 한 번 더 그려 읽고(공개 CoreGraphics PDF 걷기 · PDFKit), 프레임 머리에 그린 글줄 전부(`DrawnText` — 글 · 상자 · 글꼴 이름 · 크기 · 굵기 · 색 · 그 줄을 품은 가장 안쪽 표식 요소)와 표식 요소마다 그 경계에 칠한 바탕(`DrawnStyle` — 색 · 모서리 반경)을 싣는다. 화면 코드는 아무것도 달지 않는다 — 새 모디파이어 없음 · `.snapID` 를 이미 단 요소의 글자 · 바탕이 잡힌다. 프로토콜 판 6(1.5 호스트는 1.5 빌더가 받는다 · 1.5 빌더는 1.3 · 1.4 호스트와도 말하고 그 호스트의 머리는 글줄 없음).
   **1.5.1** keeps the spaces inside a drawn line — one space per drawn space glyph (a non-breaking space or a tab comes as one U+0020), one space where a font-fallback run left only a gap (between Hangul words in the system font), leading and trailing spaces trimmed — and reading a drawn page leaves no CoreGraphics PDF error line on stderr. Protocol stays at version 6.
   **1.5.1** 은 그린 글줄 안의 공백을 싣는다 — 그린 공백 글자마다 공백 하나(줄바꿈 없는 공백 · 탭은 U+0020 하나) · 글꼴 대체 런이 벌림만 남긴 자리(시스템 글꼴의 한글 낱말 사이)에 공백 하나 · 앞뒤 공백은 다듬는다 — 호스트가 stderr 에 CoreGraphics PDF 오류 줄을 찍지 않는다. 프로토콜 판은 6 그대로.
+- **SDK 1.6 lets a style element declare the system effects it uses** (`StyleElement.effects` — an open vocabulary `StyleEffect`: `glass` · `material` · `blur` · `shadow` · `motion`, unknown words kept as they are). It is a statement of fact — "this element is drawn with glass" — so the engine marks exactly that element instead of guessing from field names; whether a renderer can draw the effect is the engine's call. One line in the schema: `StyleElement(id: "card", label: "Card", snapPrefix: "garden.card", effects: [.glass])`; the old initializer stays. Protocol version 7 even if no element declares an effect (a 1.6 host needs a 1.6 builder; a 1.6 builder still talks to 1.5 hosts and reads "nothing declared" from them).
+  SDK 1.6 은 Style 서술의 절이 제가 쓰는 시스템 효과를 선언하게 한다(`StyleElement.effects` — 열린 낱말 `StyleEffect`: `glass` · `material` · `blur` · `shadow` · `motion` · 모르는 낱말도 그대로 든다). 사실의 선언이다 — 「이 요소는 유리로 그려진다」 — 엔진은 칸 이름으로 짐작하지 않고 그 요소에만 표지를 단다 · 어느 렌더가 그 효과를 그리지 못하는가는 엔진의 판단이다. 서술에 한 줄: `StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.glass])` · 옛 이니셜라이저는 그대로. 효과를 하나도 선언하지 않아도 프로토콜 판 7(1.6 호스트는 1.6 빌더가 받는다 · 1.6 빌더는 1.5 호스트와도 말하고 그 호스트의 서술은 선언 없음).
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
