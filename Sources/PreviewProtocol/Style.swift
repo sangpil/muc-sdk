@@ -20,6 +20,9 @@ import ProjectFormat
 // 빈 글(원래 이미지) ⟂ `<종류>:<이름>`(`isomodel:plant`). **서가** = 프로젝트가 정하는 폴더 — 참조의 이름은 그 폴더의 파일 이름(확장자 없이)이고 그 폴더를 정하고
 // 이름을 파일로 푸는 것은 호스트 · 앱의 몫이다(이 SDK 는 값의 꼴만 약속한다). 그 값을 읽어 사진 대신 모델을 그리는 것도 호스트 · 앱의 화면 코드다(엔진은 경계 위에 덮어
 // 그리지 않는다). 자리를 모르는 엔진(프로토콜 판 4 이하)은 판정이 막는다(판 5 호스트를 `hostNewer` 로 거절 — 자리를 선언하지 않은 호스트도 판 5 로 말한다).
+// 효과(`StyleEffect` — 절의 `effects`)는 그 요소가 쓰는 시스템 효과(유리 · 머티리얼 · 모션 …)를 호스트가 사실로 선언하는 선택 칸이다 — 화면 코드만 아는 것을
+// 데이터로 내어 엔진이 칸 이름으로 짐작하지 않게 한다. 어느 효과를 제 렌더가 그리지 못하는가는 엔진의 판단이다(이 SDK 는 낱말의 꼴만 약속한다).
+// 효과를 모르는 엔진(프로토콜 판 6 이하)은 판정이 막고(판 7 호스트를 `hostNewer`) 판 6 호스트에게는 새 엔진이 절의 효과를 걷어 말한다(`v6to7`).
 
 /// Style 값 사전 — 칸 이름 → 그 칸의 JSON 값(`style` 칸 한 덩이를 읽은 그대로).
 public typealias StyleValues = [String: JSONValue]
@@ -86,12 +89,42 @@ extension FieldKind: Codable {
     }
 }
 
+/// 요소가 쓰는 시스템 효과 하나 — 열린 낱말(`ScaleKind` 와 같은 꼴: 아는 낱말 `known` · 모르는 낱말도 글자 그대로 들고 그대로 쓴다).
+/// **사실의 선언**이다 — 「이 요소는 이 효과로 그려진다」. 그 효과를 어느 렌더가 그리지 못하는가는 읽는 쪽(엔진)의 판단이라 이 낱말에 없다.
+/// 닫힌 열거로 두지 않는 까닭 — 새 낱말이 와도 서술이 읽히고(옛 SDK 로 지은 엔진이 새 호스트의 서술을 거절하지 않는다) 갈래를 더해도 소비자의 전수 `switch` 가 깨지지 않는다.
+public struct StyleEffect: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    /// 유리 — 뒤를 굴절해 비추는 시스템 재질(`glassEffect` · 유리 단추 꼴 · 유리 묶음 그릇).
+    public static let glass = StyleEffect(rawValue: "glass")
+    /// 머티리얼 — 뒤를 흐려 비추는 시스템 재질(`Material` 칠 · 막대 재질).
+    public static let material = StyleEffect(rawValue: "material")
+    /// 흐림 — 요소 제 그림을 흐린다(`blur`).
+    public static let blur = StyleEffect(rawValue: "blur")
+    /// 그림자 — 요소 둘레의 그림자(`shadow`).
+    public static let shadow = StyleEffect(rawValue: "shadow")
+    /// 모션 — 사람의 손 없이 움직이는 모습(되풀이 애니메이션 · 단계 애니메이션).
+    public static let motion = StyleEffect(rawValue: "motion")
+    /// 이 SDK 가 아는 낱말 — 차례 그대로.
+    public static let known: [StyleEffect] = [.glass, .material, .blur, .shadow, .motion]
+    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
+}
+
 /// 조절판의 절 하나 — 칸 이름 앞머리 ↔ 요소 표식(`snapID`) 앞머리 · `…Color` 칸은 색 역할 절(`color`).
-public struct StyleElement: Identifiable, Hashable, Codable, Sendable {
+/// `effects` 는 그 요소가 쓰는 시스템 효과의 선언(선택 · 빈 목록이 기본 · 선언 차례 그대로 · 빈 목록이면 줄에 쓰지 않는다) — 선언이 없는 요소는
+/// 「효과를 말하지 않았다」이지 「효과가 없다」가 아니다(읽는 쪽이 제 규칙으로 짐작해도 된다).
+public struct StyleElement: Identifiable, Hashable, Sendable {
     public let id: String        // 칸 이름 앞머리
     public let label: String
     public let snapPrefix: String
-    public init(id: String, label: String, snapPrefix: String) { self.id = id; self.label = label; self.snapPrefix = snapPrefix }
+    /// 이 요소가 쓰는 시스템 효과 — 선언 차례 그대로(모르는 낱말도 보존).
+    public let effects: [StyleEffect]
+    public init(id: String, label: String, snapPrefix: String) { self.init(id: id, label: label, snapPrefix: snapPrefix, effects: []) }
+    /// 효과를 선언한 절 — `StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.glass])`.
+    public init(id: String, label: String, snapPrefix: String, effects: [StyleEffect]) {
+        self.id = id; self.label = label; self.snapPrefix = snapPrefix; self.effects = effects
+    }
 
     /// 칸 이름 → 요소. `…Color` 는 색 역할(`color` 요소), 그 밖은 가장 긴 앞머리 일치 · 없으면 첫 요소.
     public static func of(field name: String, in all: [StyleElement]) -> StyleElement {
@@ -102,6 +135,23 @@ public struct StyleElement: Identifiable, Hashable, Codable, Sendable {
     /// snapID → 요소(가장 긴 snapPrefix 일치).
     public static func of(snapID id: String, in all: [StyleElement]) -> StyleElement? {
         all.filter { !$0.snapPrefix.isEmpty && id.hasPrefix($0.snapPrefix) }.max { $0.snapPrefix.count < $1.snapPrefix.count }
+    }
+}
+
+extension StyleElement: Codable {
+    private enum Keys: String, CodingKey { case id, label, snapPrefix, effects }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        self.init(id: try c.decode(String.self, forKey: .id), label: try c.decode(String.self, forKey: .label),
+                  snapPrefix: try c.decode(String.self, forKey: .snapPrefix),
+                  effects: try c.decodeIfPresent([StyleEffect].self, forKey: .effects) ?? [])
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(label, forKey: .label)
+        try c.encode(snapPrefix, forKey: .snapPrefix)
+        if !effects.isEmpty { try c.encode(effects, forKey: .effects) }
     }
 }
 
@@ -222,9 +272,9 @@ public struct StyleSlot: Identifiable, Equatable, Sendable {
 }
 
 /// 화면 하나(또는 화면 위에 얹는 층 하나)의 Style **서술** — 프로젝트가 내는 데이터. JSON 꼴:
-/// `{"screen":"…","elements":[{"id","label","snapPrefix"}],"fields":[{"name","kind","element","label"?}],"texts"?:[{"name","element","label"?,"maxLength"}],`
+/// `{"screen":"…","elements":[{"id","label","snapPrefix","effects"?}],"fields":[{"name","kind","element","label"?}],"texts"?:[{"name","element","label"?,"maxLength"}],`
 /// `"slots"?:[{"name","element","snap"?,"label"?,"kinds"}],"defaults":{…}}`
-/// (칸의 `label` 은 선택 · `texts` · `slots` 는 선택 — 없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다 · 문구의 `maxLength` 가 없으면 `StyleText.defaultMaxLength` ·
+/// (칸의 `label` 은 선택 · 절의 `effects` · `texts` · `slots` 는 선택 — 없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다 · 문구의 `maxLength` 가 없으면 `StyleText.defaultMaxLength` ·
 /// 자리의 `kinds` 가 없으면 `StyleSlot.defaultKinds`).
 /// `defaults` 는 화면의 기본값(파일에 없는 칸 · 문구를 채운다 — 칸이 늘어도 옛 안 파일이 읽힌다).
 public struct StyleSchema: Equatable, Sendable {

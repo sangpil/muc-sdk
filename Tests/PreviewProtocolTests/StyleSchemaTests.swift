@@ -57,6 +57,35 @@ import Testing
         #expect(try JSONDecoder().decode(StyleSchema.self, from: JSONEncoder().encode(read)) == read)
     }
 
+    /// 절의 효과 선언 — 선택 칸(없으면 빈 목록 · 빈 목록이면 줄에 쓰지 않는다) · 선언 차례 그대로 왕복 · 모르는 낱말도 글자 그대로 들고 되쓴다 ·
+    /// 옛 이니셜라이저는 선언 없는 절 · 효과는 절의 같음에 든다.
+    @Test func elementEffectsAreOptionalAndOpen() throws {
+        let card = StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.motion, .glass, StyleEffect(rawValue: "ripple")])
+        let schema = StyleSchema(screen: "garden", elements: [card, Self.pot], fields: [StyleField(name: "cardOn", kind: .bool, element: card)], defaults: ["cardOn": true])
+        let data = try JSONEncoder().encode(schema)
+        let obj = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let els = try #require(obj["elements"] as? [[String: Any]])
+        #expect(els[0]["effects"] as? [String] == ["motion", "glass", "ripple"], "선언 차례 · 글자 그대로")
+        #expect(els[1]["effects"] == nil, "선언 없는 절은 칸을 쓰지 않는다")
+        let back = try JSONDecoder().decode(StyleSchema.self, from: data)
+        #expect(back == schema)
+        #expect(back.elements[0].effects.contains(StyleEffect(rawValue: "ripple")) && !StyleEffect.known.contains(StyleEffect(rawValue: "ripple")))
+        #expect(back.fields[0].element.effects == card.effects, "칸의 절도 효과를 든다")
+        #expect(Self.pot.effects == [], "옛 이니셜라이저 = 선언 없음")
+        #expect(StyleElement(id: "pot", label: "화분", snapPrefix: "plants.pot", effects: []) == Self.pot)
+        #expect(card != StyleElement(id: "card", label: "카드", snapPrefix: "garden.card"), "효과는 같음에 든다")
+        // 옛 줄(효과 칸 없음)은 빈 목록 · 빈 배열 줄도 빈 목록(되쓰면 칸이 없다)
+        let empty = Data(#"{"id":"q","label":"q","snapPrefix":"","effects":[]}"#.utf8)
+        let e = try JSONDecoder().decode(StyleElement.self, from: empty)
+        #expect(e.effects == [])
+        let re = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(e)) as? [String: Any])
+        #expect(re["effects"] == nil && re.count == 3)
+        // 낱말이 글자가 아니면 거부
+        let bad = Data(#"{"id":"q","label":"q","snapPrefix":"","effects":[1]}"#.utf8)
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(StyleElement.self, from: bad) }
+        #expect(StyleEffect.known.map(\.rawValue) == ["glass", "material", "blur", "shadow", "motion"])
+    }
+
     /// 값 재기 — 없는 칸은 기본값 · 스칼라의 남는 열쇠는 떨어지고(`token` 이 `pt` 를 앞선다) · 서술 밖 칸은 빠지고 · 꼴이 틀리면 거부.
     @Test func normalizeFillsDropsAndRefuses() throws {
         let s = Self.schema

@@ -22,7 +22,7 @@ import Testing
 @Suite struct PreviewProtocolShapeTests {
     static let json: JSONValue = "§json"
     static let values: StyleValues = ["§": json]
-    static let element = StyleElement(id: "card", label: "카드", snapPrefix: "card")
+    static let element = StyleElement(id: "card", label: "카드", snapPrefix: "card", effects: [.glass])
     static let schema = StyleSchema(screen: "s", elements: [element],
                                     fields: [StyleField(name: "cardGap", kind: .scalar(.space), element: element, label: "간격")],
                                     texts: [StyleText(name: "cardTitle", element: element, label: "제목", maxLength: 40)],
@@ -112,6 +112,7 @@ import Testing
                     words("Hello.Role", Hello.Role.allCases.map(\.rawValue)),
                     words("SharedMemoryInfo.Kind", SharedMemoryInfo.Kind.known.map(\.rawValue)),
                     words("CompositionField.Kind", CompositionField.Kind.known.map(\.rawValue)),
+                    words("StyleEffect", StyleEffect.known.map(\.rawValue)),
                     "vocab FrameFormat.rgba8sRGB \(FrameFormat.rgba8sRGB.pixel) \(FrameFormat.rgba8sRGB.colorSpace)"]
         return (head + lines.sorted()).joined(separator: "\n")
     }
