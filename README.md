@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.1"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.2"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.1",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.2",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -114,6 +114,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 1.6 은 Style 서술의 절이 제가 쓰는 시스템 효과를 선언하게 한다(`StyleElement.effects` — 열린 낱말 `StyleEffect`: `glass` · `material` · `blur` · `shadow` · `motion` · 모르는 낱말도 그대로 든다). 사실의 선언이다 — 「이 요소는 유리로 그려진다」 — 엔진은 칸 이름으로 짐작하지 않고 그 요소에만 표지를 단다 · 어느 렌더가 그 효과를 그리지 못하는가는 엔진의 판단이다. 서술에 한 줄: `StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.glass])` · 옛 이니셜라이저는 그대로. 효과를 하나도 선언하지 않아도 프로토콜 판 7(1.6 호스트는 1.6 빌더가 받는다 · 1.6 빌더는 1.5 호스트와도 말하고 그 호스트의 서술은 선언 없음).
   **1.6.1** reads the drawn text and backgrounds of a frame with a material in it: the vector pass alone draws materials in their inactive appearance (public `materialActiveAppearance`, macOS 15+ — the PNG stays as it is), so the page no longer turns into one raster image with no lines; a material element's background is that solid approximation (an element that declares `effects: [.material]` tells the engine so), and fills stacked on one element's bounds give their composited visible color. Glass has no public switch: once the host process has opened a window (its own window), glass is really drawn and the vector pass of that frame is one raster image again (no lines, no backgrounds); with no window, glass and the content inside it are not drawn at all, not in the PNG either (measured on macOS 27, outside the tests — a window once opened in a process cannot be undone) — so draw glass as an approximation when `RenderContext.offscreen` is true. Protocol stays at version 7.
   **1.6.1** 은 머티리얼이 있는 장의 그린 글줄 · 바탕을 읽는다 — 벡터 그림에서만 머티리얼을 비활성 외양으로 그려(공개 `materialActiveAppearance` · macOS 15 이상 · PNG 는 그대로) 그 장이 글줄 없는 래스터 한 장이 되지 않는다 · 머티리얼 요소의 바탕은 그 단색 근사다(`effects: [.material]` 을 선언한 요소면 엔진이 안다) · 한 요소의 경계에 겹친 칠은 합성한 보이는 색이다. 유리는 공개 손으로 끌 수 없다 — 호스트 프로세스에 창이 하나라도 섰으면(자기 창) 유리가 진짜로 그려지고 그 장의 벡터 그림이 다시 래스터 한 장(글줄 · 바탕 0) · 창이 없으면 유리와 그 안의 내용이 PNG 에도 그려지지 않는다(실측 · macOS 27 · 시험 밖 — 한 프로세스에서 선 창은 되돌릴 수 없어 창 없는 상태는 시험이 붙들지 못한다) — `RenderContext.offscreen` 이 참이면 유리를 근사로 그린다. 프로토콜 판은 7 그대로.
+  **1.6.2** renames a style field in the SDK's own tests to a neutral sample name — no API, file or wire change. Protocol stays at version 7.
+  **1.6.2** 는 SDK 제 시험의 Style 칸 이름 하나를 중립 견본 이름으로 바꾼다 — API · 파일 · 와이어 변화 0. 프로토콜 판은 7 그대로.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.

@@ -160,10 +160,10 @@ import Testing
     /// 올리기는 그대로(효과 없는 절 = 빈 목록) · `render` · `patch` · `frame` 은 판 6 에서도 같은 줄이다.
     @Test func loweringToSixDropsEffects() throws {
         let card = StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.glass, StyleEffect(rawValue: "ripple")])
-        let schema = StyleSchema(screen: "s", elements: [card], fields: [StyleField(name: "cardOn", kind: .bool, element: card)],
+        let schema = StyleSchema(screen: "s", elements: [card], fields: [StyleField(name: "cardShown", kind: .bool, element: card)],
                                  texts: [StyleText(name: "cardTitle", element: card, maxLength: 20)],
                                  slots: [StyleSlot(name: "cardPicture", element: card, snap: "garden.card.picture")],
-                                 defaults: ["cardOn": true, "cardTitle": "카드"])
+                                 defaults: ["cardShown": true, "cardTitle": "카드"])
         let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", screens: [ScreenInfo(name: "s", states: [], style: schema)],
                                         layers: [LayerInfo(name: "chrome", style: schema)]))
         let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(hello)) as? [String: Any])
@@ -182,8 +182,8 @@ import Testing
         #expect(back.screens?.first?.style.elements.first?.effects == [], "판 6 의 줄은 선언 없는 절로 읽힌다")
         #expect(back.screens?.first?.style.slots.map(\.name) == ["cardPicture"] && back.screens?.first?.style.texts.map(\.name) == ["cardTitle"])
 
-        let render = Message.render(RenderRequest(seq: 2, screen: "s", state: "n", style: ["cardOn": false], size: Size(w: 1, h: 1), scale: 1, drawn: true))
-        let patch = Message.patch(Patch(seq: 3, edits: [Edit(field: "cardOn", value: true)]))
+        let render = Message.render(RenderRequest(seq: 2, screen: "s", state: "n", style: ["cardShown": false], size: Size(w: 1, h: 1), scale: 1, drawn: true))
+        let patch = Message.patch(Patch(seq: 3, edits: [Edit(field: "cardShown", value: true)]))
         for m in [render, patch] {
             let down = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v6.encode(m)) as? [String: Any])
             let n = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(m)) as? [String: Any])

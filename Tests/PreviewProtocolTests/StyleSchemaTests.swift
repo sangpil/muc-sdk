@@ -61,7 +61,7 @@ import Testing
     /// 옛 이니셜라이저는 선언 없는 절 · 효과는 절의 같음에 든다.
     @Test func elementEffectsAreOptionalAndOpen() throws {
         let card = StyleElement(id: "card", label: "카드", snapPrefix: "garden.card", effects: [.motion, .glass, StyleEffect(rawValue: "ripple")])
-        let schema = StyleSchema(screen: "garden", elements: [card, Self.pot], fields: [StyleField(name: "cardOn", kind: .bool, element: card)], defaults: ["cardOn": true])
+        let schema = StyleSchema(screen: "garden", elements: [card, Self.pot], fields: [StyleField(name: "cardShown", kind: .bool, element: card)], defaults: ["cardShown": true])
         let data = try JSONEncoder().encode(schema)
         let obj = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let els = try #require(obj["elements"] as? [[String: Any]])
