@@ -17,13 +17,14 @@ import ProjectFormat
 
 /// 프로토콜 판 — **한 자리**. 메시지 꼴(선택 칸 포함)이 바뀌면 올린다 — 올리는 변경은 꼴 지문 한 줄과 한 판 사이의 스텝(`ProtocolDialect.Step`)을 함께 더한다.
 public enum PreviewProtocolVersion {
-    /// 판 7 — Style 서술의 절이 그 요소가 쓰는 시스템 효과를 선언한다(`StyleElement.effects` — 선택)
-    /// (판 6 — `render` 의 그린 글줄 · 요소 바탕 청함 `drawn` 과 프레임 머리의 `texts` · `styles` · 판 5 — Style 서술의 자리 칸 목록 `slots` · 판 4 — 문구 칸 목록 `texts`).
-    public static let current = 7
+    /// 판 8 — `render` 의 쪽 표지(`page` — 기기 틀을 대지 않는 종이 한 쪽 · 선택)
+    /// (판 7 — Style 서술의 절이 그 요소가 쓰는 시스템 효과를 선언한다 `StyleElement.effects` · 판 6 — `render` 의 그린 글줄 · 요소 바탕 청함 `drawn` 과
+    /// 프레임 머리의 `texts` · `styles` · 판 5 — Style 서술의 자리 칸 목록 `slots` · 판 4 — 문구 칸 목록 `texts`).
+    public static let current = 8
     /// 엔진이 받는 가장 옛 판(바닥) — 이 판부터 지금 판까지 전부 받는다(그 아래는 `hostTooOld`).
     public static let oldest = 2
     /// 엔진이 지금 판 말고 받는 판의 말 — 바닥(`oldest`)부터 지금 판 바로 아래까지 전부(판마다 스텝을 이은 사슬).
-    public static let previous: [ProtocolDialect] = [.v2, .v3, .v4, .v5, .v6]
+    public static let previous: [ProtocolDialect] = [.v2, .v3, .v4, .v5, .v6, .v7]
 }
 
 extension ProtocolDialect.Step {
@@ -121,21 +122,33 @@ extension ProtocolDialect.Step {
         if let layers = l["layers"] as? [[String: Any]] { l["layers"] = uneffected(layers) }
         return l
     })
+
+    /// 판 7 → 8 — 판 7 의 줄은 그대로 판 8 의 줄이다(엔진이 판 7 호스트에게서 받는 줄에 쪽 표지는 없다 — 표지는 엔진이 보내는 `render` 의 칸이다).
+    /// 판 8 의 줄을 판 7 로 내리면 `render` 의 쪽 표지(`page`)를 걷는다 — 판 7 호스트는 표지를 모른 채 기기 화면으로 그린다(크기에서 기기 꼴을 고르는 화면이면
+    /// 쪽 모서리가 기기 코너로 잘릴 수 있다 — 엔진이 그 호스트의 판을 보고 사람에게 알린다). `hello` · `patch` · `frame` 은 그대로다.
+    public static let v7to8 = ProtocolDialect.Step(from: 7, lift: { $0 }, lower: { line in
+        guard line["type"] as? String == "render" else { return line }
+        var l = line
+        l.removeValue(forKey: "page")
+        return l
+    })
 }
 
 extension ProtocolDialect {
-    /// 판 6 의 말(스텝 6 → 7).
-    public static let v6 = ProtocolDialect.chain([.v6to7])
-    /// 판 5 의 말(스텝 5 → 6 → 7).
-    public static let v5 = ProtocolDialect.chain([.v5to6, .v6to7])
-    /// 판 4 의 말(스텝 4 → 5 → 6 → 7).
-    public static let v4 = ProtocolDialect.chain([.v4to5, .v5to6, .v6to7])
-    /// 판 3 의 말(스텝 3 → 4 → … → 7).
-    public static let v3 = ProtocolDialect.chain([.v3to4, .v4to5, .v5to6, .v6to7])
-    /// 판 2 의 말(스텝 2 → 3 → … → 7).
-    public static let v2 = ProtocolDialect.chain([.v2to3, .v3to4, .v4to5, .v5to6, .v6to7])
-    /// 판 1 의 말(스텝 1 → 2 → … → 7) — 엔진은 받지 않는다(바닥 아래 · `hostTooOld`) · 사슬의 시험과 옛 줄 읽기에 쓴다.
-    public static let v1 = ProtocolDialect.chain([.v1to2, .v2to3, .v3to4, .v4to5, .v5to6, .v6to7])
+    /// 판 7 의 말(스텝 7 → 8).
+    public static let v7 = ProtocolDialect.chain([.v7to8])
+    /// 판 6 의 말(스텝 6 → 7 → 8).
+    public static let v6 = ProtocolDialect.chain([.v6to7, .v7to8])
+    /// 판 5 의 말(스텝 5 → 6 → 7 → 8).
+    public static let v5 = ProtocolDialect.chain([.v5to6, .v6to7, .v7to8])
+    /// 판 4 의 말(스텝 4 → 5 → … → 8).
+    public static let v4 = ProtocolDialect.chain([.v4to5, .v5to6, .v6to7, .v7to8])
+    /// 판 3 의 말(스텝 3 → 4 → … → 8).
+    public static let v3 = ProtocolDialect.chain([.v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
+    /// 판 2 의 말(스텝 2 → 3 → … → 8).
+    public static let v2 = ProtocolDialect.chain([.v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
+    /// 판 1 의 말(스텝 1 → 2 → … → 8) — 엔진은 받지 않는다(바닥 아래 · `hostTooOld`) · 사슬의 시험과 옛 줄 읽기에 쓴다.
+    public static let v1 = ProtocolDialect.chain([.v1to2, .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
 }
 
 /// 판 하나의 말 — 그 판의 줄(JSON 한 줄) ⟂ 지금 판의 메시지(`Message`). 지금 판의 말은 `Message` 의 Codable 그대로다.

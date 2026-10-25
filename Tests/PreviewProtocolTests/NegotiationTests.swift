@@ -23,9 +23,9 @@ import Testing
         return l
     })
     /// 다음 판 엔진 — 제 판(N+1) · 판 N(지금 꼴 그대로) · 판 N-1(스텝 사슬)을 받는다.
-    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v6])
-    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → … → 7.
-    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4, .v4to5, .v5to6, .v6to7])
+    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v7])
+    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → … → 8.
+    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
 
     static func hello(_ version: Int?) -> Data {
         var top: [String: Any] = ["type": "hello", "role": "host", "pid": 1, "name": "h"]
@@ -93,13 +93,14 @@ import Testing
         #expect(try probe.decode(try JSONSerialization.data(withJSONObject: down)) == .bye(Bye(reason: "r")), "올리기는 차례대로")
     }
 
-    /// 스텝 사슬 — 1 → 2 → … → 7 을 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
+    /// 스텝 사슬 — 1 → 2 → … → 8 을 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
     @Test func chainedStepsEqualTheDirectWalk() throws {
         let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", ia: IAInfo(appScreens: ["a"], entryWords: [], entryHands: [:], aliases: [:], planned: []),
                                         frames: [], tokensBuilt: nil))
         let line = try ProtocolDialect.v1.encode(hello)
         let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(hello)) as? ProtocolDialect.Line)
-        let six = try #require(try ProtocolDialect.Step.v6to7.lower(native))
+        let seven = try #require(try ProtocolDialect.Step.v7to8.lower(native))
+        let six = try #require(try ProtocolDialect.Step.v6to7.lower(seven))
         let five = try #require(try ProtocolDialect.Step.v5to6.lower(six))
         let four = try #require(try ProtocolDialect.Step.v4to5.lower(five))
         let three = try #require(try ProtocolDialect.Step.v3to4.lower(four))
@@ -110,7 +111,7 @@ import Testing
         guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
         #expect(back.ia == nil && back.frames == nil, "판 1 은 프로젝트 데이터 칸이 없다")
         #expect(ProtocolDialect.v1.version == 1 && ProtocolDialect.v2.version == 2 && ProtocolDialect.v3.version == 3 && ProtocolDialect.v4.version == 4
-                && ProtocolDialect.v5.version == 5 && ProtocolDialect.v6.version == 6)
+                && ProtocolDialect.v5.version == 5 && ProtocolDialect.v6.version == 6 && ProtocolDialect.v7.version == 7)
     }
 
     /// 판 6 → 5 내리기 — `render` 의 청함(`drawn`)과 프레임 머리의 글줄 · 바탕(`texts` · `styles`)을 걷는다 · 나머지 칸 · 다른 메시지는 그대로 ·
@@ -199,7 +200,7 @@ import Testing
     /// 판 6 엔진은 판 7 호스트를 「빌더를 업데이트하세요」로 거절하고 · 판 7 호스트도 판 6 엔진의 hello 를 거절한다.
     @Test func versionsSixAndSevenMeet() throws {
         let seven = ProtocolJudge.engine
-        #expect(seven.version == 7)
+        #expect(seven.version >= 7, "판 7 이상의 엔진")
         #expect(Self.taken(seven.judge(host: 6)) == 6)
         let sixEngine = ProtocolJudge(version: 6, dialects: [ProtocolDialect(version: 6, lift: { $0 }, lower: { $0 })])
         #expect(Self.refused(sixEngine.judge(host: 7)) == .hostNewer(host: 7, engine: 6))
@@ -210,6 +211,57 @@ import Testing
         #expect(dialect.version == 6)
         guard case .hello(let h) = try dialect.decode(line) else { Issue.record(); return }
         #expect(h.screens?.first?.style.elements.first?.effects == [])
+    }
+
+    /// 판 8 → 7 내리기 — `render` 의 쪽 표지(`page`)를 걷는다(판 7 은 표지를 모른다 · 나머지 칸 — 픽스처 갈아 끼우기 · 그린 글줄 청함 — 은 남는다) ·
+    /// 올리기는 그대로(판 7 의 render = 표지 없음 → nil) · `hello` · `patch` · `frame` 은 판 7 에서도 같은 줄이다.
+    @Test func loweringToSevenDropsPage() throws {
+        let fixture: JSONValue = ["items": ["a", "b"]]
+        let render = Message.render(RenderRequest(seq: 2, screen: "s", state: "n", size: Size(w: 400, h: 600), scale: 4, frames: true, fixture: fixture,
+                                                  drawn: true, page: true))
+        let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(render)) as? [String: Any])
+        #expect(native["page"] as? Bool == true, "지금 판의 줄엔 표지가 있다")
+        let down = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v7.encode(render)) as? [String: Any])
+        #expect(down["page"] == nil, "판 7 의 render 엔 쪽 표지가 없다")
+        #expect(down["fixture"] != nil && down["drawn"] as? Bool == true && down["frames"] as? Bool == true, "다른 칸은 남는다")
+        guard case .render(let r) = try ProtocolDialect.v7.decode(ProtocolDialect.v7.encode(render)) else { Issue.record(); return }
+        #expect(r.page == nil && r.fixture == fixture && r.drawn == true)
+        // 판 6 으로 내리면 쪽 표지와 그린 글줄 청함이 둘 다 걷힌다 · 판 5 도
+        let six = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v6.encode(render)) as? [String: Any])
+        #expect(six["page"] == nil && six["drawn"] as? Bool == true)
+        let five = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v5.encode(render)) as? [String: Any])
+        #expect(five["page"] == nil && five["drawn"] == nil && five["fixture"] != nil)
+
+        let hello = Message.hello(Hello(role: .engine, protocolVersion: Self.now, pid: 1, name: "e"))
+        let frame = Message.frame(FrameHeader(seq: 3, applied: 3, w: 1, h: 1, stride: 4, scale: 1, format: .rgba8sRGB, snapFrames: [], ms: 0, payload: .inline(bytes: 4)))
+        for m in [hello, frame, .patch(Patch(seq: 4, edits: [Edit(field: "a", value: true)])), .ack(Ack(seq: 5, applied: 5, ms: 0))] {
+            let a = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v7.encode(m)) as? [String: Any])
+            let b = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(m)) as? [String: Any])
+            #expect(NSDictionary(dictionary: a) == NSDictionary(dictionary: b), "\(m.type) 의 줄은 판 7 에서도 같다")
+        }
+        // 표지 없는 render 는 판 7 에서도 같은 줄(쪽이 아닌 장은 옛 호스트에게 그대로 간다)
+        let plain = Message.render(RenderRequest(seq: 6, screen: "s", state: "n", size: Size(w: 1, h: 1), scale: 1))
+        let a = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v7.encode(plain)) as? [String: Any])
+        let b = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(plain)) as? [String: Any])
+        #expect(NSDictionary(dictionary: a) == NSDictionary(dictionary: b))
+        #expect(b["page"] == nil, "표지를 주지 않으면 줄에 칸이 없다")
+    }
+
+    /// 판 7 ⟂ 8 이 섞일 때 — 판 8 엔진은 판 7 호스트를 판 7 의 말로 받는다(쪽 표지를 걷어 말한다) ·
+    /// 판 7 엔진은 판 8 호스트를 「빌더를 업데이트하세요」로 거절하고 · 판 8 호스트도 판 7 엔진의 hello 를 거절한다.
+    @Test func versionsSevenAndEightMeet() throws {
+        let eight = ProtocolJudge(version: 8, dialects: [.current, .v7])
+        #expect(Self.taken(eight.judge(host: 7)) == 7)
+        #expect(Self.taken(ProtocolJudge.engine.judge(host: 7)) == 7, "지금 엔진도 판 7 호스트를 받는다")
+        let sevenEngine = ProtocolJudge(version: 7, dialects: [ProtocolDialect(version: 7, lift: { $0 }, lower: { $0 })])
+        #expect(Self.refused(sevenEngine.judge(host: 8)) == .hostNewer(host: 8, engine: 7))
+        #expect(!ProtocolJudge.hostAccepts(engine: 7, host: 8) && ProtocolJudge.hostAccepts(engine: 8, host: 7))
+        // 판 7 호스트의 hello 를 판 8 엔진이 판 7 의 말로 읽는다
+        let line = Data(#"{"type":"hello","role":"host","protocolVersion":7,"pid":1,"name":"h","screens":[{"name":"s","states":[],"style":{"screen":"s","elements":[{"id":"card","label":"카드","snapPrefix":"garden.card","effects":["glass"]}],"fields":[],"defaults":{}}}]}"#.utf8)
+        let dialect = try eight.dialect(greeting: line)
+        #expect(dialect.version == 7)
+        guard case .hello(let h) = try dialect.decode(line) else { Issue.record(); return }
+        #expect(h.screens?.first?.style.elements.first?.effects == [.glass], "판 7 의 효과 선언은 그대로 읽힌다")
     }
 
     /// 판 5 → 4 내리기 — hello 의 Style 서술마다 자리 목록을 걷는다(판 4 는 자리를 모른다 · 문구는 남는다) · 올리기는 그대로(자리 없는 서술 = 빈 목록) ·

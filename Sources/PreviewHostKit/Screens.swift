@@ -7,7 +7,7 @@ import SwiftUI
 // 프로젝트가 호스트에 화면을 꽂는 자리 — 호스트 런타임의 표면. 엔진은 이 타입들을 모른다(프로토콜 메시지로만 본다).
 // 프로젝트는 자기 등록부를 이 꼴로 옮기는 어댑터 하나만 쓴다(호스트 실행물은 프로젝트 패키지 안 — 프로젝트가 자기 코드로 빌드한다).
 
-/// 한 장을 그리는 데 필요한 바깥 조건 — 화면 값(Style)이 아니라 틀(크기 · 테마 · 층 · 창 여부).
+/// 한 장을 그리는 데 필요한 바깥 조건 — 화면 값(Style)이 아니라 틀(크기 · 테마 · 층 · 창 여부 · 쪽 여부).
 public struct RenderContext: Sendable {
     public var size: CGSize
     public var theme: String?
@@ -20,12 +20,22 @@ public struct RenderContext: Sendable {
     public var scrollY: CGFloat
     /// 층만 — 화면 본체 · 바탕 없이 투명한 장에 층만 그린다(`RenderRequest.layersOnly`)
     public var layersOnly: Bool
+    /// 이 장은 쪽이다(`RenderRequest.page`) — 종이 한 쪽을 그린다: 기기 틀(디스플레이 코너 · 안전 영역)을 대지 않는다 · 크기에서 기기 꼴을 고르지 않는다(코너 0 · 안전 영역 0).
+    /// 기본 false(기기 화면).
+    public var page: Bool = false
     /// 자기 창에서 요소(snapID)를 눌렀다 — 엔진의 「고르기」로 넘긴다(창 없는 렌더는 엔진이 경계로 직접 가린다)
     public var onElementTap: (@MainActor @Sendable (String) -> Void)?
     public init(size: CGSize, theme: String? = nil, layers: [String] = [], offscreen: Bool = true, interactive: Bool = false, scrollY: CGFloat = 0,
                 layersOnly: Bool = false, onElementTap: (@MainActor @Sendable (String) -> Void)? = nil) {
         self.size = size; self.theme = theme; self.layers = layers; self.offscreen = offscreen; self.interactive = interactive; self.scrollY = scrollY
         self.layersOnly = layersOnly; self.onElementTap = onElementTap
+    }
+    /// 쪽 표지를 함께 주는 꼴 — `page` 는 기본값 없이 받는다(위의 손과 겹치지 않게 · 1.x 의 공개 손은 그대로 둔다).
+    public init(size: CGSize, theme: String? = nil, layers: [String] = [], offscreen: Bool = true, interactive: Bool = false, scrollY: CGFloat = 0,
+                layersOnly: Bool = false, page: Bool, onElementTap: (@MainActor @Sendable (String) -> Void)? = nil) {
+        self.init(size: size, theme: theme, layers: layers, offscreen: offscreen, interactive: interactive, scrollY: scrollY,
+                  layersOnly: layersOnly, onElementTap: onElementTap)
+        self.page = page
     }
 }
 

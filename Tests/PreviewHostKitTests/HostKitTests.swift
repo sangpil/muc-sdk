@@ -384,3 +384,58 @@ final class Inbox: @unchecked Sendable {
     func close() { closed.signal() }
     func waitClosed(timeout: Double = 2) -> Bool { closed.wait(timeout: .now() + timeout) == .success }
 }
+
+/// 쪽 표지 — `render.page` 가 세션의 틀(`RenderContext.page`)로 간다(준비 · 그리기 둘 다) · 표지 없는 render 는 기기 화면(false) ·
+/// 픽스처 갈아 끼우기(`render.fixture` — 엔진이 바깥 데이터 파일에서 읽어 실은 값)는 그 장의 `load` 로 그대로 간다.
+@Suite(.serialized) struct HostPageTests {
+    @MainActor final class Recorder: PreviewSession {
+        var viewed: [Bool] = []
+        var prepared: [Bool] = []
+        var fixtures: [JSONValue?] = []
+        func load(style: StyleValues?, layers: [LayerState], fixture: JSONValue?) throws { fixtures.append(fixture) }
+        func apply(_ edit: Edit) throws {}
+        func prepare(_ context: RenderContext) async { prepared.append(context.page) }
+        func view(_ context: RenderContext) -> AnyView {
+            viewed.append(context.page)
+            return AnyView(Color.red.frame(width: context.size.width, height: context.size.height))
+        }
+        func snapFrames() -> [SnapFrame] { [] }
+        func elementIDs() -> [String] { [] }
+        func layerReports() -> [LayerReport] { [] }
+    }
+    @MainActor final class Made: @unchecked Sendable {
+        var session: Recorder?
+        func make() -> Recorder { let s = Recorder(); session = s; return s }
+    }
+    struct Screen: PreviewScreen {
+        let name = "sheet"
+        let made: Made
+        func info() throws -> ScreenInfo { ScreenInfo(name: name, states: ["n"], style: StyleSchema(screen: name, elements: [], fields: [], defaults: [:])) }
+        func session(state: String) throws -> any PreviewSession { MainActor.assumeIsolated { made.make() } }
+    }
+
+    @MainActor @Test func thePageMarkReachesTheContext() async throws {
+        let (a, b) = try UnixSocket.pair()
+        let made = Made()
+        let server = HostServer(screens: [Screen(made: made)], onTokensChanged: {})
+        server.conn = Connection(fd: a)
+        let engine = Connection(fd: b)
+        let got = Inbox()
+        engine.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
+        defer { engine.close(); server.conn.close() }
+        let data: JSONValue = ["items": ["a", "b", "c"]]
+        _ = server.mailbox.push(.render(RenderRequest(seq: 1, screen: "sheet", state: "n", size: Size(w: 4, h: 6), scale: 1, fixture: data, page: true)), recv: 0)
+        _ = server.mailbox.push(.render(RenderRequest(seq: 2, screen: "sheet", state: "n", size: Size(w: 4, h: 6), scale: 1)), recv: 0)
+        await server.drain()
+        let s = try #require(made.session)
+        #expect(s.prepared == [true, false], "준비가 받는 틀 — 쪽 · 기기 화면")
+        #expect(s.viewed == [true, false], "그리는 틀 — 쪽 · 기기 화면")
+        #expect(s.fixtures == [data, nil], "갈아 끼운 픽스처는 그 장의 load 로 · 다음 render 는 상태의 픽스처")
+        for _ in 0..<200 where got.messages.count < 2 { usleep(10_000) }
+        let seqs: [UInt64] = got.messages.compactMap { if case .frame(let f) = $0 { f.seq } else { nil } }
+        #expect(seqs == [1, 2], "장마다 답 프레임")
+        // 틀의 기본값 — 옛 손으로 세운 틀은 기기 화면
+        #expect(RenderContext(size: CGSize(width: 1, height: 1)).page == false)
+        #expect(RenderContext(size: CGSize(width: 1, height: 1), page: true).page == true)
+    }
+}
