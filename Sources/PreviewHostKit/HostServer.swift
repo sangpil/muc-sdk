@@ -246,7 +246,8 @@ final class HostServer {
 
     private func context(_ r: RenderRequest, offscreen: Bool) -> RenderContext {
         RenderContext(size: CGSize(width: r.size.w, height: r.size.h), theme: r.theme, layers: (r.layers ?? []).map(\.name),
-                      offscreen: offscreen, interactive: !offscreen, scrollY: offscreen ? CGFloat(r.scroll ?? 0) : 0, layersOnly: r.layersOnly == true)
+                      offscreen: offscreen, interactive: !offscreen, scrollY: offscreen ? CGFloat(r.scroll ?? 0) : 0, layersOnly: r.layersOnly == true,
+                      page: r.page == true)
     }
 
     /// 지금 값으로 한 장 — 소켓(전송 A)이면 렌더러 바이트를 그대로 `writev`(사용자 공간 복사 0) ·

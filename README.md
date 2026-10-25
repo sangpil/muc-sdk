@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.2"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.7.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.6.2",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.7.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -116,6 +116,8 @@ Your app links contract products only. Your preview host (an executable in your 
   **1.6.1** 은 머티리얼이 있는 장의 그린 글줄 · 바탕을 읽는다 — 벡터 그림에서만 머티리얼을 비활성 외양으로 그려(공개 `materialActiveAppearance` · macOS 15 이상 · PNG 는 그대로) 그 장이 글줄 없는 래스터 한 장이 되지 않는다 · 머티리얼 요소의 바탕은 그 단색 근사다(`effects: [.material]` 을 선언한 요소면 엔진이 안다) · 한 요소의 경계에 겹친 칠은 합성한 보이는 색이다. 유리는 공개 손으로 끌 수 없다 — 호스트 프로세스에 창이 하나라도 섰으면(자기 창) 유리가 진짜로 그려지고 그 장의 벡터 그림이 다시 래스터 한 장(글줄 · 바탕 0) · 창이 없으면 유리와 그 안의 내용이 PNG 에도 그려지지 않는다(실측 · macOS 27 · 시험 밖 — 한 프로세스에서 선 창은 되돌릴 수 없어 창 없는 상태는 시험이 붙들지 못한다) — `RenderContext.offscreen` 이 참이면 유리를 근사로 그린다. 프로토콜 판은 7 그대로.
   **1.6.2** renames a style field in the SDK's own tests to a neutral sample name — no API, file or wire change. Protocol stays at version 7.
   **1.6.2** 는 SDK 제 시험의 Style 칸 이름 하나를 중립 견본 이름으로 바꾼다 — API · 파일 · 와이어 변화 0. 프로토콜 판은 7 그대로.
+- **SDK 1.7 lets a render say "this frame is a printed page"** (`RenderRequest.page` → `RenderContext.page`, default `false`). A page is a sheet of paper, not a device screen: a screen that picks a device look from its size (display corners, safe areas) should not apply it when `context.page` is true — corner 0, safe area 0. One optional branch in your screen frame; without it the page is drawn as before. Protocol version 8 (a 1.7 host needs a 1.7 builder; a 1.7 builder takes 1.6 hosts and drops the mark for them). The engine can also draw a screen from a data file outside the repository — `{ "screens": { "<screen>": <fixture JSON> } }`, the same shape as your fixtures; the engine reads the file and sends the values in `render.fixture` (the host never opens it — no wire change).
+  SDK 1.7 은 render 가 「이 장은 인쇄 쪽」이라고 말하게 한다(`RenderRequest.page` → `RenderContext.page` · 기본 `false`). 쪽은 기기 화면이 아니라 종이 한 장이다 — 크기에서 기기 꼴(디스플레이 코너 · 안전 영역)을 고르는 화면은 `context.page` 가 참이면 그 틀을 대지 않는다(코너 0 · 안전 영역 0). 화면 틀에 선택 갈래 하나 · 달지 않으면 지금처럼 그린다. 프로토콜 판 8(1.7 호스트는 1.7 빌더가 받는다 · 1.7 빌더는 1.6 호스트를 받고 그 호스트에게는 표지를 걷는다). 엔진은 저장소 밖의 데이터 파일로도 화면을 그린다 — `{ "screens": { "<화면>": <픽스처 JSON> } }`(픽스처와 같은 꼴) · 엔진이 파일을 읽어 값을 `render.fixture` 로 보낸다(호스트는 파일을 열지 않는다 · 와이어 변화 0).
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.

@@ -148,7 +148,8 @@ public struct RenderRequest: Codable, Equatable, Sendable {
     public var frames: Bool?
     /// 창 없는 렌더의 스크롤 흉내(pt) — 콘텐츠를 그만큼 올려 그린다(엔진이 휠을 받아 보낸다 · 관성 · 고무줄은 없다)
     public var scroll: Double?
-    /// 픽스처 갈아 끼우기 — 상태(`state`)의 픽스처 대신 이 값(프로젝트가 뜻을 정하는 JSON — 화면의 픽스처 꼴 · 엔진이 데이터셋 · 손이 옮긴 자리에서 만든다) ·
+    /// 픽스처 갈아 끼우기 — 상태(`state`)의 픽스처 대신 이 값(프로젝트가 뜻을 정하는 JSON — 화면의 픽스처 꼴 · 엔진이 데이터셋 · 손이 옮긴 자리 ·
+    /// 바깥 데이터 파일(저장소 밖 — 화면 이름 → 픽스처 꼴 JSON · `Docs/SDK.md` §2)에서 만든다 — 값의 바이트가 이 줄에 실린다 · 호스트는 파일을 열지 않는다) ·
     /// nil = 상태의 픽스처. 이 render 가 갈아 끼우고 뒤의 `patch` 는 그대로 둔다.
     public var fixture: JSONValue?
     /// 층만 그린다 — 화면 본체 · 바탕 없이 투명한 장에 `layers` 만(엔진이 본체와 층 사이에 제 그림 — 구성요소 — 을 끼울 때). nil = 본체 + 층.
@@ -156,18 +157,28 @@ public struct RenderRequest: Codable, Equatable, Sendable {
     /// 그린 글줄 · 요소 바탕도 실을까(`FrameHeader.texts` · `styles`) — 호스트가 그 장을 벡터로 한 번 더 그려 읽는다(장마다 값이 드는 일이라 찍기처럼 한 장을 남길 때만 켠다).
     /// nil = 싣지 않음.
     public var drawn: Bool?
+    /// 이 장은 쪽이다 — 기기 화면이 아니라 종이 한 쪽(인쇄)을 그린다: 기기 틀(디스플레이 코너 · 안전 영역)을 대지 않는다(코너 0 · 안전 영역 0 ·
+    /// 크기에서 기기 꼴을 고르지 않는다). 호스트는 `RenderContext.page` 로 옮긴다. nil = 기기 화면(지금처럼).
+    public var page: Bool?
     public init(seq: UInt64, screen: String, state: String, style: StyleValues? = nil, theme: String? = nil, size: Size, scale: Double,
                 layers: [LayerState]? = nil, frames: Bool? = nil, scroll: Double? = nil, fixture: JSONValue? = nil, layersOnly: Bool? = nil) {
         self.init(seq: seq, screen: screen, state: state, style: style, theme: theme, size: size, scale: scale, layers: layers, frames: frames,
-                  scroll: scroll, fixture: fixture, layersOnly: layersOnly, drawn: nil)
+                  scroll: scroll, fixture: fixture, layersOnly: layersOnly, drawn: nil, page: nil)
     }
     /// 그린 글줄 · 요소 바탕을 청하는 꼴 — `drawn` 은 기본값 없이 받는다(위의 손과 겹치지 않게 · 1.x 의 공개 손은 그대로 둔다).
     public init(seq: UInt64, screen: String, state: String, style: StyleValues? = nil, theme: String? = nil, size: Size, scale: Double,
                 layers: [LayerState]? = nil, frames: Bool? = nil, scroll: Double? = nil, fixture: JSONValue? = nil, layersOnly: Bool? = nil,
                 drawn: Bool?) {
+        self.init(seq: seq, screen: screen, state: state, style: style, theme: theme, size: size, scale: scale, layers: layers, frames: frames,
+                  scroll: scroll, fixture: fixture, layersOnly: layersOnly, drawn: drawn, page: nil)
+    }
+    /// 쪽을 그리는 꼴 — `page` 는 기본값 없이 받는다(위의 두 손과 겹치지 않게 · 1.x 의 공개 손은 그대로 둔다).
+    public init(seq: UInt64, screen: String, state: String, style: StyleValues? = nil, theme: String? = nil, size: Size, scale: Double,
+                layers: [LayerState]? = nil, frames: Bool? = nil, scroll: Double? = nil, fixture: JSONValue? = nil, layersOnly: Bool? = nil,
+                drawn: Bool? = nil, page: Bool?) {
         self.seq = seq; self.screen = screen; self.state = state; self.style = style; self.theme = theme
         self.size = size; self.scale = scale; self.layers = layers; self.frames = frames; self.scroll = scroll
-        self.fixture = fixture; self.layersOnly = layersOnly; self.drawn = drawn
+        self.fixture = fixture; self.layersOnly = layersOnly; self.drawn = drawn; self.page = page
     }
 }
 

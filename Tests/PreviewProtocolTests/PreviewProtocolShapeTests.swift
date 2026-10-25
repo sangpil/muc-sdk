@@ -53,7 +53,7 @@ import Testing
                      formats: [.rgba8sRGB], shared: shared, ia: ia, frames: [frame], tokensBuilt: built)),
         .render(RenderRequest(seq: 1, screen: "s", state: "normal", style: values, theme: "dark", size: Size(w: 1, h: 1), scale: 2,
                               layers: [LayerState(name: "chrome", style: values, data: json)], frames: true, scroll: 1, fixture: json, layersOnly: true,
-                              drawn: true)),
+                              drawn: true, page: true)),
         .frame(FrameHeader(seq: 1, applied: 1, w: 1, h: 1, stride: 4, scale: 2, format: .rgba8sRGB,
                            snapFrames: [SnapFrame(id: "a", rect: CGRect(x: 0, y: 0, width: 1, height: 1))], elements: ["a"],
                            layers: [LayerReport(name: "chrome", elements: ["a"], data: json, cover: Insets(top: 1))],
