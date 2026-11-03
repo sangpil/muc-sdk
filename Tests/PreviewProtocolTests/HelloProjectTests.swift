@@ -41,22 +41,6 @@ import Testing
         #expect(b.screens?.first?.fixtureColorUsage == nil && b.layers?.first?.composition == nil)
     }
 
-    /// 판 1 의 말 — 내리면 hello 의 새 칸이 걷히고(판 1 엔진이 모르는 칸) · 판 1 의 줄은 판 2 의 메시지로 그대로 읽힌다 · hello 밖의 줄은 그대로.
-    @Test func theDialectOfVersionOneDropsTheNewCells() throws {
-        let line = try ProtocolDialect.v1.encode(.hello(Self.hello()))
-        let top = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
-        #expect(top["ia"] == nil && top["frames"] == nil && top["tokensBuilt"] == nil)
-        #expect(((top["screens"] as? [[String: Any]])?.first)?["fixtureColorUsage"] == nil)
-        #expect(((top["layers"] as? [[String: Any]])?.first)?["composition"] == nil)
-        #expect(((top["layers"] as? [[String: Any]])?.first)?["name"] as? String == "chrome", "칸만 걷고 층은 남는다")
-        guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
-        #expect(back.ia == nil && back.screens?.first?.name == "home")
-        let render = Message.render(RenderRequest(seq: 3, screen: "home", state: "normal", size: Size(w: 1, h: 1), scale: 2,
-                                                  layers: [LayerState(name: "chrome")]))
-        #expect(try ProtocolDialect.v1.decode(ProtocolDialect.v1.encode(render)) == render)
-        #expect(PreviewProtocolVersion.previous.map(\.version) == [2, 3, 4, 5, 6, 7, 8], "엔진은 바닥(판 2)부터 받는다 — 판 1 의 말은 사슬로만 선다")
-    }
-
     @Test func builtTokensDifferOnlyWhenAValueOrderOrThemeSetDiffers() {
         let a = Self.built
         var b = a
@@ -123,6 +107,9 @@ import Testing
         #expect(back["glow"] == 2)
         #expect(throws: DecodingError.self, "판 칸 없음") { try CalloutValues(data: ["panelColor": "#fff"]) }
         #expect(throws: DecodingError.self, "카드 꼴(판 1)") { try CalloutValues(data: ["v": 1, "surface": "#fff"]) }
+        #expect(throws: DecodingError.self, "더 새 판") { try CalloutValues(data: ["v": 3, "panelColor": "#fff"]) }
+        #expect(throws: DecodingError.self, "판 칸이 정수가 아님") { try CalloutValues(data: ["v": "2", "panelColor": "#fff"]) }
+        #expect(throws: DecodingError.self, "판 칸이 소수") { try CalloutValues(data: ["v": .number(2.5)]) }
     }
 
     /// 프로젝트 데이터 꼴 안의 칸은 모두 선택 — 빠지면 기본값 · 모르는 칸은 들고 되쓴다(필수 칸으로 얼리지 않는다).

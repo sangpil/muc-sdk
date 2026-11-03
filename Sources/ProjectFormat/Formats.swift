@@ -27,15 +27,32 @@ public struct FormatVersions: Equatable, Sendable {
     /// 판 칸 이름(문서 맨 위의 정수 칸).
     public let stampKey: String
     /// 디코더가 사슬의 바닥까지 읽는 형식(`decodeOldest` = `oldest`).
-    public init(oldest: Int, newest: Int, writeFloor: Int, stampKey: String) {
-        self.init(oldest: oldest, decodeOldest: oldest, newest: newest, writeFloor: writeFloor, stampKey: stampKey)
+    public init(oldest: Int, newest: Int, writeFloor: Int, stampKey: String) throws(FormatVersionsError) {
+        try self.init(oldest: oldest, decodeOldest: oldest, newest: newest, writeFloor: writeFloor, stampKey: stampKey)
     }
-    public init(oldest: Int, decodeOldest: Int, newest: Int, writeFloor: Int, stampKey: String) {
+    /// 판 차례(사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신)가 어긋나면 만들지 않는다 — 쓴 문서를 디코더가 못 읽는 범위는 서지 않는다.
+    public init(oldest: Int, decodeOldest: Int, newest: Int, writeFloor: Int, stampKey: String) throws(FormatVersionsError) {
+        guard oldest <= decodeOldest, decodeOldest <= writeFloor, writeFloor <= newest else {
+            throw .outOfOrder(oldest: oldest, decodeOldest: decodeOldest, writeFloor: writeFloor, newest: newest)
+        }
         self.oldest = oldest; self.decodeOldest = decodeOldest; self.newest = newest; self.writeFloor = writeFloor; self.stampKey = stampKey
     }
 
     /// 디코더가 이 판을 읽는가 — `decodeOldest`…`newest`.
     public func decodes(_ version: Int) -> Bool { version >= decodeOldest && version <= newest }
+}
+
+/// 판 범위를 만들 수 없다 — 판 차례가 어긋났다.
+public enum FormatVersionsError: Error, Equatable, Sendable, CustomStringConvertible {
+    /// 사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신 이 아니다.
+    case outOfOrder(oldest: Int, decodeOldest: Int, writeFloor: Int, newest: Int)
+
+    public var description: String {
+        switch self {
+        case .outOfOrder(let o, let d, let w, let n):
+            "판 차례가 어긋났다 — 사슬의 바닥 \(o) ≤ 디코더의 바닥 \(d) ≤ 쓰는 바닥 \(w) ≤ 최신 \(n) 이어야 한다"
+        }
+    }
 }
 
 /// 데이터(`.isodata`) — 한 형식, 두 모양: 삶 파일(`domain` · `eras` · `series` · `milestones` · `people` · `nextIDs`)과 모델 파일(`schema` + `datasets`).
@@ -44,7 +61,7 @@ public enum IsoDataFormat {
     /// 이 SDK 가 읽고 쓰는 판(삶 파일 · 모델 파일 같은 판).
     public static let version = 5
     /// 판 범위 한 벌 — 사슬의 바닥 1 · 디코더의 바닥 = 최신 = 쓰는 바닥 = `version`.
-    public static let versions = FormatVersions(oldest: 1, decodeOldest: version, newest: version, writeFloor: version, stampKey: "version")
+    public static let versions = try! FormatVersions(oldest: 1, decodeOldest: version, newest: version, writeFloor: version, stampKey: "version")
 
     /// 파일 상한 — 넘으면 이름을 대고 거부한다(바이트를 자를 수는 없다).
     public static let maxBytes = 8 * 1024 * 1024
@@ -56,12 +73,12 @@ public enum IsoDataFormat {
 public enum DesignFormat {
     public static let version = 1
     /// 판 범위 한 벌.
-    public static let versions = FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
+    public static let versions = try! FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
 }
 
 /// IA(`ia.json` · 매니페스트 `paths.ia`).
 public enum IAFormat {
     public static let version = 1
     /// 판 범위 한 벌.
-    public static let versions = FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
+    public static let versions = try! FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
 }

@@ -42,6 +42,8 @@ public enum UpgradeEffect: Hashable, Sendable {
 }
 
 /// 문서 안의 칸 자리 — 맨 위에서 객체 키 · 배열 번호를 차례로 밟는다. 글자 꼴은 `beds[3].plants[0].height`(`description`).
+/// 글자 꼴은 **사람이 읽는 표시 전용**이다 — 키를 이스케이프하지 않아(키에 든 점 · 대괄호 · 빈 키) 다른 두 자리가 같은 글자가 될 수 있다.
+/// 자리를 가르는 것은 값(`==` · 해시 — 마디의 차례)뿐이고, 글자에서 자리로 되읽는 손은 두지 않는다.
 public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
     /// 밟는 마디 하나.
     public enum Step: Hashable, Sendable {
@@ -212,7 +214,7 @@ public struct UpgradeChain: Sendable {
         var stages: [JSONValue] = [document]   // stages[i] = 판 version + i 의 꼴
         for step in walked {
             let losing = step.lostFields(in: doc)
-            lost += losing.filter { !lost.contains($0) }
+            for path in losing where !lost.contains(path) { lost.append(path) }   // 스텝 안 · 스텝 사이 겹침 없이
             doc = try step.apply(doc)
             let kept: [FieldPath] = switch step.effect {
             case .lossy: step.lostFields(in: doc)

@@ -12,17 +12,15 @@ import ProjectFormat
 // 문구(단추 글자 · 제목 — `StyleText`)는 칸 종류가 아니라 서술의 따로 선 목록(`texts`)이다 — 값은 같은 사전의 글자 하나(`"cta":"시작하기"`)이고
 // 저장 꼴은 한 줄 라벨이다 — 줄바꿈은 공백 하나 · 앞뒤 공백을 걷고 · 최대 길이(글자 수 — 자소 묶음)로 자르고 · 빈 글이면 기본값(`defaults` 의 같은 칸).
 // 닫힌 열거 `FieldKind` 를 늘리지 않는 까닭 — 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판). 목록은 기본값(빈 목록)이 있는 새 칸이다.
-// 와이어에서 문구를 모르는 엔진(프로토콜 판 3 이하)은 판정이 막는다(판 4 호스트를 `hostNewer` 로 거절) — 문구 값이 조용히 빠진 채 그려지는 짝은 서지 않는다.
-// 새 엔진 ⟂ 판 3 호스트는 서술에 문구가 없어 조절판에 문구 칸이 서지 않고, 실려 온 문구 값은 그 호스트가 서술 밖 칸으로 뺀다(화면은 기본 글).
+// 와이어에서 엔진과 호스트는 같은 프로토콜 판으로만 만난다(판정 — 바닥 `PreviewProtocolVersion.oldest` = 지금 판) — 문구 · 자리 · 효과를 모르는 상대와 짝이 서지 않는다.
 // 그 값을 프로젝트의 Style 타입에 넣는 손(`StyleEdit` — Codable 왕복)도 한 벌이다 — 호스트가 `patch` 를 받는 자리와 엔진의 조절판이 같은 손을 부른다.
 // 문구도 같은 손이다 — 프로젝트의 Style 타입이 문구를 `String` 칸으로 들면 앱 · 호스트의 화면 코드는 그 칸을 읽는다(사전으로 다루는 쪽은 `StyleSchema.text(_:in:)`).
 // 자리(이미지 자리 — `StyleSlot`)도 문구와 같은 꼴의 따로 선 목록(`slots`)이다 — 화면 코드만 아는 이미지 자리를 호스트가 선언하고, 값은 같은 사전의 글자 하나:
 // 빈 글(원래 이미지) ⟂ `<종류>:<이름>`(`isomodel:plant`). **서가** = 프로젝트가 정하는 폴더 — 참조의 이름은 그 폴더의 파일 이름(확장자 없이)이고 그 폴더를 정하고
 // 이름을 파일로 푸는 것은 호스트 · 앱의 몫이다(이 SDK 는 값의 꼴만 약속한다). 그 값을 읽어 사진 대신 모델을 그리는 것도 호스트 · 앱의 화면 코드다(엔진은 경계 위에 덮어
-// 그리지 않는다). 자리를 모르는 엔진(프로토콜 판 4 이하)은 판정이 막는다(판 5 호스트를 `hostNewer` 로 거절 — 자리를 선언하지 않은 호스트도 판 5 로 말한다).
+// 그리지 않는다).
 // 효과(`StyleEffect` — 절의 `effects`)는 그 요소가 쓰는 시스템 효과(유리 · 머티리얼 · 모션 …)를 호스트가 사실로 선언하는 선택 칸이다 — 화면 코드만 아는 것을
 // 데이터로 내어 엔진이 칸 이름으로 짐작하지 않게 한다. 어느 효과를 제 렌더가 그리지 못하는가는 엔진의 판단이다(이 SDK 는 낱말의 꼴만 약속한다).
-// 효과를 모르는 엔진(프로토콜 판 6 이하)은 판정이 막고(판 7 호스트를 `hostNewer`) 판 6 호스트에게는 새 엔진이 절의 효과를 걷어 말한다(`v6to7`).
 
 /// Style 값 사전 — 칸 이름 → 그 칸의 JSON 값(`style` 칸 한 덩이를 읽은 그대로).
 public typealias StyleValues = [String: JSONValue]
@@ -281,9 +279,9 @@ public struct StyleSchema: Equatable, Sendable {
     public let screen: String
     public let elements: [StyleElement]
     public let fields: [StyleField]
-    /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술 · 판 3 의 줄에서 읽은 서술).
+    /// 문구 칸 — 빈 목록이 기본(문구를 내지 않는 서술).
     public let texts: [StyleText]
-    /// 자리 칸 — 빈 목록이 기본(자리를 내지 않는 서술 · 판 4 이하의 줄에서 읽은 서술).
+    /// 자리 칸 — 빈 목록이 기본(자리를 내지 않는 서술).
     public let slots: [StyleSlot]
     public let defaults: StyleValues
     public init(screen: String, elements: [StyleElement], fields: [StyleField], defaults: StyleValues) {

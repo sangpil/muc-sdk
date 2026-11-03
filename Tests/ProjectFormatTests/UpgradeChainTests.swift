@@ -182,6 +182,14 @@ private func keys(_ names: String...) -> [FieldPath] { names.map { FieldPath(key
         #expect(path.description == "beds[3].plants[0].height")
         #expect(path == FieldPath(key: "beds").appending(index: 3).appending(key: "plants").appending(.index(0)).appending(key: "height"))
         #expect(FieldPath([.index(1), .key("a")]).description == "[1].a" && FieldPath([]).description.isEmpty)
+        // 글자 꼴은 표시 전용 — 키의 점 · 대괄호 · 빈 키를 가르지 않는다(같은 글자 · 다른 자리) · 자리는 값으로만 가른다
+        let dotted = FieldPath(key: "a.b"), nested = FieldPath(key: "a").appending(key: "b")
+        #expect(dotted.description == nested.description && dotted != nested && Set([dotted, nested]).count == 2)
+        let bracketed = FieldPath(key: "a[0]"), indexed = FieldPath(key: "a").appending(index: 0)
+        #expect(bracketed.description == indexed.description && bracketed != indexed)
+        let empty = FieldPath(key: "").appending(key: "a")
+        #expect(empty.description == "a" && empty != FieldPath(key: "a"))
+        #expect((["a.b": 1, "a": ["b": 2]] as JSONValue)[dotted] == 1 && (["a.b": 1, "a": ["b": 2]] as JSONValue)[nested] == 2, "값 읽기는 마디대로")
         let doc: JSONValue = ["beds": [["plants": []], ["plants": [["height": 2]]]]]
         #expect(doc[FieldPath(key: "beds").appending(index: 1).appending(key: "plants").appending(index: 0).appending(key: "height")] == 2)
         #expect(doc[FieldPath(key: "beds").appending(index: 2)] == nil, "번호 밖")
@@ -222,6 +230,36 @@ private func keys(_ names: String...) -> [FieldPath] { names.map { FieldPath(key
         #expect(Self.chain([Probe(from: 2), Probe(from: 3), Probe(from: 4)]).decodeOldest == 2, "기본은 사슬의 바닥")
     }
 
+    /// 판 범위는 판 차례가 어긋나면 만들지 않는다 — 사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신(쓰는 바닥이 범위 밖 · 두 바닥이 뒤집힘 모두).
+    @Test func formatVersionsOutOfOrderAreNotMade() {
+        let cases: [(Int, Int, Int, Int)] = [(2, 1, 3, 5), (1, 4, 3, 5), (1, 1, 6, 5), (1, 1, 0, 5), (3, 3, 3, 2)]
+        for (o, d, w, n) in cases {
+            #expect(throws: FormatVersionsError.outOfOrder(oldest: o, decodeOldest: d, writeFloor: w, newest: n)) {
+                try FormatVersions(oldest: o, decodeOldest: d, newest: n, writeFloor: w, stampKey: "version")
+            }
+        }
+        #expect(throws: FormatVersionsError.self, "디코더의 바닥 기본(= oldest) 도 같은 차례") { try FormatVersions(oldest: 3, newest: 5, writeFloor: 2, stampKey: "version") }
+        #expect(FormatVersionsError.outOfOrder(oldest: 2, decodeOldest: 1, writeFloor: 3, newest: 5).description.contains("어긋났다"))
+    }
+
+    /// 잃는 칸은 길 전체에서 겹침 없이 — 두 스텝이 같은 칸을 잃는다고 내도 한 번(고쳐 쓰기의 경로도).
+    @Test func lostFieldsAreListedOnce() throws {
+        struct Twice: UpgradeStep {
+            let from: Int
+            var effect: UpgradeEffect { .rewrite }
+            var summary: String { "같은 칸" }
+            func apply(_ document: JSONValue) throws -> JSONValue { document }
+            func lostFields(in document: JSONValue) -> [FieldPath] { [FieldPath(key: "gone"), FieldPath(key: "gone")] }
+        }
+        // 몸이 칸을 걷지 않아도 든 것이 없으면 가드는 서지 않는다 — 여기서는 칸을 비워 둔다
+        let c = Self.chain([Twice(from: 2), Twice(from: 3), Probe(from: 4, effect: .lossy(fields: ["gone"]))])
+        let out = try c.upgrade(["version": 2, "gone": []])
+        #expect(out.lost == [FieldPath(key: "gone")] && out.needsUpgrade, "스텝 안 · 스텝 사이 겹침 없이 하나")
+        let lossy = try Self.chain([Probe(from: 2, effect: .lossy(fields: ["a"])), Probe(from: 3, effect: .lossy(fields: ["a"])), Probe(from: 4)])
+            .upgrade(["version": 2, "a": [1]])
+        #expect(lossy.lost == keys("a"))
+    }
+
     /// 두 바닥의 차례 — 사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥(쓴 문서를 디코더가 읽게).
     @Test func theDecoderFloorSitsBetweenTheChainFloorAndTheWriteFloor() {
         let steps: [any UpgradeStep] = [Probe(from: 2), Probe(from: 3), Probe(from: 4)]
@@ -231,10 +269,11 @@ private func keys(_ names: String...) -> [FieldPath] { names.map { FieldPath(key
     }
 
     /// 판 범위 한 벌 — 디코더의 바닥은 기본이 사슬의 바닥 · 사슬은 두 바닥을 그대로 옮긴다 · 디코더가 읽는 판.
-    @Test func formatVersionsCarryBothFloors() {
-        let plain = FormatVersions(oldest: 1, newest: 3, writeFloor: 2, stampKey: "version")
-        #expect(plain.decodeOldest == 1 && plain == FormatVersions(oldest: 1, decodeOldest: 1, newest: 3, writeFloor: 2, stampKey: "version"))
-        let split = FormatVersions(oldest: 1, decodeOldest: 3, newest: 4, writeFloor: 3, stampKey: "version")
+    @Test func formatVersionsCarryBothFloors() throws {
+        let plain = try FormatVersions(oldest: 1, newest: 3, writeFloor: 2, stampKey: "version")
+        let same = try FormatVersions(oldest: 1, decodeOldest: 1, newest: 3, writeFloor: 2, stampKey: "version")
+        #expect(plain.decodeOldest == 1 && plain == same)
+        let split = try FormatVersions(oldest: 1, decodeOldest: 3, newest: 4, writeFloor: 3, stampKey: "version")
         #expect(!split.decodes(2) && split.decodes(3) && split.decodes(4) && !split.decodes(5))
         let chain = UpgradeChain(versions: split, steps: [Probe(from: 1), Probe(from: 2), Probe(from: 3)])
         #expect(chain.oldest == 1 && chain.decodeOldest == 3 && chain.writeFloor == 3 && chain.violations.isEmpty)
