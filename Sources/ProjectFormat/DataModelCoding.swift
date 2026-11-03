@@ -13,7 +13,7 @@ import Foundation
 
 enum DataModelCoding {
 
-    /// 물러난 키 — 판 4 의 계약 칸이었으나 이 SDK 의 계약이 아닌 것(저장 백엔드의 생성 사본 · 그 이름 칸). 읽은 그대로 들고 되쓴다 · 알리지 않는다.
+    /// 물러난 키 — 이 SDK 의 계약이 아닌 칸(저장 백엔드의 생성 사본 · 그 이름 칸). 읽은 그대로 들고 되쓴다 · 알리지 않는다.
     static let retiredTop: Set<String> = ["migrated"]
     static let retiredEntity: Set<String> = ["sql"]
     static let retiredField: Set<String> = ["sql"]
