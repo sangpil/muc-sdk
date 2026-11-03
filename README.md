@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.7.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "2.0.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "1.7.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "2.0.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -118,10 +118,20 @@ Your app links contract products only. Your preview host (an executable in your 
   **1.6.2** 는 SDK 제 시험의 Style 칸 이름 하나를 중립 견본 이름으로 바꾼다 — API · 파일 · 와이어 변화 0. 프로토콜 판은 7 그대로.
 - **SDK 1.7 lets a render say "this frame is a printed page"** (`RenderRequest.page` → `RenderContext.page`, default `false`). A page is a sheet of paper, not a device screen: a screen that picks a device look from its size (display corners, safe areas) should not apply it when `context.page` is true — corner 0, safe area 0. One optional branch in your screen frame; without it the page is drawn as before. Protocol version 8 (a 1.7 host needs a 1.7 builder; a 1.7 builder takes 1.6 hosts and drops the mark for them). The engine can also draw a screen from a data file outside the repository — `{ "screens": { "<screen>": <fixture JSON> } }`, the same shape as your fixtures; the engine reads the file and sends the values in `render.fixture` (the host never opens it — no wire change).
   SDK 1.7 은 render 가 「이 장은 인쇄 쪽」이라고 말하게 한다(`RenderRequest.page` → `RenderContext.page` · 기본 `false`). 쪽은 기기 화면이 아니라 종이 한 장이다 — 크기에서 기기 꼴(디스플레이 코너 · 안전 영역)을 고르는 화면은 `context.page` 가 참이면 그 틀을 대지 않는다(코너 0 · 안전 영역 0). 화면 틀에 선택 갈래 하나 · 달지 않으면 지금처럼 그린다. 프로토콜 판 8(1.7 호스트는 1.7 빌더가 받는다 · 1.7 빌더는 1.6 호스트를 받고 그 호스트에게는 표지를 걷는다). 엔진은 저장소 밖의 데이터 파일로도 화면을 그린다 — `{ "screens": { "<화면>": <픽스처 JSON> } }`(픽스처와 같은 꼴) · 엔진이 파일을 읽어 값을 `render.fixture` 로 보낸다(호스트는 파일을 열지 않는다 · 와이어 변화 0).
+- **SDK 2.0 is a major version** — the public surface changes in four places, so code that names them must follow:
+  - **Data files have one version**: `IsoDataFormat.version` = 5 for life files and model files alike (`life` · `model` · `newest` · `minimumVersion` are gone · `LifeFile` carries only its body). The reader opens version 5 only — an older file throws `IsoDataError.tooOld` and is rewritten once by the upgrade chain first; a newer file still throws `tooNew` unless `allowingNewer`.
+  - **Two floors per format**: `FormatVersions.decodeOldest` — the oldest version the decoder reads (default `oldest`, the chain's floor). Below it a document always upgrades and is written at the write floor or above.
+  - **Upgrade steps may rewrite**: `UpgradeEffect.rewrite` — moves, splits or re-means fields; always an upgrade; the step names what each document loses by path (`FieldPath`, e.g. `beds[3].plants[0].height` · `JSONValue[path:]`), and the chain refuses a result that still holds a named path (`UpgradeError.lossyStepKept`). `UpgradeOutcome.lost` is `[FieldPath]`.
+  - **The callout values are a tag** (`CalloutValues` version 2 — one line of text on a panel: panel · text · line color, text size, padding, corner radius up to half the panel height, border width, ellipsis length, the tip on the panel's left, the end dot, the line between dot and tip; the eyebrow and value lines are gone). Reading needs `"v": 2`. Protocol version 9: a 2.0 host needs a 2.0 builder; a 2.0 builder takes 1.7 hosts and moves their card-shaped values to the tag shape (`v8to9`).
+  SDK 2.0 은 주 판이다 — 공개 표면이 네 자리에서 바뀌어 그 이름을 부르는 코드가 따라간다:
+  - **데이터 파일은 한 판**: 삶 파일 · 모델 파일 모두 `IsoDataFormat.version` = 5(`life` · `model` · `newest` · `minimumVersion` 은 걷었다 · `LifeFile` 은 몸만 든다). 읽개는 판 5 만 연다 — 옛 파일은 `IsoDataError.tooOld` 로 거절하고 업그레이드 사슬이 한 번 고쳐 쓴 뒤에 연다 · 새 파일은 `allowingNewer` 가 아니면 `tooNew` 그대로.
+  - **형식마다 바닥 둘**: `FormatVersions.decodeOldest` — 디코더가 읽는 가장 옛 판(기본 = 사슬의 바닥 `oldest`). 그 아래의 문서는 늘 올릴 것이고 쓰는 바닥 이상으로 쓴다.
+  - **업그레이드 스텝의 고쳐 쓰기**: `UpgradeEffect.rewrite` — 칸을 옮기고 · 나누고 · 뜻을 바꾼다 · 늘 올릴 것 · 문서마다 잃는 칸을 경로로 낸다(`FieldPath` — `beds[3].plants[0].height` 꼴 · `JSONValue[path:]`) · 낸 자리를 아직 든 결과는 사슬이 거절한다(`UpgradeError.lossyStepKept`). `UpgradeOutcome.lost` 는 `[FieldPath]`.
+  - **콜아웃 값은 태그 꼴**(`CalloutValues` 판 2 — 판에 글 한 줄: 판 · 글 · 선 색 · 글자 크기 · 여백 · 모서리 둥글기(판 높이의 반까지) · 테두리 두께 · 말줄임 글자 수 · 판 왼쪽의 촉 · 끝 점 · 끝 점과 촉을 잇는 선 · 눈썹 · 값 줄은 걷었다). 읽으려면 `"v": 2`. 프로토콜 판 9 — 2.0 호스트는 2.0 빌더가 받는다 · 2.0 빌더는 1.7 호스트를 받고 그 카드 꼴 값을 태그 꼴로 옮긴다(`v8to9`).
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
-- **1.0 freezes the contract**: the public surface a project uses keeps compiling across 1.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in a major version (2.0); additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
-  1.0 은 계약 동결 — 프로젝트가 문 공개 표면을 1.x 가 계속 지킨다(소스 · 파일 · 와이어 호환 · 게이트가 직전 꼬리표와 깨짐을 맞댄다). 깨는 변경은 주 판(2.0)에서만 · 덧붙임(새 타입 · 새 메서드 · 기본값 있는 새 칸)은 부 판 · 고침은 수 판.
+- **A major version freezes the contract**: the public surface a project uses keeps compiling across 2.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in the next major version; additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
+  주 판은 계약 동결 — 프로젝트가 문 공개 표면을 2.x 가 계속 지킨다(소스 · 파일 · 와이어 호환 · 게이트가 직전 꼬리표와 깨짐을 맞댄다). 깨는 변경은 다음 주 판에서만 · 덧붙임(새 타입 · 새 메서드 · 기본값 있는 새 칸)은 부 판 · 고침은 수 판.
 
 The contract — modules, the three branches, version rules, what is *not* in the SDK — is [Docs/SDK.md](Docs/SDK.md) (Korean).
 계약의 정본은 [Docs/SDK.md](Docs/SDK.md).
