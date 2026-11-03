@@ -3,16 +3,18 @@ import Foundation
 // 엔진 SDK `ProjectFormat` — 모델 파일의 형식 계약(꼴 · 인코딩 · 읽기 규율)은 엔진과 프로젝트의 도구 실행물이 같은 한 벌을 문다
 // (SDK 문서 §2). 생성물(Swift 스키마 · 문서 울타리)은 엔진의 몫이다.
 //
-// `.isodata` 4 — 한 형식, 두 모양.
-//   삶 파일   : `domain` · `eras` · `series` · `milestones` · `nextIDs` — 빌더가 고치는 파일. 이 모듈은 **통째로 나르기만** 한다(뜻은 빌더의 것).
+// `.isodata` 5 — 한 형식, 두 모양, 한 판.
+//   삶 파일   : `domain` · `eras` · `series` · `milestones` · `people` · `nextIDs` — 빌더가 고치는 파일. 이 모듈은 **통째로 나르기만** 한다(뜻은 빌더의 것).
 //   모델 파일 : `schema` + `datasets` — 데이터 창이 고치는 파일. 모르는 칸은 보존한다(`DataModelCoding` 읽기 규율 ③ · 물러난 칸 `migrated` · `sql` 포함).
-// 최소 판으로 쓴다 — 모델 절이 없으면 3, 있으면 4. 그래서 iCloud 의 삶 파일은 이 코드로 열고 써도 3 으로 남는다.
+// 두 모양 모두 `IsoDataFormat.version` 으로 읽고 쓴다 — 그보다 옛 판은 열지 않는다(`IsoDataError.tooOld` · 업그레이드 사슬이 한 번 고쳐 쓴 뒤에 연다).
 // 판 번호 · 상한은 엔진 SDK 의 한 자리(`ProjectFormat.IsoDataFormat`) · 판 읽개는 `FormatStamp.version` — 빌더 코어의 읽는 손과 같은 값이다.
 
 /// 읽기 오류 — 파일 전체를 거부하는 것만(레코드 오류는 `RecordIssue` 로 싣는다 · 읽기 규율 ④).
 public enum IsoDataError: Error, Equatable, LocalizedError, Sendable {
     /// 판이 이 도구보다 새롭다.
     case tooNew(Int)
+    /// 판이 디코더가 읽는 가장 옛 판보다 옛것이다 — 업그레이드가 먼저 올린다.
+    case tooOld(Int)
     /// JSON 이 아니거나 최상위가 객체가 아니다.
     case notJSON(String)
     /// 파일이 상한을 넘는다.
@@ -23,7 +25,9 @@ public enum IsoDataError: Error, Equatable, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .tooNew(let v):
-            return "이 데이터 파일은 더 새 판(형식 \(v))으로 쓰였다 — 이 빌드는 형식 \(IsoDataFormat.newest) 까지 읽는다 · 다음: 새 빌드로 연다"
+            return "이 데이터 파일은 더 새 판(형식 \(v))으로 쓰였다 — 이 빌드는 형식 \(IsoDataFormat.versions.newest) 까지 읽는다 · 다음: 새 빌드로 연다"
+        case .tooOld(let v):
+            return "이 데이터 파일은 옛 판(형식 \(v))이다 — 이 빌드는 형식 \(IsoDataFormat.versions.decodeOldest) 부터 읽는다 · 다음: 업그레이드로 판을 올린 뒤 연다"
         case .notJSON(let why):
             return "데이터 파일을 JSON 으로 읽지 못한다 — \(why)"
         case .tooLarge(let bytes):
@@ -42,14 +46,6 @@ public enum IsoDataFile: Equatable, Sendable {
     /// 스키마가 있는가 — 모델 파일을 가르는 선(파일 머리의 `schema` 유무로 가른다).
     public var isModel: Bool { if case .model = self { return true } else { return false } }
 
-    /// 이 파일을 쓸 때 찍힐 판 — 삶 파일은 읽은 판을 넘지 않는다(옛 판 몸을 이관 없이 새 판으로 찍지 않는다).
-    public var writtenVersion: Int {
-        switch self {
-        case .life(let life): min(life.version, IsoDataFormat.life)
-        case .model: IsoDataFormat.model
-        }
-    }
-
     // MARK: 읽기
 
     /// JSON 이 멈춘 자리 — 「JSON 문법이 깨졌다 · 줄 3 · 칸 14 근처」(파서의 말에서 줄 · 칸만 읽는다). 시스템의 영어 · 「올바른 포맷이 아니기
@@ -67,7 +63,7 @@ public enum IsoDataFile: Equatable, Sendable {
         }
     }
 
-    /// 바이트 → 파일. 판을 먼저 읽고(미래 판 거부) · 스키마 유무로 모양을 가른다.
+    /// 바이트 → 파일. 판을 먼저 읽고(옛 판 · 미래 판 거부) · 스키마 유무로 모양을 가른다.
     /// 모델 파일의 레코드 오류는 거부가 아니라 `DataModelFile.issues` 로 실린다.
     /// `allowingNewer` — 미래 판도 읽는다(아는 칸은 꼴로 · 모르는 칸은 보존 · `DataModelFile.unknownKeys`) — 읽기 전용 창 · 단독 열기 검사.
     /// 그렇게 읽은 것은 쓰지 않는다(엔진의 쓰기 손이 디스크의 미래 판을 덮지 않는다).
@@ -86,30 +82,26 @@ public enum IsoDataFile: Equatable, Sendable {
         guard let version = Int(exactly: raw) else {
             throw IsoDataError.invalid(path: "version", reason: "판 번호가 너무 크다")
         }
-        guard allowingNewer || version <= IsoDataFormat.newest else { throw IsoDataError.tooNew(version) }
+        guard version >= IsoDataFormat.versions.decodeOldest else { throw IsoDataError.tooOld(version) }
+        guard allowingNewer || version <= IsoDataFormat.versions.newest else { throw IsoDataError.tooNew(version) }
         top["version"] = nil
-        if top["schema"] == nil {
-            return .life(LifeFile(body: top, version: version))
-        }
-        guard version >= IsoDataFormat.model else {
-            throw IsoDataError.invalid(path: "schema", reason: "모델 절(schema)은 형식 \(IsoDataFormat.model) 부터다 — 이 파일은 형식 \(version)")
-        }
+        if top["schema"] == nil { return .life(LifeFile(body: top)) }
         return .model(try DataModelCoding.decode(top))
     }
 
     // MARK: 쓰기
 
-    /// 파일 → 바이트. 최소 판을 찍는다.
+    /// 파일 → 바이트. 판은 `IsoDataFormat.version`.
     public func encoded() throws -> Data {
         switch self {
         case .life(let life):
             var top = life.body
-            top["version"] = .number(Double(writtenVersion))
+            top["version"] = .number(Double(IsoDataFormat.version))
             // 빌더의 `JSONEncoder.gitFriendly()`(prettyPrinted · sortedKeys) 와 같은 깃발 — 삶 파일은 빌더가 쓴 바이트와 같아야 한다.
             return try IsoDataFile.encoder(escapingSlashes: true).encode(JSONValue.object(top))
         case .model(let model):
             var top = DataModelCoding.encode(model)
-            top["version"] = .number(Double(IsoDataFormat.model))
+            top["version"] = .number(Double(IsoDataFormat.version))
             // 모델 파일은 필드 `doc` 의 링크 · 경로가 diff 에서 읽히게 슬래시를 풀어 쓴다.
             return try IsoDataFile.encoder(escapingSlashes: false).encode(JSONValue.object(top))
         }
@@ -122,18 +114,10 @@ public enum IsoDataFile: Equatable, Sendable {
     }
 }
 
-/// 삶 파일 — 판(`version`)을 뺀 최상위 그대로 + 읽은 판. 뜻(날짜 · 값 클램프 · id · 판 이관)은 빌더가 갖는다 —
-/// 이 모듈은 이관하지 않으니 판 1 · 2 몸은 그 판 그대로 다시 찍는다(3 이상은 최소 판 3).
+/// 삶 파일 — 판(`version`)을 뺀 최상위 그대로. 뜻(날짜 · 값 클램프 · id)은 빌더가 갖는다 — 이 모듈은 나르기만 한다.
 public struct LifeFile: Equatable, Sendable {
     public var body: [String: JSONValue]
-    /// 읽은 판 — 새로 만든 삶 파일은 `IsoDataFormat.life`.
-    public var version: Int
-    /// 새 삶 파일 — 판은 `IsoDataFormat.life`(판을 부르는 쪽 목적 코드에 묻지 않게 기본 인자가 아니라 이 손의 몸이 든다).
-    public init(body: [String: JSONValue]) { self.init(body: body, version: IsoDataFormat.life) }
-    public init(body: [String: JSONValue], version: Int) {
-        self.body = body
-        self.version = version
-    }
+    public init(body: [String: JSONValue]) { self.body = body }
 }
 
 /// 모델 파일 — 스키마 · 데이터셋.
@@ -141,7 +125,7 @@ public struct DataModelFile: Equatable, Sendable {
     public var schema: DataSchema
     /// 이름 → 벌. 이름은 화면 픽스처의 상태 이름과 같은 낱말(`seed` · `normal` · `empty` · `long` …).
     public var datasets: [String: DataSet] = [:]
-    /// 맨 위의 모르는 칸 · 물러난 칸(`migrated` — 판 4 의 생성 사본) — 읽은 그대로 되쓴다.
+    /// 맨 위의 모르는 칸 · 물러난 칸(`migrated` — 저장 백엔드의 생성 사본) — 읽은 그대로 되쓴다.
     public var extra: [String: JSONValue] = [:]
 
     /// 읽을 때 잰 레코드 오류 — 파일에 쓰지 않는다. 창이 열 때 한 번 알린다(읽기 규율 ④).
@@ -185,7 +169,7 @@ public struct DataSet: Equatable, Sendable {
     public var records: [String: [DataRecord]] = [:]
     /// 엔티티 이름 → 다음에 내줄 번호(올라가기만 한다).
     public var nextIDs: [String: Int] = [:]
-    /// 레코드에서 계산된 삶(포맷 3 의 `domain` · `eras` · `series` · `milestones` + `derived: true`) — 계산은 프로젝트의 코드(프로젝트 도구),
+    /// 레코드에서 계산된 삶(삶 파일의 `domain` · `eras` · `series` · `milestones` + `derived: true`) — 계산은 프로젝트의 코드(프로젝트 도구),
     /// 이 모듈은 나르기만 한다.
     public var life: [String: JSONValue]?
     /// 이 SDK 가 모르는 칸(아는 `clock` 안의 모르는 칸은 `extra["clock"]` 아래 객체로).

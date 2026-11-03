@@ -15,140 +15,16 @@ import ProjectFormat
 //            목적 코드에 들어가고 부르는 파일의 소스엔 판의 이름이 없어 증분 빌드의 의존에 안 잡힌다 — 판을 올려도 그 파일은 다시 지어지지 않고 옛 판을 지닌다
 //            (실연: 기본 인자로 hello 를 세우던 파일은 판 1 · 판을 직접 부른 파일은 판 2 — 한 실행물에 두 판). 판을 부르는 쪽은 이름을 소스에 적는다.
 
-/// 프로토콜 판 — **한 자리**. 메시지 꼴(선택 칸 포함)이 바뀌면 올린다 — 올리는 변경은 꼴 지문 한 줄과 한 판 사이의 스텝(`ProtocolDialect.Step`)을 함께 더한다.
+/// 프로토콜 판 — **한 자리**. 메시지 꼴(선택 칸 포함 · 층 보고에 실리는 콜아웃 값의 꼴 포함)이 바뀌면 올린다 — 올리는 변경은 꼴 지문 한 줄을 더하고,
+/// 옛 판의 호스트를 받으려면 한 판 사이의 스텝(`ProtocolDialect.Step`)을 이어 `previous` 에 그 판의 말을 더한다.
 public enum PreviewProtocolVersion {
-    /// 판 8 — `render` 의 쪽 표지(`page` — 기기 틀을 대지 않는 종이 한 쪽 · 선택)
-    /// (판 7 — Style 서술의 절이 그 요소가 쓰는 시스템 효과를 선언한다 `StyleElement.effects` · 판 6 — `render` 의 그린 글줄 · 요소 바탕 청함 `drawn` 과
-    /// 프레임 머리의 `texts` · `styles` · 판 5 — Style 서술의 자리 칸 목록 `slots` · 판 4 — 문구 칸 목록 `texts`).
-    public static let current = 8
-    /// 엔진이 받는 가장 옛 판(바닥) — 이 판부터 지금 판까지 전부 받는다(그 아래는 `hostTooOld`).
-    public static let oldest = 2
-    /// 엔진이 지금 판 말고 받는 판의 말 — 바닥(`oldest`)부터 지금 판 바로 아래까지 전부(판마다 스텝을 이은 사슬).
-    public static let previous: [ProtocolDialect] = [.v2, .v3, .v4, .v5, .v6, .v7]
-}
-
-extension ProtocolDialect.Step {
-    /// 판 1 → 2 — 판 2 는 hello 에 선택 칸만 더했다: 판 1 의 줄은 그대로 판 2 의 줄이고(새 칸이 없을 뿐) ·
-    /// 판 2 의 줄을 판 1 로 내리면 hello 의 새 칸을 걷는다(`ia` · `frames` · `tokensBuilt` · 화면마다 `fixtureColorUsage` · 층마다 `composition`).
-    public static let v1to2 = ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "hello" else { return line }
-        var l = line
-        for k in ["ia", "frames", "tokensBuilt"] { l.removeValue(forKey: k) }
-        if let screens = l["screens"] as? [[String: Any]] { l["screens"] = screens.map { var s = $0; s.removeValue(forKey: "fixtureColorUsage"); return s } }
-        if let layers = l["layers"] as? [[String: Any]] { l["layers"] = layers.map { var s = $0; s.removeValue(forKey: "composition"); return s } }
-        return l
-    })
-
-    /// 판 2 → 3 — 판 2 의 줄은 그대로 판 3 의 줄이다(칸이 다 차 있다). 판 3 의 줄을 판 2 로 내리면 이름 없는 조절판 칸에 칸 키를 이름으로 채운다
-    /// (판 2 는 이름을 필수로 읽는다 — 프로젝트 데이터 칸은 쓰는 손이 늘 다 채우므로 손댈 것이 없다).
-    public static let v2to3 = ProtocolDialect.Step(from: 2, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "hello" else { return line }
-        var l = line
-        func labeled(_ entries: [[String: Any]]) -> [[String: Any]] {
-            entries.map { entry in
-                guard var style = entry["style"] as? [String: Any], let fields = style["fields"] as? [[String: Any]] else { return entry }
-                style["fields"] = fields.map { f in var f = f; if f["label"] == nil { f["label"] = f["name"] }; return f }
-                var e = entry; e["style"] = style; return e
-            }
-        }
-        if let screens = l["screens"] as? [[String: Any]] { l["screens"] = labeled(screens) }
-        if let layers = l["layers"] as? [[String: Any]] { l["layers"] = labeled(layers) }
-        return l
-    })
-
-    /// 판 3 → 4 — 판 3 의 줄은 그대로 판 4 의 줄이다(문구 목록이 없을 뿐 — 빈 목록으로 읽는다). 판 4 의 줄을 판 3 으로 내리면 hello 의 Style 서술마다
-    /// 문구 목록(`texts`)을 걷는다. `render` · `patch` 는 그대로다 — 문구 값은 Style 값 사전의 칸 하나라 판 3 의 호스트에게는 서술 밖 칸이다
-    /// (그 호스트의 서술에 문구가 없으니 엔진의 조절판에 문구 칸이 서지 않고 · 안 파일에서 실려 온 값은 호스트가 서술로 잴 때 빠진다 — 화면은 기본 글).
-    public static let v3to4 = ProtocolDialect.Step(from: 3, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "hello" else { return line }
-        var l = line
-        func untexted(_ entries: [[String: Any]]) -> [[String: Any]] {
-            entries.map { entry in
-                guard var style = entry["style"] as? [String: Any] else { return entry }
-                style.removeValue(forKey: "texts")
-                var e = entry; e["style"] = style; return e
-            }
-        }
-        if let screens = l["screens"] as? [[String: Any]] { l["screens"] = untexted(screens) }
-        if let layers = l["layers"] as? [[String: Any]] { l["layers"] = untexted(layers) }
-        return l
-    })
-
-    /// 판 4 → 5 — 판 4 의 줄은 그대로 판 5 의 줄이다(자리 목록이 없을 뿐 — 빈 목록으로 읽는다). 판 5 의 줄을 판 4 로 내리면 hello 의 Style 서술마다
-    /// 자리 목록(`slots`)을 걷는다. `render` · `patch` 는 그대로다 — 자리 값은 Style 값 사전의 칸 하나라 판 4 의 호스트에게는 서술 밖 칸이다
-    /// (그 호스트의 서술에 자리가 없으니 엔진의 조절판에 자리 칸이 서지 않고 · 안 파일에서 실려 온 값은 호스트가 서술로 잴 때 빠진다 — 화면은 원래 이미지).
-    public static let v4to5 = ProtocolDialect.Step(from: 4, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "hello" else { return line }
-        var l = line
-        func unslotted(_ entries: [[String: Any]]) -> [[String: Any]] {
-            entries.map { entry in
-                guard var style = entry["style"] as? [String: Any] else { return entry }
-                style.removeValue(forKey: "slots")
-                var e = entry; e["style"] = style; return e
-            }
-        }
-        if let screens = l["screens"] as? [[String: Any]] { l["screens"] = unslotted(screens) }
-        if let layers = l["layers"] as? [[String: Any]] { l["layers"] = unslotted(layers) }
-        return l
-    })
-
-    /// 판 5 → 6 — 판 5 의 줄은 그대로 판 6 의 줄이다(판 5 호스트의 프레임 머리엔 글줄 · 바탕이 없을 뿐 — nil 로 읽는다). 판 6 의 줄을 판 5 로 내리면
-    /// `render` 의 청함(`drawn`)과 프레임 머리의 글줄 · 바탕(`texts` · `styles`)을 걷는다 — 판 5 호스트는 청함을 모르고 글줄을 내지 않는다
-    /// (엔진은 그 장의 글줄이 없음 = nil 로 안다 — 빈 목록과 가른다).
-    public static let v5to6 = ProtocolDialect.Step(from: 5, lift: { $0 }, lower: { line in
-        var l = line
-        switch line["type"] as? String {
-        case "render": l.removeValue(forKey: "drawn")
-        case "frame": l.removeValue(forKey: "texts"); l.removeValue(forKey: "styles")
-        default: break
-        }
-        return l
-    })
-
-    /// 판 6 → 7 — 판 6 의 줄은 그대로 판 7 의 줄이다(절에 효과 선언이 없을 뿐 — 빈 목록으로 읽는다). 판 7 의 줄을 판 6 으로 내리면 hello 의 Style 서술마다
-    /// 절의 효과 선언(`elements[].effects`)을 걷는다. `render` · `patch` · `frame` 은 그대로다 — 효과는 서술에만 있다
-    /// (판 6 호스트에게서 온 서술엔 선언이 없으니 엔진은 제 규칙으로 짐작한다).
-    public static let v6to7 = ProtocolDialect.Step(from: 6, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "hello" else { return line }
-        var l = line
-        func uneffected(_ entries: [[String: Any]]) -> [[String: Any]] {
-            entries.map { entry in
-                guard var style = entry["style"] as? [String: Any], let elements = style["elements"] as? [[String: Any]] else { return entry }
-                style["elements"] = elements.map { var el = $0; el.removeValue(forKey: "effects"); return el }
-                var e = entry; e["style"] = style; return e
-            }
-        }
-        if let screens = l["screens"] as? [[String: Any]] { l["screens"] = uneffected(screens) }
-        if let layers = l["layers"] as? [[String: Any]] { l["layers"] = uneffected(layers) }
-        return l
-    })
-
-    /// 판 7 → 8 — 판 7 의 줄은 그대로 판 8 의 줄이다(엔진이 판 7 호스트에게서 받는 줄에 쪽 표지는 없다 — 표지는 엔진이 보내는 `render` 의 칸이다).
-    /// 판 8 의 줄을 판 7 로 내리면 `render` 의 쪽 표지(`page`)를 걷는다 — 판 7 호스트는 표지를 모른 채 기기 화면으로 그린다(크기에서 기기 꼴을 고르는 화면이면
-    /// 쪽 모서리가 기기 코너로 잘릴 수 있다 — 엔진이 그 호스트의 판을 보고 사람에게 알린다). `hello` · `patch` · `frame` 은 그대로다.
-    public static let v7to8 = ProtocolDialect.Step(from: 7, lift: { $0 }, lower: { line in
-        guard line["type"] as? String == "render" else { return line }
-        var l = line
-        l.removeValue(forKey: "page")
-        return l
-    })
-}
-
-extension ProtocolDialect {
-    /// 판 7 의 말(스텝 7 → 8).
-    public static let v7 = ProtocolDialect.chain([.v7to8])
-    /// 판 6 의 말(스텝 6 → 7 → 8).
-    public static let v6 = ProtocolDialect.chain([.v6to7, .v7to8])
-    /// 판 5 의 말(스텝 5 → 6 → 7 → 8).
-    public static let v5 = ProtocolDialect.chain([.v5to6, .v6to7, .v7to8])
-    /// 판 4 의 말(스텝 4 → 5 → … → 8).
-    public static let v4 = ProtocolDialect.chain([.v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 3 의 말(스텝 3 → 4 → … → 8).
-    public static let v3 = ProtocolDialect.chain([.v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 2 의 말(스텝 2 → 3 → … → 8).
-    public static let v2 = ProtocolDialect.chain([.v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 1 의 말(스텝 1 → 2 → … → 8) — 엔진은 받지 않는다(바닥 아래 · `hostTooOld`) · 사슬의 시험과 옛 줄 읽기에 쓴다.
-    public static let v1 = ProtocolDialect.chain([.v1to2, .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
+    /// 판 9 — 콜아웃 층 보고의 푼 값이 태그 꼴(`CalloutValues` 판 2)이다.
+    public static let current = 9
+    /// 엔진이 받는 가장 옛 판(바닥) — 지금 판이다: 옛 판의 호스트는 `hostTooOld` 로 거절한다(호스트는 같은 SDK 판으로 함께 옮긴다).
+    /// 프로토콜은 층 보고의 자료가 어느 층의 무엇인지 가르는 표지를 싣지 않아, 옛 판의 콜아웃 값을 옮기는 스텝을 지을 수 없다.
+    public static let oldest = 9
+    /// 엔진이 지금 판 말고 받는 판의 말 — 바닥(`oldest`)부터 지금 판 바로 아래까지 전부(지금은 없다).
+    public static let previous: [ProtocolDialect] = []
 }
 
 /// 판 하나의 말 — 그 판의 줄(JSON 한 줄) ⟂ 지금 판의 메시지(`Message`). 지금 판의 말은 `Message` 의 Codable 그대로다.

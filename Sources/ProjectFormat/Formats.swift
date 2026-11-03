@@ -10,37 +10,58 @@
 // 판 상수는 그 형식을 디코드하는 모듈과 함께 산다 — 씬 · 모델(렌더 코어가 디코드) · 배선(엔진의 도구가 읽는다)의 판은 그 쪽이 갖는다
 // (SDK 가 디코드하지 않는 형식의 칸 하나가 SDK 판을 올리지 않게). 엔진의 형식 판 등록표 · 데이터 도구 · IA · 안 손이 이 값을 읽는다(두 벌이 서지 않는다).
 // 판마다의 **뜻**과 판을 올리는 차례는 형식을 읽고 쓰는 엔진(빌더)이 갖는다 — SDK 는 판 번호만 든다.
-// 형식마다 같은 꼴 한 벌(`FormatVersions` — 가장 옛 판 · 최신 · 쓰는 바닥 · 판 칸 이름)이 업그레이드 사슬(`UpgradeChain(versions:steps:)`)의 범위다.
+// 형식마다 같은 꼴 한 벌(`FormatVersions` — 사슬의 바닥 · 디코더의 바닥 · 최신 · 쓰는 바닥 · 판 칸 이름)이 업그레이드 사슬(`UpgradeChain(versions:steps:)`)의 범위다.
 
-/// 형식 하나의 판 범위 — 이 SDK 가 아직 읽는 가장 옛 판 · 읽는 최신 판 · 쓰는 손이 찍는 가장 낮은 판 · 판 칸 이름.
+/// 형식 하나의 판 범위 — 사슬이 받는 가장 옛 판 · 디코더가 읽는 가장 옛 판 · 읽는 최신 판 · 쓰는 손이 찍는 가장 낮은 판 · 판 칸 이름.
+/// 읽는 범위는 둘이다 — 업그레이드 사슬은 `oldest` 부터 돌고, 디코더 · 열기 판정은 `decodeOldest` 부터 읽는다(그 아래는 「업그레이드가 필요함」 —
+/// 사슬이 한 번 고쳐 쓴 뒤에 연다). 둘이 같으면 디코더가 사슬의 바닥까지 읽는다.
 public struct FormatVersions: Equatable, Sendable {
-    /// 이 SDK 가 아직 읽는 가장 옛 판 — 업그레이드 사슬의 바닥.
+    /// 업그레이드 사슬이 받는 가장 옛 판 — 사슬의 바닥(그 아래는 사슬 밖).
     public let oldest: Int
-    /// 이 SDK 가 읽는 가장 새 판 — 넘으면 이름 대고 거절(읽기 전용으로만 연다).
+    /// 디코더가 읽는 가장 옛 판 — 그 아래는 디코더가 열지 않고 사슬이 먼저 올린다(`oldest` ≤ 이 값 ≤ `writeFloor`).
+    public let decodeOldest: Int
+    /// 읽는 가장 새 판 — 넘으면 이름 대고 거절(읽기 전용으로만 연다).
     public let newest: Int
     /// 쓰는 손이 찍는 가장 낮은 판 — 업그레이드가 쓰는 판의 바닥이기도 하다.
     public let writeFloor: Int
     /// 판 칸 이름(문서 맨 위의 정수 칸).
     public let stampKey: String
-    public init(oldest: Int, newest: Int, writeFloor: Int, stampKey: String) {
-        self.oldest = oldest; self.newest = newest; self.writeFloor = writeFloor; self.stampKey = stampKey
+    /// 디코더가 사슬의 바닥까지 읽는 형식(`decodeOldest` = `oldest`).
+    public init(oldest: Int, newest: Int, writeFloor: Int, stampKey: String) throws(FormatVersionsError) {
+        try self.init(oldest: oldest, decodeOldest: oldest, newest: newest, writeFloor: writeFloor, stampKey: stampKey)
+    }
+    /// 판 차례(사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신)가 어긋나면 만들지 않는다 — 쓴 문서를 디코더가 못 읽는 범위는 서지 않는다.
+    public init(oldest: Int, decodeOldest: Int, newest: Int, writeFloor: Int, stampKey: String) throws(FormatVersionsError) {
+        guard oldest <= decodeOldest, decodeOldest <= writeFloor, writeFloor <= newest else {
+            throw .outOfOrder(oldest: oldest, decodeOldest: decodeOldest, writeFloor: writeFloor, newest: newest)
+        }
+        self.oldest = oldest; self.decodeOldest = decodeOldest; self.newest = newest; self.writeFloor = writeFloor; self.stampKey = stampKey
+    }
+
+    /// 디코더가 이 판을 읽는가 — `decodeOldest`…`newest`.
+    public func decodes(_ version: Int) -> Bool { version >= decodeOldest && version <= newest }
+}
+
+/// 판 범위를 만들 수 없다 — 판 차례가 어긋났다.
+public enum FormatVersionsError: Error, Equatable, Sendable, CustomStringConvertible {
+    /// 사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신 이 아니다.
+    case outOfOrder(oldest: Int, decodeOldest: Int, writeFloor: Int, newest: Int)
+
+    public var description: String {
+        switch self {
+        case .outOfOrder(let o, let d, let w, let n):
+            "판 차례가 어긋났다 — 사슬의 바닥 \(o) ≤ 디코더의 바닥 \(d) ≤ 쓰는 바닥 \(w) ≤ 최신 \(n) 이어야 한다"
+        }
     }
 }
 
-/// 데이터(`.isodata`) — 한 형식, 두 모양: 삶 파일(`domain` · `eras` · `series` · `milestones` · `nextIDs`)과 모델 파일(`schema` + `datasets`).
-/// 담을 수 있는 가장 낮은 판으로 쓴다 — 모델 절이 없으면 `life`, 있으면 `model`. 그래서 iCloud 의 삶 파일은 어느 손이 열고 써도 `life` 로 남는다.
+/// 데이터(`.isodata`) — 한 형식, 두 모양: 삶 파일(`domain` · `eras` · `series` · `milestones` · `people` · `nextIDs`)과 모델 파일(`schema` + `datasets`).
+/// 판은 한 줄이다 — 두 모양 모두 `version` 으로 쓰고, 디코더는 이 판만 읽는다(옛 판은 업그레이드 사슬이 한 번 고쳐 쓴다).
 public enum IsoDataFormat {
-    /// 삶 파일의 판.
-    public static let life = 3
-    /// 모델 절이 서는 판.
-    public static let model = 4
-    /// 이 SDK 가 읽는 가장 새 판.
-    public static let newest = model
-    /// 판 범위 한 벌 — 가장 옛 판 1 · 쓰는 바닥 = 삶 파일의 판.
-    public static let versions = FormatVersions(oldest: 1, newest: newest, writeFloor: life, stampKey: "version")
-
-    /// 담는 것을 담을 수 있는 가장 낮은 판.
-    public static func minimumVersion(hasModel: Bool) -> Int { hasModel ? model : life }
+    /// 이 SDK 가 읽고 쓰는 판(삶 파일 · 모델 파일 같은 판).
+    public static let version = 5
+    /// 판 범위 한 벌 — 사슬의 바닥 1 · 디코더의 바닥 = 최신 = 쓰는 바닥 = `version`.
+    public static let versions = try! FormatVersions(oldest: 1, decodeOldest: version, newest: version, writeFloor: version, stampKey: "version")
 
     /// 파일 상한 — 넘으면 이름을 대고 거부한다(바이트를 자를 수는 없다).
     public static let maxBytes = 8 * 1024 * 1024
@@ -52,12 +73,12 @@ public enum IsoDataFormat {
 public enum DesignFormat {
     public static let version = 1
     /// 판 범위 한 벌.
-    public static let versions = FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
+    public static let versions = try! FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
 }
 
 /// IA(`ia.json` · 매니페스트 `paths.ia`).
 public enum IAFormat {
     public static let version = 1
     /// 판 범위 한 벌.
-    public static let versions = FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
+    public static let versions = try! FormatVersions(oldest: 1, newest: version, writeFloor: 1, stampKey: "version")
 }

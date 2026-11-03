@@ -41,22 +41,6 @@ import Testing
         #expect(b.screens?.first?.fixtureColorUsage == nil && b.layers?.first?.composition == nil)
     }
 
-    /// 판 1 의 말 — 내리면 hello 의 새 칸이 걷히고(판 1 엔진이 모르는 칸) · 판 1 의 줄은 판 2 의 메시지로 그대로 읽힌다 · hello 밖의 줄은 그대로.
-    @Test func theDialectOfVersionOneDropsTheNewCells() throws {
-        let line = try ProtocolDialect.v1.encode(.hello(Self.hello()))
-        let top = try #require(try JSONSerialization.jsonObject(with: line) as? [String: Any])
-        #expect(top["ia"] == nil && top["frames"] == nil && top["tokensBuilt"] == nil)
-        #expect(((top["screens"] as? [[String: Any]])?.first)?["fixtureColorUsage"] == nil)
-        #expect(((top["layers"] as? [[String: Any]])?.first)?["composition"] == nil)
-        #expect(((top["layers"] as? [[String: Any]])?.first)?["name"] as? String == "chrome", "칸만 걷고 층은 남는다")
-        guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
-        #expect(back.ia == nil && back.screens?.first?.name == "home")
-        let render = Message.render(RenderRequest(seq: 3, screen: "home", state: "normal", size: Size(w: 1, h: 1), scale: 2,
-                                                  layers: [LayerState(name: "chrome")]))
-        #expect(try ProtocolDialect.v1.decode(ProtocolDialect.v1.encode(render)) == render)
-        #expect(PreviewProtocolVersion.previous.map(\.version) == [2, 3, 4, 5, 6, 7], "엔진은 바닥(판 2)부터 받는다 — 판 1 의 말은 사슬로만 선다")
-    }
-
     @Test func builtTokensDifferOnlyWhenAValueOrderOrThemeSetDiffers() {
         let a = Self.built
         var b = a
@@ -106,19 +90,26 @@ import Testing
         #expect(wire.flatMap { try? JSONDecoder().decode(CompositionField.self, from: $0) }?.kind == gauge)
     }
 
+    /// 태그 꼴의 푼 값 — 층 보고의 자료로 왕복 · 판 칸 `v` 를 싣는다 · 판 칸 말고는 빠진 칸 = 기본값 · 모르는 칸은 보존해 되쓴다 ·
+    /// 판 칸이 없거나 다른 자료는 콜아웃 값이 아니다(층 보고를 훑어 콜아웃 값을 찾는 손이 다른 층의 자료를 잡지 않게).
     @Test func calloutValuesRideTheLayerReport() throws {
-        let v = CalloutValues(surface: "#ffffff", line: "#20304014", lineWidth: 1, cornerRadius: 10, padding: Size(w: 10, h: 8), lineSpacing: 4,
-                              maximumWidth: 200, eyebrowSize: 10, eyebrowTracking: 0.5, eyebrowColor: "#607080", titleSize: 14, titleColor: "#203040",
-                              valueSize: 12, valueColor: "#607080", dotDiameter: 8, dotColor: "#10a0a0", pointerLength: 16, pointerWidth: 2, edgeInset: 10)
+        let v = CalloutValues(panelColor: "#ffffff", textColor: "#203040", lineColor: "#203040", textSize: 12, padding: Size(w: 14, h: 10),
+                              cornerRadius: 0, borderWidth: 1, maxCharacters: 16, tipLength: 16, lineWidth: 1.5, dotDiameter: 6, edgeInset: 10)
         let report = LayerReport(name: "callout", elements: [], data: try v.data())
         #expect(try CalloutValues(data: try #require(report.data)) == v)
         guard case .object(let o) = try v.data() else { Issue.record("객체가 아니다"); return }
         #expect(o["v"] == .number(Double(CalloutValues.formatVersion)), "판 칸을 싣는다")
-        // 칸이 빠진 자료도 읽힌다(빠진 칸 = 기본값 · 판 칸 없음 = 1) · 모르는 칸은 보존해 되쓴다
-        let thin = try CalloutValues(data: ["surface": "#fff", "glow": 2])
-        #expect(thin.surface == "#fff" && thin.lineWidth == 0 && thin.version == 1 && thin.extra == ["glow": 2])
+        #expect(Set(o.keys) == ["v", "panelColor", "textColor", "lineColor", "textSize", "padding", "cornerRadius", "borderWidth", "maxCharacters",
+                                "tipLength", "lineWidth", "dotDiameter", "edgeInset"], "태그 꼴의 칸 — 짚은 자리는 실을 때만")
+        let thin = try CalloutValues(data: ["v": 2, "panelColor": "#fff", "glow": 2])
+        #expect(thin.panelColor == "#fff" && thin.borderWidth == 0 && thin.maxCharacters == 0 && thin.extra == ["glow": 2])
         guard case .object(let back) = try thin.data() else { Issue.record("객체가 아니다"); return }
         #expect(back["glow"] == 2)
+        #expect(throws: DecodingError.self, "판 칸 없음") { try CalloutValues(data: ["panelColor": "#fff"]) }
+        #expect(throws: DecodingError.self, "카드 꼴(판 1)") { try CalloutValues(data: ["v": 1, "surface": "#fff"]) }
+        #expect(throws: DecodingError.self, "더 새 판") { try CalloutValues(data: ["v": 3, "panelColor": "#fff"]) }
+        #expect(throws: DecodingError.self, "판 칸이 정수가 아님") { try CalloutValues(data: ["v": "2", "panelColor": "#fff"]) }
+        #expect(throws: DecodingError.self, "판 칸이 소수") { try CalloutValues(data: ["v": .number(2.5)]) }
     }
 
     /// 프로젝트 데이터 꼴 안의 칸은 모두 선택 — 빠지면 기본값 · 모르는 칸은 들고 되쓴다(필수 칸으로 얼리지 않는다).
@@ -134,11 +125,10 @@ import Testing
                     .formFactor?.rawValue == "vision", "모르는 폼팩터도 낱말 그대로")
     }
 
-    /// 짚은 자리(선택 칸) — 실으면 왕복 · 싣지 않은 옛 보고는 nil 로 읽힌다(판 2 안의 덧붙임) · 그림 한 장 안의 점.
+    /// 짚은 자리(선택 칸) — 실으면 왕복 · 싣지 않은 보고는 nil 로 읽힌다 · 그림 한 장 안의 점.
     @Test func calloutAnchorIsAnOptionalFieldOfTheValues() throws {
-        let base = CalloutValues(surface: "#ffffff", line: "#000000", lineWidth: 1, cornerRadius: 10, padding: Size(w: 10, h: 8), lineSpacing: 4,
-                                 maximumWidth: 200, eyebrowSize: 10, eyebrowTracking: 0.5, eyebrowColor: "#607080", titleSize: 14, titleColor: "#203040",
-                                 valueSize: 12, valueColor: "#607080", dotDiameter: 8, dotColor: "#10a0a0", pointerLength: 16, pointerWidth: 2, edgeInset: 10)
+        let base = CalloutValues(panelColor: "#ffffff", textColor: "#000000", lineColor: "#000000", textSize: 12, padding: Size(w: 14, h: 10),
+                                 cornerRadius: 6, borderWidth: 1, maxCharacters: 12, tipLength: 16, lineWidth: 1.5, dotDiameter: 6, edgeInset: 10)
         var with = base
         with.anchor = CalloutAnchor(x: 0.25, y: 0.75)
         #expect(try CalloutValues(data: try with.data()) == with)

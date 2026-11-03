@@ -1,4 +1,4 @@
-// sample-model.mjs — 시험 표본 `Tests/ProjectFormatTests/Fixtures/sample-model.isodata`(판 4 모델 파일)를 규칙으로 짓는다.
+// sample-model.mjs — 시험 표본 `Tests/ProjectFormatTests/Fixtures/sample-model.isodata`(판 5 모델 파일)를 규칙으로 짓는다.
 // 표본은 손으로 고치지 않는다 — 이 스크립트가 유일한 원천이고, 기본 동작은 표본이 지은 바이트와 같은지 재는 것이다(다르면 빨강 · 러너가 부른다).
 //
 //   무엇을 덮나 — 형식의 꼴을 한 번 이상씩: 층 둘 · 엔티티 넷(한 엔티티는 목업) · 공통 필드 묶음 하나 · 값 타입 하나 · 데이터셋 둘(레코드 · 시계 ·
@@ -127,7 +127,7 @@ const datasets = {
   bare: { label: "맨땅" },
 };
 
-const model = { datasets, schema, version: 4 };
+const model = { datasets, schema, version: 5 };
 
 // ── 쓰개의 꼴 ─────────────────────────────────────────────────────────────────────────────────────
 function write(v, ind = "") {

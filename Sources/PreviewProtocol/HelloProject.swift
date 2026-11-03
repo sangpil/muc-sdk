@@ -5,14 +5,15 @@ import ProjectFormat
 // 호스트가 `hello` 에 싣는 **프로젝트의 데이터** — 엔진이 프로젝트의 코드를 링크하지 않고 그 값을 받는 자리(정본 `Docs/SDK.md` §2).
 // 값은 전부 프로젝트가 정하고(낱말 · 크기 · 생성물) 엔진은 뜻을 모른 채 받아 쓴다. 칸은 모두 선택이다 — 싣지 않은 호스트(옛 호스트 · 데이터가 없는 프로젝트)면
 // 엔진은 그 칸이 없는 길로 선다. 프로젝트 데이터의 꼴(`IAInfo` · `DeviceFrameInfo` · `CalloutValues`) 안의 칸도 모두 선택이다(빠지면 기본값 · 모르는 칸은 `extra` 로
-// 보존) — 프로젝트가 다듬을 때마다 바뀌는 칸을 필수 칸으로 얼리지 않는다. 자료 안의 꼴은 그 꼴의 판이 가른다(`CalloutValues.version` · IA 문서 `IADoc.version`).
+// 보존) — 프로젝트가 다듬을 때마다 바뀌는 칸을 필수 칸으로 얼리지 않는다. 자료 안의 꼴은 제 판을 싣는다(콜아웃 값의 칸 `v` — 판 칸만은 필수 ·
+// IA 문서 `IADoc.version`).
 //
 //   hello.ia            IA 낱말 — 앱이 실제로 여는 화면 · 진입 손의 낱말과 이름 · 탭마다 손 · 옛 낱말 → IA id · 앱에 뷰가 아직 없는 화면
 //   hello.frames        기기 틀 — 틀의 낱말 · 폼팩터 · 크기 · 코너 · 안전영역 · 편집기 기기 틀의 씬 띠
 //   hello.tokensBuilt   빌드된 표 요약 — 호스트(와 같은 소스로 빌드되는 앱)가 굳혀 든 토큰 값. 엔진이 읽은 정본과 다르면 「재빌드 필요」(`BuiltTokens.differs`)
 //   screens[].fixtureColorUsage   픽스처가 데이터로 고른 색 역할의 수(`ScreenInfo`)
 //   layers[].composition          층의 구성 서술 — 층이 IA 문서에서 읽는 칸의 꼴(`LayerInfo` · `LayerComposition`) · 일반 편집기가 이것으로 칸을 그린다
-//   frame.layers[].data           콜아웃 층의 푼 값(`CalloutValues` — pt · hex)
+//   frame.layers[].data           콜아웃 층의 푼 값(`CalloutValues` — 태그 꼴 · pt · hex)
 
 // MARK: hello.ia
 
@@ -293,30 +294,29 @@ public struct CompositionField: Codable, Equatable, Sendable {
 
 // MARK: frame.layers[].data — 콜아웃
 
-/// 콜아웃 층의 **푼 값** — 프로젝트의 콜아웃 안(Style 값)을 호스트가 이번 장의 테마로 푼 것(치수 pt · 색 `#rrggbb[aa]`). 콜아웃 카드는 씬을 읽어 서므로
-/// 엔진(씬 미리보기)이 그리고, 이 값으로 렌더 코어의 콜아웃 값을 칸 대 칸 짓는다. 호스트는 층 보고(`LayerReport.data`)로 낸다.
+/// 콜아웃 층의 **푼 값** — 프로젝트의 콜아웃 안(Style 값)을 호스트가 이번 장의 테마로 푼 것(치수 pt · 색 `#rrggbb[aa]`). 콜아웃은 태그 꼴이다 —
+/// 글 한 줄을 든 판 · 판 왼쪽의 촉 · 짚은 자리의 끝 점 · 판을 위로 올린 자리에서 끝 점과 촉을 잇는 선. 카드는 씬을 읽어 서므로 엔진(씬 미리보기)이 그리고,
+/// 이 값으로 렌더 코어의 콜아웃 값을 칸 대 칸 짓는다(자리 고르기 · 겹침 판정은 엔진의 규칙이다 — 이 꼴에 들지 않는다). 호스트는 층 보고(`LayerReport.data`)로 낸다.
+/// 꼴은 프로토콜 판의 지문에 든다 — 칸이 바뀌면 프로토콜 판을 올린다.
 public struct CalloutValues: Codable, Equatable, Sendable {
-    /// 이 꼴의 판 — 자료에 `v` 칸으로 실린다(없으면 1 · 지문 밖 자료라 그 꼴의 바뀜은 이 판이 가른다).
-    public static let formatVersion = 1
-    /// 읽은 자료의 판(`v`) — 새로 지은 값은 `formatVersion`.
-    public var version: Int = CalloutValues.formatVersion
-    /// 카드 바탕 · 테두리 색 · 테두리 굵기 · 모서리 반경.
-    public var surface: String = "", line: String = ""
-    public var lineWidth: Double = 0, cornerRadius: Double = 0
-    /// 안쪽 여백(폭 = 좌우 · 높이 = 위아래) · 줄 사이 · 카드 최대 폭.
+    /// 이 꼴의 판 — 자료에 `v` 칸으로 실린다. 읽는 손은 이 판만 읽는다(다른 판 · 판 칸 없는 자료는 콜아웃 값이 아니다).
+    public static let formatVersion = 2
+    /// 판 바탕 색 · 글 색 · 테두리 · 선 · 끝 점의 한 색.
+    public var panelColor: String = "", textColor: String = "", lineColor: String = ""
+    /// 글자 크기(숫자 높이) · 판 안쪽 여백(폭 = 좌우 · 높이 = 위아래 — 판 높이 = 글자 + 위아래 × 2).
+    public var textSize: Double = 0
     public var padding = Size(w: 0, h: 0)
-    public var lineSpacing: Double = 0, maximumWidth: Double = 0
-    /// 눈썹 줄 — 글자 크기 · 자간 · 색.
-    public var eyebrowSize: Double = 0, eyebrowTracking: Double = 0, eyebrowColor: String = ""
-    /// 제목 줄 — 글자 크기 · 색.
-    public var titleSize: Double = 0, titleColor: String = ""
-    /// 값 줄 — 글자 크기 · 색.
-    public var valueSize: Double = 0, valueColor: String = ""
-    /// 짚은 점 — 지름 · 색.
-    public var dotDiameter: Double = 0, dotColor: String = ""
-    /// 포인터 — 길이 · 굵기.
-    public var pointerLength: Double = 0, pointerWidth: Double = 0
-    /// 화면 가장자리 · 크롬에서 카드가 비켜서는 최소 거리.
+    /// 판 모서리 둥글기(판 높이의 반까지 — 반이면 알약 꼴) · 테두리 두께(판 바깥).
+    public var cornerRadius: Double = 0, borderWidth: Double = 0
+    /// 말줄임 — 글이 이 글자 수를 넘으면 줄인다(0 = 줄이지 않음).
+    public var maxCharacters: Int = 0
+    /// 촉 — 판 왼쪽 삼각의 길이(밑변은 둥근 모서리 사이의 곧은 변).
+    public var tipLength: Double = 0
+    /// 선 — 끝 점과 촉을 잇는 선의 두께.
+    public var lineWidth: Double = 0
+    /// 끝 점 — 짚은 자리의 점 지름.
+    public var dotDiameter: Double = 0
+    /// 화면 가장자리 · 크롬에서 판이 비켜서는 최소 거리.
     public var edgeInset: Double = 0
     /// 짚은 자리 — 그림 폭 · 높이의 비율(0…1). 프로젝트의 콜아웃 표본이 정한 기본(그 자리에서 씬이 무엇을 읽는지는 엔진이 잰다) ·
     /// 엔진이 손으로 옮기면 그 값을 쓴다. nil = 싣지 않음(엔진이 가운데를 짚는다).
@@ -326,56 +326,52 @@ public struct CalloutValues: Codable, Equatable, Sendable {
 
     /// 빈 값 — 칸은 하나씩 채운다.
     public init() {}
-    public init(surface: String, line: String, lineWidth: Double, cornerRadius: Double, padding: Size, lineSpacing: Double, maximumWidth: Double,
-                eyebrowSize: Double, eyebrowTracking: Double, eyebrowColor: String, titleSize: Double, titleColor: String,
-                valueSize: Double, valueColor: String, dotDiameter: Double, dotColor: String,
-                pointerLength: Double, pointerWidth: Double, edgeInset: Double, anchor: CalloutAnchor? = nil) {
-        self.surface = surface; self.line = line; self.lineWidth = lineWidth; self.cornerRadius = cornerRadius
-        self.padding = padding; self.lineSpacing = lineSpacing; self.maximumWidth = maximumWidth
-        self.eyebrowSize = eyebrowSize; self.eyebrowTracking = eyebrowTracking; self.eyebrowColor = eyebrowColor
-        self.titleSize = titleSize; self.titleColor = titleColor; self.valueSize = valueSize; self.valueColor = valueColor
-        self.dotDiameter = dotDiameter; self.dotColor = dotColor
-        self.pointerLength = pointerLength; self.pointerWidth = pointerWidth; self.edgeInset = edgeInset
-        self.anchor = anchor
+    public init(panelColor: String, textColor: String, lineColor: String, textSize: Double, padding: Size, cornerRadius: Double, borderWidth: Double,
+                maxCharacters: Int, tipLength: Double, lineWidth: Double, dotDiameter: Double, edgeInset: Double, anchor: CalloutAnchor? = nil) {
+        self.panelColor = panelColor; self.textColor = textColor; self.lineColor = lineColor
+        self.textSize = textSize; self.padding = padding; self.cornerRadius = cornerRadius; self.borderWidth = borderWidth
+        self.maxCharacters = maxCharacters; self.tipLength = tipLength; self.lineWidth = lineWidth; self.dotDiameter = dotDiameter
+        self.edgeInset = edgeInset; self.anchor = anchor
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case version = "v"
-        case surface, line, lineWidth, cornerRadius, padding, lineSpacing, maximumWidth, eyebrowSize, eyebrowTracking, eyebrowColor
-        case titleSize, titleColor, valueSize, valueColor, dotDiameter, dotColor, pointerLength, pointerWidth, edgeInset, anchor
+        case panelColor, textColor, lineColor, textSize, padding, cornerRadius, borderWidth, maxCharacters, tipLength, lineWidth, dotDiameter
+        case edgeInset, anchor
     }
     static let known = Set(CodingKeys.allCases.map(\.rawValue))
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         func d(_ k: CodingKeys) throws -> Double { try c.decodeIfPresent(Double.self, forKey: k) ?? 0 }
         func t(_ k: CodingKeys) throws -> String { try c.decodeIfPresent(String.self, forKey: k) ?? "" }
-        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
-        surface = try t(.surface); line = try t(.line); lineWidth = try d(.lineWidth); cornerRadius = try d(.cornerRadius)
-        padding = try c.decodeIfPresent(Size.self, forKey: .padding) ?? Size(w: 0, h: 0)
-        lineSpacing = try d(.lineSpacing); maximumWidth = try d(.maximumWidth)
-        eyebrowSize = try d(.eyebrowSize); eyebrowTracking = try d(.eyebrowTracking); eyebrowColor = try t(.eyebrowColor)
-        titleSize = try d(.titleSize); titleColor = try t(.titleColor); valueSize = try d(.valueSize); valueColor = try t(.valueColor)
-        dotDiameter = try d(.dotDiameter); dotColor = try t(.dotColor)
-        pointerLength = try d(.pointerLength); pointerWidth = try d(.pointerWidth); edgeInset = try d(.edgeInset)
+        let v = try c.decodeIfPresent(Int.self, forKey: .version)
+        guard v == Self.formatVersion else {
+            throw DecodingError.dataCorruptedError(forKey: .version, in: c, debugDescription:
+                "콜아웃 값의 판 \(v.map(String.init) ?? "없음") — 이 SDK 는 판 \(Self.formatVersion) 을 읽는다")
+        }
+        panelColor = try t(.panelColor); textColor = try t(.textColor); lineColor = try t(.lineColor)
+        textSize = try d(.textSize); padding = try c.decodeIfPresent(Size.self, forKey: .padding) ?? Size(w: 0, h: 0)
+        cornerRadius = try d(.cornerRadius); borderWidth = try d(.borderWidth)
+        maxCharacters = try c.decodeIfPresent(Int.self, forKey: .maxCharacters) ?? 0
+        tipLength = try d(.tipLength); lineWidth = try d(.lineWidth); dotDiameter = try d(.dotDiameter); edgeInset = try d(.edgeInset)
         anchor = try c.decodeIfPresent(CalloutAnchor.self, forKey: .anchor)
         extra = try ExtraKeys.decode(from: decoder, known: Self.known)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(version, forKey: .version)
-        try c.encode(surface, forKey: .surface); try c.encode(line, forKey: .line); try c.encode(lineWidth, forKey: .lineWidth); try c.encode(cornerRadius, forKey: .cornerRadius)
-        try c.encode(padding, forKey: .padding); try c.encode(lineSpacing, forKey: .lineSpacing); try c.encode(maximumWidth, forKey: .maximumWidth)
-        try c.encode(eyebrowSize, forKey: .eyebrowSize); try c.encode(eyebrowTracking, forKey: .eyebrowTracking); try c.encode(eyebrowColor, forKey: .eyebrowColor)
-        try c.encode(titleSize, forKey: .titleSize); try c.encode(titleColor, forKey: .titleColor); try c.encode(valueSize, forKey: .valueSize); try c.encode(valueColor, forKey: .valueColor)
-        try c.encode(dotDiameter, forKey: .dotDiameter); try c.encode(dotColor, forKey: .dotColor)
-        try c.encode(pointerLength, forKey: .pointerLength); try c.encode(pointerWidth, forKey: .pointerWidth); try c.encode(edgeInset, forKey: .edgeInset)
+        try c.encode(Self.formatVersion, forKey: .version)
+        try c.encode(panelColor, forKey: .panelColor); try c.encode(textColor, forKey: .textColor); try c.encode(lineColor, forKey: .lineColor)
+        try c.encode(textSize, forKey: .textSize); try c.encode(padding, forKey: .padding)
+        try c.encode(cornerRadius, forKey: .cornerRadius); try c.encode(borderWidth, forKey: .borderWidth); try c.encode(maxCharacters, forKey: .maxCharacters)
+        try c.encode(tipLength, forKey: .tipLength); try c.encode(lineWidth, forKey: .lineWidth); try c.encode(dotDiameter, forKey: .dotDiameter)
+        try c.encode(edgeInset, forKey: .edgeInset)
         try c.encodeIfPresent(anchor, forKey: .anchor)
         try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 
     /// 층 보고의 자료(JSON) — `LayerReport.data` · 판 칸 `v` 를 싣는다.
     public func data() throws -> JSONValue { try JSONValue.from(self) }
-    /// 층 보고의 자료에서(판 칸이 없으면 1).
+    /// 층 보고의 자료에서 — 판 칸 `v` 가 `formatVersion` 이 아니면 던진다.
     public init(data: JSONValue) throws { self = try data.decode(CalloutValues.self) }
 }
 

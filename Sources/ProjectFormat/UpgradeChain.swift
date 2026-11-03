@@ -10,22 +10,69 @@ public enum UpgradeEffect: Hashable, Sendable {
     case identity
     /// 칸은 남고 값이 바뀐다(번호를 찍는다 · 셈을 채운다 …).
     case valueChange
-    /// 새 판이 더 읽지 않는 칸이 있다 — 잃는 칸을 이름 댄다.
+    /// 새 판이 더 읽지 않는 맨 위 칸이 있다 — 잃는 칸을 이름 댄다.
     case lossy(fields: [String])
+    /// 문서를 새 꼴로 고쳐 쓴다(칸을 옮기고 · 나누고 · 합치고 · 뜻을 바꾼다) — 늘 올릴 것이다. 잃는 칸은 갈래가 미리 이름 대지 않고
+    /// 스텝이 문서마다 경로로 낸다(`UpgradeStep.lostFields(in:)` — 배열 · 객체 안까지).
+    case rewrite
 
-    /// 이 갈래가 잃는 칸(잃음이 아니면 빈 목록).
+    /// 이 갈래가 미리 이름 댄 맨 위의 잃는 칸(잃음이 아니면 빈 목록 — 고쳐 쓰기는 문서마다 스텝이 낸다).
     public var lostFields: [String] {
         if case .lossy(let fields) = self { return fields }
         return []
     }
 
-    /// 기계 낱말 — `identity` · `valueChange` · `lossy`(`--json`).
+    /// 기계 낱말 — `identity` · `valueChange` · `lossy` · `rewrite`(`--json`).
     public var key: String {
         switch self {
         case .identity: "identity"
         case .valueChange: "valueChange"
         case .lossy: "lossy"
+        case .rewrite: "rewrite"
         }
+    }
+
+    /// 이 갈래를 밟는 문서는 늘 올릴 것인가 — 값 바꿈 · 고쳐 쓰기(디코더가 옛 꼴을 그대로 받지 못한다).
+    public var alwaysUpgrades: Bool {
+        switch self {
+        case .valueChange, .rewrite: true
+        case .identity, .lossy: false
+        }
+    }
+}
+
+/// 문서 안의 칸 자리 — 맨 위에서 객체 키 · 배열 번호를 차례로 밟는다. 글자 꼴은 `beds[3].plants[0].height`(`description`).
+/// 글자 꼴은 **사람이 읽는 표시 전용**이다 — 키를 이스케이프하지 않아(키에 든 점 · 대괄호 · 빈 키) 다른 두 자리가 같은 글자가 될 수 있다.
+/// 자리를 가르는 것은 값(`==` · 해시 — 마디의 차례)뿐이고, 글자에서 자리로 되읽는 손은 두지 않는다.
+public struct FieldPath: Hashable, Sendable, CustomStringConvertible {
+    /// 밟는 마디 하나.
+    public enum Step: Hashable, Sendable {
+        /// 객체의 키.
+        case key(String)
+        /// 배열의 번호(0 부터).
+        case index(Int)
+    }
+    public let steps: [Step]
+    public init(_ steps: [Step]) { self.steps = steps }
+    /// 맨 위 칸 하나.
+    public init(key: String) { self.init([.key(key)]) }
+
+    /// 마디 하나를 더 밟은 자리.
+    public func appending(_ step: Step) -> FieldPath { FieldPath(steps + [step]) }
+    /// 키 하나를 더 밟은 자리.
+    public func appending(key: String) -> FieldPath { appending(.key(key)) }
+    /// 번호 하나를 더 밟은 자리.
+    public func appending(index: Int) -> FieldPath { appending(.index(index)) }
+
+    public var description: String {
+        var out = ""
+        for step in steps {
+            switch step {
+            case .key(let k): out += out.isEmpty ? k : ".\(k)"
+            case .index(let i): out += "[\(i)]"
+            }
+        }
+        return out
     }
 }
 
@@ -40,17 +87,18 @@ public protocol UpgradeStep: Sendable {
     var summary: String { get }
     /// 문서 한 장(`from` 판의 꼴) → 다음 판의 꼴.
     func apply(_ document: JSONValue) throws -> JSONValue
-    /// 이 문서가 실제로 잃는 칸 — 갈래가 이름 댄 칸 가운데 이 문서에 내용이 든 것. 기본은 맨 위의 칸을 본다.
-    func lostFields(in document: JSONValue) -> [String]
+    /// 이 문서가 실제로 잃는 칸의 자리 — 내용이 든 것만. 기본은 잃음 갈래가 이름 댄 맨 위의 칸을 본다 ·
+    /// 고쳐 쓰기 스텝은 이 손으로 문서마다 잃는 자리를 낸다(배열 · 객체 안까지).
+    func lostFields(in document: JSONValue) -> [FieldPath]
 }
 
 extension UpgradeStep {
     /// 이 스텝이 내는 판.
     public var to: Int { from + 1 }
 
-    public func lostFields(in document: JSONValue) -> [String] {
+    public func lostFields(in document: JSONValue) -> [FieldPath] {
         guard case .object(let top) = document else { return [] }
-        return effect.lostFields.filter { top[$0]?.holdsSomething == true }
+        return effect.lostFields.filter { top[$0]?.holdsSomething == true }.map { FieldPath(key: $0) }
     }
 }
 
@@ -65,35 +113,63 @@ extension JSONValue {
         case .bool, .number, .integer: true
         }
     }
+
+    /// 자리의 값 — 밟는 마디가 없거나(키 없음 · 번호 밖 · 꼴이 다름) 하면 nil. 빈 자리는 이 값 자신.
+    public subscript(path: FieldPath) -> JSONValue? {
+        var here = self
+        for step in path.steps {
+            switch (step, here) {
+            case (.key(let k), .object(let o)):
+                guard let next = o[k] else { return nil }
+                here = next
+            case (.index(let i), .array(let a)):
+                guard a.indices.contains(i) else { return nil }
+                here = a[i]
+            default: return nil
+            }
+        }
+        return here
+    }
 }
 
-/// 형식 하나의 사슬 — 가장 옛 읽는 판(`oldest`)에서 읽는 최신 판(`newest`)까지 판 간격마다 스텝이 **정확히 하나**.
+/// 형식 하나의 사슬 — 사슬이 받는 가장 옛 판(`oldest`)에서 읽는 최신 판(`newest`)까지 판 간격마다 스텝이 **정확히 하나**.
 public struct UpgradeChain: Sendable {
     /// 판 칸의 이름(문서 맨 위의 정수 칸 — 보통 `version` · 매니페스트는 `schema`).
     public let stampKey: String
-    /// 이 엔진이 아직 읽는 가장 옛 판.
+    /// 사슬이 받는 가장 옛 판.
     public let oldest: Int
+    /// 디코더가 읽는 가장 옛 판 — 그 아래의 문서는 늘 올릴 것이고 쓸 판은 이 판 이상이다.
+    public let decodeOldest: Int
     /// 이 엔진이 읽는 가장 새 판(형식 판 상수를 읽은 값).
     public let newest: Int
-    /// 그 형식의 쓰는 손이 찍는 가장 낮은 판(데이터 삶 파일 `IsoDataFormat.life` …) — 업그레이드가 쓰는 판의 바닥.
+    /// 그 형식의 쓰는 손이 찍는 가장 낮은 판(`FormatVersions.writeFloor`) — 업그레이드가 쓰는 판의 바닥.
     /// 업그레이드는 최신까지 쓰지 않는다 — 판이 뒤진 빌더(다른 Mac 의 배포본)가 그 파일을 계속 열게.
     public let writeFloor: Int
     /// 판 간격마다 스텝 하나(차례는 상관없다 — `from` 으로 찾는다).
     public let steps: [any UpgradeStep]
 
+    /// 디코더가 사슬의 바닥까지 읽는 사슬(`decodeOldest` = `oldest`).
     public init(stampKey: String = "version", oldest: Int, newest: Int, writeFloor: Int, steps: [any UpgradeStep]) {
-        self.stampKey = stampKey; self.oldest = oldest; self.newest = newest; self.writeFloor = writeFloor; self.steps = steps
+        self.init(stampKey: stampKey, oldest: oldest, decodeOldest: oldest, newest: newest, writeFloor: writeFloor, steps: steps)
     }
-    /// 형식의 판 범위 한 벌(`IsoDataFormat.versions` … · 렌더 코어의 형식도 같은 꼴로 낸다)로 — 바닥 · 최신 · 쓰는 바닥 · 판 칸 이름을 글자로 다시 적지 않는다.
+    public init(stampKey: String = "version", oldest: Int, decodeOldest: Int, newest: Int, writeFloor: Int, steps: [any UpgradeStep]) {
+        self.stampKey = stampKey; self.oldest = oldest; self.decodeOldest = decodeOldest; self.newest = newest; self.writeFloor = writeFloor
+        self.steps = steps
+    }
+    /// 형식의 판 범위 한 벌(`IsoDataFormat.versions` … · 렌더 코어의 형식도 같은 꼴로 낸다)로 — 두 바닥 · 최신 · 쓰는 바닥 · 판 칸 이름을 글자로 다시 적지 않는다.
     public init(versions: FormatVersions, steps: [any UpgradeStep]) {
-        self.init(stampKey: versions.stampKey, oldest: versions.oldest, newest: versions.newest, writeFloor: versions.writeFloor, steps: steps)
+        self.init(stampKey: versions.stampKey, oldest: versions.oldest, decodeOldest: versions.decodeOldest, newest: versions.newest,
+                  writeFloor: versions.writeFloor, steps: steps)
     }
 
-    /// 불변식 위반 — 빈 간격 · 겹친 간격 · 범위 밖 스텝 · 판 차례(옛 판 > 최신 판) · 쓰는 바닥이 범위 밖. 비었으면 선다.
+    /// 불변식 위반 — 빈 간격 · 겹친 간격 · 범위 밖 스텝 · 판 차례(옛 판 > 최신 판) · 디코더의 바닥이 사슬의 바닥 … 쓰는 바닥 밖 · 쓰는 바닥이 범위 밖. 비었으면 선다.
     public var violations: [String] {
         var out: [String] = []
         if oldest > newest { out.append("가장 옛 판 \(oldest) 이 최신 판 \(newest) 보다 높다") }
         if writeFloor < oldest || writeFloor > newest { out.append("쓰는 바닥 판 \(writeFloor) 이 사슬 범위(\(oldest)…\(newest)) 밖이다") }
+        else if decodeOldest < oldest || decodeOldest > writeFloor {
+            out.append("디코더의 바닥 판 \(decodeOldest) 이 사슬의 바닥 \(oldest) … 쓰는 바닥 \(writeFloor) 밖이다")
+        }
         let froms = steps.map(\.from)
         for v in Set(froms).sorted() where froms.filter({ $0 == v }).count > 1 {
             out.append("\(v) → \(v + 1) 간격에 스텝이 둘 이상이다")
@@ -120,33 +196,38 @@ public struct UpgradeChain: Sendable {
     /// 문서 한 장을 사슬로 올린다 — 판을 읽고 최신까지의 스텝을 차례로 돌며(스텝마다 판 칸을 찍는다) 잃는 칸을 재고, **쓸 판**의 꼴을 낸다.
     /// 순수(디스크를 보지 않는다).
     ///
-    /// - **올릴 것**(`needsUpgrade`) = 이 문서가 실제로 잃는 칸이 있다 ∨ 길에 값 바꿈 스텝이 있다. 항등만 · 내용 없는 잃음만 밟는 문서는
-    ///   판 번호만 뒤진 것이다 — 쓸 판 = 지금 판 · 문서 그대로.
-    /// - **쓸 판**(`to`) = max(길의 마지막 값 바꿈 · 잃음 스텝이 내는 판, `writeFloor`) — 최신이 아니다. 그 위 간격은 항등뿐이라 잃는 것이 없다.
-    /// - **잃음 스텝의 가드** — 잃음 스텝의 몸이 낸 문서가 그 스텝이 이름 댄 칸을 아직 (내용째) 들고 있으면 `UpgradeError.lossyStepKept` —
-    ///   사슬은 잃는 칸이 남은 문서를 「올린 결과」로 내지 않는다(판 칸만 올라 디코더의 알림이 꺼진 채 조용히 잃는 꼴).
+    /// - **올릴 것**(`needsUpgrade`) = 이 문서가 실제로 잃는 칸이 있다 ∨ 길에 값 바꿈 · 고쳐 쓰기 스텝이 있다 ∨ 판이 디코더의 바닥(`decodeOldest`) 아래다.
+    ///   그 밖(항등만 · 내용 없는 잃음만 밟고 디코더가 읽는 판)의 문서는 판 번호만 뒤진 것이다 — 쓸 판 = 지금 판 · 문서 그대로.
+    /// - **쓸 판**(`to`) = max(길의 마지막 값 바꿈 · 잃음 · 고쳐 쓰기 스텝이 내는 판, `writeFloor`) — 최신이 아니다. 그 위 간격은 항등뿐이라 잃는 것이 없다
+    ///   (`writeFloor` ≥ `decodeOldest` 라 쓴 문서는 디코더가 읽는다).
+    /// - **잃음 가드** — 잃음 · 고쳐 쓰기 스텝의 몸이 낸 문서가 그 스텝이 잃는다고 낸 자리를 아직 (내용째) 들고 있으면 `UpgradeError.lossyStepKept` —
+    ///   사슬은 잃는 칸이 남은 문서를 「올린 결과」로 내지 않는다(판 칸만 올라 디코더의 알림이 꺼진 채 조용히 잃는 꼴). 잃음 갈래는 이름 댄 맨 위 칸을,
+    ///   고쳐 쓰기는 스텝이 받은 문서에서 낸 자리(`FieldPath`)를 낸 문서에서 다시 잰다.
     public func upgrade(_ document: JSONValue) throws -> UpgradeOutcome {
         guard case .object(let top) = document else { throw UpgradeError.notObject }
         guard let raw = top[stampKey]?.integerValue, let version = Int(exactly: raw) else {
             throw UpgradeError.unstamped(key: stampKey)
         }
         var doc = document
-        var lost: [String] = []
+        var lost: [FieldPath] = []
         let walked = try path(from: version)
         var stages: [JSONValue] = [document]   // stages[i] = 판 version + i 의 꼴
         for step in walked {
-            lost += step.lostFields(in: doc).filter { !lost.contains($0) }
+            let losing = step.lostFields(in: doc)
+            for path in losing where !lost.contains(path) { lost.append(path) }   // 스텝 안 · 스텝 사이 겹침 없이
             doc = try step.apply(doc)
-            if case .lossy = step.effect {
-                let kept = step.lostFields(in: doc)
-                if !kept.isEmpty { throw UpgradeError.lossyStepKept(from: step.from, fields: kept) }
+            let kept: [FieldPath] = switch step.effect {
+            case .lossy: step.lostFields(in: doc)
+            case .rewrite: losing.filter { doc[$0]?.holdsSomething == true }
+            case .identity, .valueChange: []
             }
+            if !kept.isEmpty { throw UpgradeError.lossyStepKept(from: step.from, fields: kept) }
             guard case .object(var next) = doc else { throw UpgradeError.notObject }
             next[stampKey] = .number(Double(step.to))
             doc = .object(next)
             stages.append(doc)
         }
-        let needs = !lost.isEmpty || walked.contains { $0.effect == .valueChange }
+        let needs = !lost.isEmpty || walked.contains { $0.effect.alwaysUpgrades } || version < decodeOldest
         let target = needs ? max(walked.last { $0.effect != .identity }?.to ?? version, writeFloor) : version
         return UpgradeOutcome(document: stages[target - version], from: version, to: target, newest: walked.last?.to ?? version,
                               steps: Array(walked.prefix(target - version)), lost: lost, needsUpgrade: needs)
@@ -158,15 +239,15 @@ public struct UpgradeOutcome: Sendable {
     /// 쓸 판의 문서(판 칸 = `to`) — 올릴 것이 아니면 받은 문서 그대로.
     public let document: JSONValue
     public let from: Int
-    /// 쓸 판 — 올릴 것이면 max(마지막 값 바꿈 · 잃음 스텝이 내는 판, 쓰는 바닥) · 아니면 `from`.
+    /// 쓸 판 — 올릴 것이면 max(마지막 값 바꿈 · 잃음 · 고쳐 쓰기 스텝이 내는 판, 쓰는 바닥) · 아니면 `from`.
     public let to: Int
     /// 사슬의 최신 — 잃는 칸은 여기까지의 길로 쟀다(`to` 위는 항등뿐).
     public let newest: Int
     /// `from` → `to` 사이 밟은 스텝 — 차례대로(올릴 것이 아니면 빈 목록).
     public let steps: [any UpgradeStep]
-    /// 이 문서가 실제로 잃는 칸 — 최신까지의 길에서 스텝 차례 · 겹침 없이(스텝마다 그 스텝이 받은 문서로 잰다). 잃음 스텝의 몸이 걷은 칸이다.
-    public let lost: [String]
-    /// 올릴 것인가 — 실제로 잃는 칸이 있다 ∨ 길에 값 바꿈 스텝이 있다(디코더가 읽으며 값을 바꾸거나 칸을 버리는 문서).
+    /// 이 문서가 실제로 잃는 칸의 자리 — 최신까지의 길에서 스텝 차례 · 겹침 없이(스텝마다 그 스텝이 받은 문서로 잰다). 잃음 · 고쳐 쓰기 스텝의 몸이 걷은 칸이다.
+    public let lost: [FieldPath]
+    /// 올릴 것인가 — 실제로 잃는 칸이 있다 ∨ 길에 값 바꿈 · 고쳐 쓰기 스텝이 있다 ∨ 판이 디코더의 바닥 아래다.
     public let needsUpgrade: Bool
 }
 
@@ -175,14 +256,14 @@ public enum UpgradeError: Error, Equatable, CustomStringConvertible {
     case notObject
     /// 판 칸이 없거나 정수가 아니다.
     case unstamped(key: String)
-    /// 이 엔진이 더 읽지 않는 옛 판 — 사슬 밖.
+    /// 사슬의 바닥보다 옛 판 — 사슬 밖.
     case belowOldest(version: Int, oldest: Int)
     /// 이 엔진보다 새 판 — 올릴 수 없다(읽기 전용).
     case aboveNewest(version: Int, newest: Int)
     /// 사슬에 그 간격의 스텝이 없다(불변식 위반 — 시험이 먼저 잡는다).
     case missingStep(from: Int)
-    /// 잃음 스텝의 몸이 그 스텝이 이름 댄 칸을 걷지 않았다 — 잃는 칸이 남은 문서를 올린 결과로 내지 않는다.
-    case lossyStepKept(from: Int, fields: [String])
+    /// 잃음 · 고쳐 쓰기 스텝의 몸이 그 스텝이 잃는다고 낸 자리를 걷지 않았다 — 잃는 칸이 남은 문서를 올린 결과로 내지 않는다.
+    case lossyStepKept(from: Int, fields: [FieldPath])
 
     public var description: String {
         switch self {
@@ -192,7 +273,7 @@ public enum UpgradeError: Error, Equatable, CustomStringConvertible {
         case .aboveNewest(let v, let newest): "판 \(v) 은 이 엔진(\(newest) 까지)보다 새롭다 — 올릴 수 없다(읽기 전용)"
         case .missingStep(let from): "\(from) → \(from + 1) 간격에 스텝이 없다"
         case .lossyStepKept(let from, let fields):
-            "\(from) → \(from + 1) 잃음 스텝이 \(fields.joined(separator: " · ")) 을 걷지 않았다 — 잃는 칸이 남은 문서는 올린 결과가 아니다"
+            "\(from) → \(from + 1) 스텝이 잃는다고 낸 \(fields.map(\.description).joined(separator: " · ")) 을 걷지 않았다 — 잃는 칸이 남은 문서는 올린 결과가 아니다"
         }
     }
 }

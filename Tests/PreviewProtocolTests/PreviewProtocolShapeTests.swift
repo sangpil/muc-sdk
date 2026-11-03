@@ -18,6 +18,7 @@ import Testing
 //            아래 `covered` 의 switch 가 컴파일되지 않는다 — 표본을 더하라는 뜻이다.
 //   셈법   : 이 파일의 셈법을 바꾸면(꼴이 바뀐 것이 아니다) 지금 판의 줄만 새 셈으로 고친다 — 지난 판의 줄은 그대로 둔다.
 //   JSON 값: 프로젝트가 뜻을 정하는 칸(`JSONValue` · Style 값 사전)은 꼴이 없다 — 표본은 표 `§json`(값) · `§`(사전 키)로 채우고 지문은 `json` · `{}` 로 적는다.
+//   자료 꼴: 층 보고의 자료에 실리는 SDK 꼴(콜아웃 값 `CalloutValues`)은 메시지와 같은 셈으로 `callout.<키>` 줄을 더한다 — 그 칸이 바뀌어도 판을 올린다.
 
 @Suite struct PreviewProtocolShapeTests {
     static let json: JSONValue = "§json"
@@ -44,6 +45,11 @@ import Testing
                                   defaultValue: json, help: "h", when: "bottom", of: "topButtons")],
         hubItem: [CompositionField(key: "label", kind: .text, label: "이름", choices: [.init(value: "a", label: "A", symbol: "a")],
                                    defaultValue: json, help: "h", when: "w", of: "o")])
+
+    /// 층 보고의 콜아웃 값 — 칸을 빠짐없이 채운 표본.
+    static let callout = CalloutValues(panelColor: "#ffffff", textColor: "#000000", lineColor: "#000000", textSize: 1, padding: Size(w: 1, h: 1),
+                                       cornerRadius: 1, borderWidth: 1, maxCharacters: 1, tipLength: 1, lineWidth: 1, dotDiameter: 1, edgeInset: 1,
+                                       anchor: CalloutAnchor(x: 0, y: 1))
 
     /// 종류마다 칸을 빠짐없이 채운 표본(같은 종류 여럿이면 지문은 합친다 — 프레임 바이트 자리 둘).
     static let samples: [Message] = [
@@ -102,6 +108,13 @@ import Testing
                 let data = try JSONSerialization.data(withJSONObject: cut)
                 if (try? ProtocolDialect.current.decode(data)) != nil { lines.insert("optional \(m.type).\(path.joined(separator: "."))") }
             }
+        }
+        // 콜아웃 값 — 같은 셈(키 경로 · 값의 꼴 · 선택 칸)
+        guard let calloutTop = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.callout)) as? [String: Any] else { throw ShapeError.notObject }
+        for (k, v) in calloutTop { walk(v, "callout.\(k)", into: &lines) }
+        for path in keyPaths(calloutTop, []) {
+            let cut = try JSONSerialization.data(withJSONObject: removing(calloutTop, path[...]))
+            if (try? JSONDecoder().decode(CalloutValues.self, from: cut)) != nil { lines.insert("optional callout.\(path.joined(separator: "."))") }
         }
         func words(_ name: String, _ ws: [String]) -> String { "vocab \(name) " + ws.sorted().joined(separator: " ") }
         let kindWords = try fieldKinds.map { k -> String in
@@ -206,6 +219,7 @@ import Testing
         #expect(Set(scalars) == Set(ScaleKind.known), "스칼라 칸 종류 표본 = 아는 스케일 종류 전부")
         var empty: [String] = []
         for m in Self.samples { Self.holes(m, m.type, into: &empty) }
+        Self.holes(Self.callout, "callout", into: &empty)
         #expect(empty.isEmpty, "표본의 빈 칸 — 지문이 이 칸을 못 본다 · 표본에 값을 채워라: \(empty.joined(separator: " · "))")
     }
 
