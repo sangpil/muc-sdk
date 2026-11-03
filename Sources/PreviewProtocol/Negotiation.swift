@@ -17,14 +17,14 @@ import ProjectFormat
 
 /// 프로토콜 판 — **한 자리**. 메시지 꼴(선택 칸 포함)이 바뀌면 올린다 — 올리는 변경은 꼴 지문 한 줄과 한 판 사이의 스텝(`ProtocolDialect.Step`)을 함께 더한다.
 public enum PreviewProtocolVersion {
-    /// 판 8 — `render` 의 쪽 표지(`page` — 기기 틀을 대지 않는 종이 한 쪽 · 선택)
-    /// (판 7 — Style 서술의 절이 그 요소가 쓰는 시스템 효과를 선언한다 `StyleElement.effects` · 판 6 — `render` 의 그린 글줄 · 요소 바탕 청함 `drawn` 과
+    /// 판 9 — 콜아웃 층 보고의 푼 값이 태그 꼴이다(`CalloutValues` 판 2 — 판 · 촉 · 끝 점 · 선)
+    /// (판 8 — `render` 의 쪽 표지 `page` · 판 7 — Style 서술의 절이 그 요소가 쓰는 시스템 효과를 선언한다 `StyleElement.effects` · 판 6 — `render` 의 그린 글줄 · 요소 바탕 청함 `drawn` 과
     /// 프레임 머리의 `texts` · `styles` · 판 5 — Style 서술의 자리 칸 목록 `slots` · 판 4 — 문구 칸 목록 `texts`).
-    public static let current = 8
+    public static let current = 9
     /// 엔진이 받는 가장 옛 판(바닥) — 이 판부터 지금 판까지 전부 받는다(그 아래는 `hostTooOld`).
     public static let oldest = 2
     /// 엔진이 지금 판 말고 받는 판의 말 — 바닥(`oldest`)부터 지금 판 바로 아래까지 전부(판마다 스텝을 이은 사슬).
-    public static let previous: [ProtocolDialect] = [.v2, .v3, .v4, .v5, .v6, .v7]
+    public static let previous: [ProtocolDialect] = [.v2, .v3, .v4, .v5, .v6, .v7, .v8]
 }
 
 extension ProtocolDialect.Step {
@@ -132,23 +132,80 @@ extension ProtocolDialect.Step {
         l.removeValue(forKey: "page")
         return l
     })
+
+    /// 판 8 → 9 — 콜아웃 층 보고의 푼 값(`frame.layers[].data`)이 카드 꼴(`v` 1 · 눈썹 · 제목 · 값 줄 · 포인터)에서 태그 꼴(`CalloutValues` 판 2)로 바뀌었다.
+    /// 판 8 의 줄을 올리면 층 보고의 자료마다 뜻이 같은 칸을 옮긴다(바탕 → 판 색 · 테두리 색 → 선 색 · 테두리 굵기 · 모서리 · 여백 · 제목 줄 → 글 ·
+    /// 점 지름 · 포인터 굵기 → 선 두께 · 가장자리 거리 · 짚은 자리) — 태그 꼴에 없는 칸(눈썹 · 값 줄 · 줄 사이 · 최대 폭 · 점 색 · 포인터 길이)은 걷고,
+    /// 카드 꼴에 없던 칸(촉 · 말줄임)은 비운다(0). 판 9 의 줄을 판 8 로 내리면 거꾸로 옮긴다(점 색 = 선 색). `hello` · `render` · `patch` 는 그대로다.
+    public static let v8to9 = ProtocolDialect.Step(from: 8, lift: { line in
+        calloutReports(line, CalloutShape.lift)
+    }, lower: { line in
+        calloutReports(line, CalloutShape.lower)
+    })
+
+    /// 프레임 머리의 층 보고마다 자료(객체)를 옮긴다 — 다른 메시지 · 자료 없는 층은 그대로.
+    private static func calloutReports(_ line: ProtocolDialect.Line, _ move: ([String: Any]) -> [String: Any]) -> ProtocolDialect.Line {
+        guard line["type"] as? String == "frame", let layers = line["layers"] as? [[String: Any]] else { return line }
+        var l = line
+        l["layers"] = layers.map { layer in
+            guard let data = layer["data"] as? [String: Any] else { return layer }
+            var out = layer; out["data"] = move(data); return out
+        }
+        return l
+    }
+}
+
+/// 콜아웃 값의 판 1(카드 꼴) ⟂ 판 2(태그 꼴) — 뜻이 같은 칸의 짝(판 1 키 → 판 2 키). 프로토콜 스텝 `v8to9` 의 몸.
+private enum CalloutShape {
+    static let pairs: [(card: String, tag: String)] = [
+        ("surface", "panelColor"), ("line", "lineColor"), ("lineWidth", "borderWidth"), ("cornerRadius", "cornerRadius"), ("padding", "padding"),
+        ("titleSize", "textSize"), ("titleColor", "textColor"), ("dotDiameter", "dotDiameter"), ("pointerWidth", "lineWidth"),
+        ("edgeInset", "edgeInset"), ("anchor", "anchor"),
+    ]
+    /// 판 1 의 칸 전부(짝 없는 칸 포함).
+    static let cardKeys: Set<String> = ["v", "surface", "line", "lineWidth", "cornerRadius", "padding", "lineSpacing", "maximumWidth",
+                                        "eyebrowSize", "eyebrowTracking", "eyebrowColor", "titleSize", "titleColor", "valueSize", "valueColor",
+                                        "dotDiameter", "dotColor", "pointerLength", "pointerWidth", "edgeInset", "anchor"]
+    /// 판 2 의 칸 전부.
+    static let tagKeys: Set<String> = ["v", "panelColor", "textColor", "lineColor", "textSize", "padding", "cornerRadius", "borderWidth",
+                                       "maxCharacters", "tipLength", "lineWidth", "dotDiameter", "edgeInset", "anchor"]
+
+    /// 판 1 → 2 — 판 칸이 없거나 1 인 자료만(그 밖은 그대로 — 콜아웃 값이 아니다).
+    static func lift(_ data: [String: Any]) -> [String: Any] {
+        guard (data["v"] as? Int ?? 1) == 1 else { return data }
+        var out = data.filter { !cardKeys.contains($0.key) }
+        for (card, tag) in pairs { if let v = data[card] { out[tag] = v } }
+        out["v"] = 2
+        return out
+    }
+    /// 판 2 → 1 — 판 칸이 2 인 자료만.
+    static func lower(_ data: [String: Any]) -> [String: Any] {
+        guard data["v"] as? Int == 2 else { return data }
+        var out = data.filter { !tagKeys.contains($0.key) }
+        for (card, tag) in pairs { if let v = data[tag] { out[card] = v } }
+        if let c = data["lineColor"] { out["dotColor"] = c }
+        out["v"] = 1
+        return out
+    }
 }
 
 extension ProtocolDialect {
-    /// 판 7 의 말(스텝 7 → 8).
-    public static let v7 = ProtocolDialect.chain([.v7to8])
-    /// 판 6 의 말(스텝 6 → 7 → 8).
-    public static let v6 = ProtocolDialect.chain([.v6to7, .v7to8])
-    /// 판 5 의 말(스텝 5 → 6 → 7 → 8).
-    public static let v5 = ProtocolDialect.chain([.v5to6, .v6to7, .v7to8])
-    /// 판 4 의 말(스텝 4 → 5 → … → 8).
-    public static let v4 = ProtocolDialect.chain([.v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 3 의 말(스텝 3 → 4 → … → 8).
-    public static let v3 = ProtocolDialect.chain([.v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 2 의 말(스텝 2 → 3 → … → 8).
-    public static let v2 = ProtocolDialect.chain([.v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
-    /// 판 1 의 말(스텝 1 → 2 → … → 8) — 엔진은 받지 않는다(바닥 아래 · `hostTooOld`) · 사슬의 시험과 옛 줄 읽기에 쓴다.
-    public static let v1 = ProtocolDialect.chain([.v1to2, .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
+    /// 판 8 의 말(스텝 8 → 9).
+    public static let v8 = ProtocolDialect.chain([.v8to9])
+    /// 판 7 의 말(스텝 7 → 8 → 9).
+    public static let v7 = ProtocolDialect.chain([.v7to8, .v8to9])
+    /// 판 6 의 말(스텝 6 → 7 → … → 9).
+    public static let v6 = ProtocolDialect.chain([.v6to7, .v7to8, .v8to9])
+    /// 판 5 의 말(스텝 5 → 6 → … → 9).
+    public static let v5 = ProtocolDialect.chain([.v5to6, .v6to7, .v7to8, .v8to9])
+    /// 판 4 의 말(스텝 4 → 5 → … → 9).
+    public static let v4 = ProtocolDialect.chain([.v4to5, .v5to6, .v6to7, .v7to8, .v8to9])
+    /// 판 3 의 말(스텝 3 → 4 → … → 9).
+    public static let v3 = ProtocolDialect.chain([.v3to4, .v4to5, .v5to6, .v6to7, .v7to8, .v8to9])
+    /// 판 2 의 말(스텝 2 → 3 → … → 9).
+    public static let v2 = ProtocolDialect.chain([.v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8, .v8to9])
+    /// 판 1 의 말(스텝 1 → 2 → … → 9) — 엔진은 받지 않는다(바닥 아래 · `hostTooOld`) · 사슬의 시험과 옛 줄 읽기에 쓴다.
+    public static let v1 = ProtocolDialect.chain([.v1to2, .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8, .v8to9])
 }
 
 /// 판 하나의 말 — 그 판의 줄(JSON 한 줄) ⟂ 지금 판의 메시지(`Message`). 지금 판의 말은 `Message` 의 Codable 그대로다.

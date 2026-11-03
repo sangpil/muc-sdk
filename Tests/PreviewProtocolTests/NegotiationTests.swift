@@ -23,9 +23,9 @@ import Testing
         return l
     })
     /// 다음 판 엔진 — 제 판(N+1) · 판 N(지금 꼴 그대로) · 판 N-1(스텝 사슬)을 받는다.
-    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v7])
-    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → … → 8.
-    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8])
+    static let engineNext = ProtocolJudge(version: now + 1, dialects: [next, .current, .v8])
+    /// `ack` 가 없는 옛 판 1 의 말 — 스텝 1 → 2(시험용 · `ack` 를 내리면 nil) 뒤에 실제 스텝 2 → 3 → … → 9.
+    static let ackless = ProtocolDialect.chain([ProtocolDialect.Step(from: 1, lift: { $0 }, lower: { $0["type"] as? String == "ack" ? nil : $0 }), .v2to3, .v3to4, .v4to5, .v5to6, .v6to7, .v7to8, .v8to9])
 
     static func hello(_ version: Int?) -> Data {
         var top: [String: Any] = ["type": "hello", "role": "host", "pid": 1, "name": "h"]
@@ -93,13 +93,14 @@ import Testing
         #expect(try probe.decode(try JSONSerialization.data(withJSONObject: down)) == .bye(Bye(reason: "r")), "올리기는 차례대로")
     }
 
-    /// 스텝 사슬 — 1 → 2 → … → 8 을 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
+    /// 스텝 사슬 — 1 → 2 → … → 9 를 이은 말은 스텝을 차례로 손으로 밟은 것과 같다(올리기 · 내리기) · 판 1 의 줄은 지금 판의 메시지로 읽힌다.
     @Test func chainedStepsEqualTheDirectWalk() throws {
         let hello = Message.hello(Hello(role: .host, protocolVersion: Self.now, pid: 1, name: "h", ia: IAInfo(appScreens: ["a"], entryWords: [], entryHands: [:], aliases: [:], planned: []),
                                         frames: [], tokensBuilt: nil))
         let line = try ProtocolDialect.v1.encode(hello)
         let native = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(hello)) as? ProtocolDialect.Line)
-        let seven = try #require(try ProtocolDialect.Step.v7to8.lower(native))
+        let eight = try #require(try ProtocolDialect.Step.v8to9.lower(native))
+        let seven = try #require(try ProtocolDialect.Step.v7to8.lower(eight))
         let six = try #require(try ProtocolDialect.Step.v6to7.lower(seven))
         let five = try #require(try ProtocolDialect.Step.v5to6.lower(six))
         let four = try #require(try ProtocolDialect.Step.v4to5.lower(five))
@@ -111,7 +112,7 @@ import Testing
         guard case .hello(let back) = try ProtocolDialect.v1.decode(line) else { Issue.record("hello 가 아니다"); return }
         #expect(back.ia == nil && back.frames == nil, "판 1 은 프로젝트 데이터 칸이 없다")
         #expect(ProtocolDialect.v1.version == 1 && ProtocolDialect.v2.version == 2 && ProtocolDialect.v3.version == 3 && ProtocolDialect.v4.version == 4
-                && ProtocolDialect.v5.version == 5 && ProtocolDialect.v6.version == 6 && ProtocolDialect.v7.version == 7)
+                && ProtocolDialect.v5.version == 5 && ProtocolDialect.v6.version == 6 && ProtocolDialect.v7.version == 7 && ProtocolDialect.v8.version == 8)
     }
 
     /// 판 6 → 5 내리기 — `render` 의 청함(`drawn`)과 프레임 머리의 글줄 · 바탕(`texts` · `styles`)을 걷는다 · 나머지 칸 · 다른 메시지는 그대로 ·
@@ -262,6 +263,69 @@ import Testing
         #expect(dialect.version == 7)
         guard case .hello(let h) = try dialect.decode(line) else { Issue.record(); return }
         #expect(h.screens?.first?.style.elements.first?.effects == [.glass], "판 7 의 효과 선언은 그대로 읽힌다")
+    }
+
+    /// 판 8 → 9 올리기 — 판 8 호스트가 낸 층 보고의 카드 꼴 콜아웃 값(`v` 1 · 판 칸 없음도)을 태그 꼴로 옮긴다: 뜻이 같은 칸은 옮기고 ·
+    /// 태그 꼴에 없는 칸은 걷고 · 모르는 칸은 남긴다 · 옮긴 자료는 지금 판의 `CalloutValues` 로 읽힌다. 내리기는 거꾸로(점 색 = 선 색) ·
+    /// 자료 없는 층 · 다른 메시지는 그대로.
+    @Test func liftingFromEightMovesCalloutValuesToTheTagShape() throws {
+        let card: [String: Any] = ["v": 1, "surface": "#ffffff", "line": "#203040", "lineWidth": 1, "cornerRadius": 10, "padding": ["w": 10, "h": 8],
+                                   "lineSpacing": 4, "maximumWidth": 200, "eyebrowSize": 10, "eyebrowTracking": 0.5, "eyebrowColor": "#607080",
+                                   "titleSize": 12, "titleColor": "#102030", "valueSize": 12, "valueColor": "#607080", "dotDiameter": 6, "dotColor": "#203040",
+                                   "pointerLength": 16, "pointerWidth": 2, "edgeInset": 10, "anchor": ["x": 0.25, "y": 0.75], "glow": 3]
+        let frame: [String: Any] = ["type": "frame", "seq": 3, "applied": 3, "w": 1, "h": 1, "stride": 4, "scale": 1, "format": ["pixel": "rgba8", "colorSpace": "sRGB"],
+                                    "snapFrames": [], "ms": 0, "payload": ["inline": ["bytes": 4]],
+                                    "layers": [["name": "callout", "elements": [], "data": card], ["name": "chrome", "elements": ["a"]]]]
+        let up = try ProtocolDialect.Step.v8to9.lift(frame)
+        let layers = try #require(up["layers"] as? [[String: Any]])
+        let tag = try #require(layers[0]["data"] as? [String: Any])
+        #expect(Set(tag.keys) == ["v", "panelColor", "lineColor", "borderWidth", "cornerRadius", "padding", "textSize", "textColor", "dotDiameter",
+                                  "lineWidth", "edgeInset", "anchor", "glow"])
+        #expect(tag["v"] as? Int == 2 && tag["panelColor"] as? String == "#ffffff" && tag["borderWidth"] as? Int == 1 && tag["lineWidth"] as? Int == 2
+                && tag["textColor"] as? String == "#102030", "테두리 굵기 → 테두리 · 포인터 굵기 → 선 · 제목 줄 → 글")
+        #expect(layers[1]["data"] == nil && layers[1]["name"] as? String == "chrome", "자료 없는 층은 그대로")
+        let values = try CalloutValues(data: try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: tag)))
+        #expect(values == {
+            var v = CalloutValues(panelColor: "#ffffff", textColor: "#102030", lineColor: "#203040", textSize: 12, padding: Size(w: 10, h: 8), cornerRadius: 10,
+                                  borderWidth: 1, maxCharacters: 0, tipLength: 0, lineWidth: 2, dotDiameter: 6, edgeInset: 10, anchor: CalloutAnchor(x: 0.25, y: 0.75))
+            v.extra = ["glow": 3]
+            return v
+        }(), "촉 · 말줄임은 카드 꼴에 없어 비운다")
+        // 판 칸 없는 카드 꼴 자료(판 1)도 옮긴다
+        var bare = card; bare.removeValue(forKey: "v")
+        let bareUp = try ProtocolDialect.Step.v8to9.lift(["type": "frame", "layers": [["name": "c", "elements": [], "data": bare]]])
+        #expect(((bareUp["layers"] as? [[String: Any]])?.first?["data"] as? [String: Any])?["v"] as? Int == 2)
+
+        // 내리기 — 태그 꼴 → 카드 꼴
+        let down = try #require(try ProtocolDialect.Step.v8to9.lower(up))
+        let back = try #require(((down["layers"] as? [[String: Any]])?.first?["data"]) as? [String: Any])
+        #expect(back["v"] as? Int == 1 && back["surface"] as? String == "#ffffff" && back["lineWidth"] as? Int == 1 && back["pointerWidth"] as? Int == 2
+                && back["dotColor"] as? String == "#203040" && back["tipLength"] == nil && back["glow"] as? Int == 3)
+        // 다른 메시지는 판 8 에서도 같은 줄
+        let render = Message.render(RenderRequest(seq: 6, screen: "s", state: "n", size: Size(w: 1, h: 1), scale: 1, page: true))
+        let a = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.v8.encode(render)) as? [String: Any])
+        let b = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(render)) as? [String: Any])
+        #expect(NSDictionary(dictionary: a) == NSDictionary(dictionary: b) && a["page"] as? Bool == true, "판 8 은 쪽 표지를 안다")
+    }
+
+    /// 판 8 ⟂ 9 가 섞일 때 — 판 9 엔진은 판 8 호스트를 판 8 의 말로 받는다(층 보고의 콜아웃 값을 태그 꼴로 옮긴다) ·
+    /// 판 8 엔진은 판 9 호스트를 「빌더를 업데이트하세요」로 거절하고 · 판 9 호스트도 판 8 엔진의 hello 를 거절한다.
+    @Test func versionsEightAndNineMeet() throws {
+        let nine = ProtocolJudge.engine
+        #expect(nine.version >= 9, "판 9 이상의 엔진")
+        #expect(Self.taken(nine.judge(host: 8)) == 8)
+        let eightEngine = ProtocolJudge(version: 8, dialects: [ProtocolDialect(version: 8, lift: { $0 }, lower: { $0 })])
+        #expect(Self.refused(eightEngine.judge(host: 9)) == .hostNewer(host: 9, engine: 8))
+        #expect(!ProtocolJudge.hostAccepts(engine: 8, host: 9) && ProtocolJudge.hostAccepts(engine: 9, host: 8))
+        // 판 8 호스트의 프레임 머리(카드 꼴 콜아웃 값)를 판 9 엔진이 판 8 의 말로 읽는다
+        let native = Message.frame(FrameHeader(seq: 1, applied: 1, w: 1, h: 1, stride: 4, scale: 1, format: .rgba8sRGB, snapFrames: [],
+                                               layers: [LayerReport(name: "callout", elements: [])], ms: 0, payload: .inline(bytes: 4)))
+        var top = try #require(try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(native)) as? [String: Any])
+        top["layers"] = [["name": "callout", "elements": [], "data": ["v": 1, "surface": "#ffffff", "titleSize": 12]]]
+        let line = try JSONSerialization.data(withJSONObject: top)
+        guard case .frame(let f) = try ProtocolDialect.v8.decode(line) else { Issue.record(); return }
+        let values = try CalloutValues(data: try #require(f.layers?.first?.data))
+        #expect(values.panelColor == "#ffffff" && values.textSize == 12)
     }
 
     /// 판 5 → 4 내리기 — hello 의 Style 서술마다 자리 목록을 걷는다(판 4 는 자리를 모른다 · 문구는 남는다) · 올리기는 그대로(자리 없는 서술 = 빈 목록) ·
