@@ -2,9 +2,9 @@ import Foundation
 @testable import ProjectFormat
 import Testing
 
-// 형식 5 — 읽기 · 한 판 쓰기 · 옛 판 · 미래 판 거부 · 읽기 규율(`DataModelCoding` 머리).
+// 형식 한 판(`IsoDataFormat.version`) — 읽기 · 한 판 쓰기 · 옛 판 · 미래 판 거부 · 읽기 규율(`DataModelCoding` 머리).
 
-@Suite("isodata 5 — 읽기와 쓰기")
+@Suite("isodata — 한 판 읽기와 쓰기")
 struct IsoDataFileTests {
 
     /// 삶 파일은 읽고 쓰면 바이트가 같다.
@@ -47,7 +47,7 @@ struct IsoDataFileTests {
     }
 
     @Test func 미래_판은_이름을_대고_거부() {
-        #expect(throws: IsoDataError.tooNew(6)) { try IsoDataFile.read(Data(#"{ "version" : 6 }"#.utf8)) }
+        #expect(throws: IsoDataError.tooNew(IsoDataFormat.version + 1)) { try IsoDataFile.read(Data(#"{ "version" : \#(IsoDataFormat.version + 1) }"#.utf8)) }
     }
 
     /// 옛 판(디코더의 바닥 아래)은 열지 않는다 — 삶 · 모델 모양 모두 · 업그레이드 사슬이 먼저 올린다(읽기 전용 창도 열지 않는다).
@@ -74,7 +74,7 @@ struct IsoDataFileTests {
     /// 다시 쓰면 그 키가 그대로 남는다(옛 읽개가 열어 저장해도 새 판의 칸이 사라지지 않는다). 삶 파일은 지금처럼 나른다.
     @Test func 모델_파일의_모르는_키는_보존하고_알린다() throws {
         let json = #"""
-        { "version" : 5, "tags" : [ 1 ], "schema" : { "name" : "j", "flavor" : "x",
+        { "version" : \#(IsoDataFormat.version), "tags" : [ 1 ], "schema" : { "name" : "j", "flavor" : "x",
           "layers" : [ { "id" : "g", "tint" : 1 } ],
           "entities" : [ { "name" : "A", "layer" : "g", "icon" : "a", "swift" : { "model" : "A", "module" : "M" },
             "fields" : [ { "name" : "id", "type" : "id", "color" : "red" },
@@ -97,7 +97,7 @@ struct IsoDataFileTests {
         #expect(again == file)
         guard case .model(let m2) = again else { Issue.record(); return }
         #expect(m2.unknownKeys == m.unknownKeys)
-        let life = #"{ "version" : 5, "domain" : { "birth" : "2040-01-01", "lifeExpectancy" : 90 }, "future" : true }"#
+        let life = #"{ "version" : \#(IsoDataFormat.version), "domain" : { "birth" : "2040-01-01", "lifeExpectancy" : 90 }, "future" : true }"#
         guard case .life(let l) = try IsoDataFile.read(Data(life.utf8)) else { Issue.record(); return }
         #expect(l.body["future"] == .bool(true))
     }
@@ -117,7 +117,7 @@ struct IsoDataFileTests {
     /// 물러난 키(`migrated` · 엔티티와 필드의 `sql` — 저장 백엔드의 생성 사본)는 알리지 않고 들고 되쓴다 — 값이 그대로 남는다.
     @Test func 물러난_키는_알리지_않고_바이트_그대로() throws {
         let json = #"""
-        { "version" : 5, "migrated" : { "sql" : { "tables" : { "as" : { "id" : { "type" : "text", "primaryKey" : true } } } }, "swift" : { "schemaVersion" : 1 } },
+        { "version" : \#(IsoDataFormat.version), "migrated" : { "sql" : { "tables" : { "as" : { "id" : { "type" : "text", "primaryKey" : true } } } }, "swift" : { "schemaVersion" : 1 } },
           "schema" : { "name" : "j", "entities" : [ { "name" : "A", "sql" : { "table" : "as" },
             "fields" : [ { "name" : "id", "type" : "id", "sql" : { "column" : "id" } } ] } ] } }
         """#
@@ -132,7 +132,7 @@ struct IsoDataFileTests {
     /// 모르는 낱말 — 형 · 상태 · 삭제 규칙 · 규칙은 글자 그대로 들고(파일을 거부하지 않는다) 경고 한 줄씩 · 다시 쓰면 글자 그대로.
     @Test func 모르는_낱말은_읽고_경고하고_그대로_쓴다() throws {
         let json = #"""
-        { "version" : 5, "schema" : { "name" : "j", "entities" : [ { "name" : "A", "status" : "archived",
+        { "version" : \#(IsoDataFormat.version), "schema" : { "name" : "j", "entities" : [ { "name" : "A", "status" : "archived",
           "fields" : [ { "name" : "id", "type" : "id" }, { "name" : "site", "type" : "url" }, { "name" : "span", "type" : { "range" : "int" } },
                        { "name" : "up", "type" : { "ref" : "A", "onDelete" : "noAction" }, "optional" : true } ],
           "rules" : [ { "id" : "r", "check" : { "pattern" : "site", "regex" : "^h" } } ] } ] },
@@ -156,24 +156,24 @@ struct IsoDataFileTests {
 
     /// 읽기 전용 창 — 미래 판도 `allowingNewer` 면 읽는다(모르는 키는 보존 · 알림).
     @Test func 미래_판은_읽기_전용으로_열린다() throws {
-        let json = #"{ "version" : 6, "schema" : { "name" : "j", "entities" : [ { "name" : "A", "fields" : [ { "name" : "id", "type" : "id" } ] } ], "sync" : "cloud" } }"#
-        #expect(throws: IsoDataError.tooNew(6)) { try IsoDataFile.read(Data(json.utf8)) }
+        let json = #"{ "version" : \#(IsoDataFormat.version + 1), "schema" : { "name" : "j", "entities" : [ { "name" : "A", "fields" : [ { "name" : "id", "type" : "id" } ] } ], "sync" : "cloud" } }"#
+        #expect(throws: IsoDataError.tooNew(IsoDataFormat.version + 1)) { try IsoDataFile.read(Data(json.utf8)) }
         guard case .model(let m) = try IsoDataFile.read(Data(json.utf8), allowingNewer: true) else { Issue.record(); return }
         #expect(m.unknownKeys.count == 1 && m.schema.extra == ["sync": "cloud"])
     }
 
     /// 스키마의 이름공간 머리 · 판 — 선택 칸(적으면 쓰고 · 없으면 쓰지 않는다) · 판은 1 이상.
     @Test func 이름공간_머리와_스키마_판은_선택_칸() throws {
-        let json = #"{ "version" : 5, "schema" : { "name" : "j", "idNamespace" : "com.example.rows", "revision" : 3 } }"#
+        let json = #"{ "version" : \#(IsoDataFormat.version), "schema" : { "name" : "j", "idNamespace" : "com.example.rows", "revision" : 3 } }"#
         guard case .model(let m) = try IsoDataFile.read(Data(json.utf8)) else { Issue.record(); return }
         #expect(m.schema.idNamespace == "com.example.rows" && m.schema.revision == 3 && m.unknownKeys.isEmpty)
         let written = String(decoding: try IsoDataFile.model(m).encoded(), as: UTF8.self)
         #expect(written.contains(#""idNamespace" : "com.example.rows""#) && written.contains(#""revision" : 3"#))
-        #expect(throws: IsoDataError.self) { try IsoDataFile.read(Data(#"{ "version" : 5, "schema" : { "name" : "j", "revision" : 0 } }"#.utf8)) }
+        #expect(throws: IsoDataError.self) { try IsoDataFile.read(Data(#"{ "version" : \#(IsoDataFormat.version), "schema" : { "name" : "j", "revision" : 0 } }"#.utf8)) }
     }
 
     @Test func 설명_오류_글은_한국어() {
-        #expect(IsoDataError.tooNew(5).errorDescription?.contains("더 새 판") == true)
+        #expect(IsoDataError.tooNew(IsoDataFormat.version + 1).errorDescription?.contains("더 새 판") == true)
     }
 }
 
@@ -181,7 +181,7 @@ struct IsoDataFileTests {
 struct SchemaValidationTests {
 
     func schema(_ entities: String, extra: String = "") -> Data {
-        Data(#"{ "version" : 5, "schema" : { "name" : "j", "entities" : \#(entities)\#(extra) } }"#.utf8)
+        Data(#"{ "version" : \#(IsoDataFormat.version), "schema" : { "name" : "j", "entities" : \#(entities)\#(extra) } }"#.utf8)
     }
 
     func path(of data: Data) -> String? {

@@ -59,7 +59,7 @@ public enum FormatVersionsError: Error, Equatable, Sendable, CustomStringConvert
 /// 판은 한 줄이다 — 두 모양 모두 `version` 으로 쓰고, 디코더는 이 판만 읽는다(옛 판은 업그레이드 사슬이 한 번 고쳐 쓴다).
 public enum IsoDataFormat {
     /// 이 SDK 가 읽고 쓰는 판(삶 파일 · 모델 파일 같은 판).
-    public static let version = 5
+    public static let version = 6
     /// 판 범위 한 벌 — 사슬의 바닥 1 · 디코더의 바닥 = 최신 = 쓰는 바닥 = `version`.
     public static let versions = try! FormatVersions(oldest: 1, decodeOldest: version, newest: version, writeFloor: version, stampKey: "version")
 
