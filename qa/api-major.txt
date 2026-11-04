@@ -1,2 +1,3 @@
 2.0.0 — 데이터 형식 한 판(IsoDataFormat.version · life · model · newest · minimumVersion · LifeFile.version · IsoDataFile.writtenVersion 걷음 · 새 오류 갈래 IsoDataError.tooOld) · 업그레이드 갈래 UpgradeEffect.rewrite(닫힌 열거에 갈래) · 잃는 칸의 꼴 [String] → [FieldPath](UpgradeStep.lostFields(in:) · UpgradeOutcome.lost · UpgradeError.lossyStepKept) · 콜아웃 값 태그 꼴(CalloutValues 칸 이름 · init 바뀜 · version 걷음).
 2.0.0 — 프로토콜 바닥 판 9(옛 판의 말 ProtocolDialect.v1 … v8 · 스텝 v1to2 … v7to8 걷음 · previous 빔) · FormatVersions 의 두 init 이 throws(FormatVersionsError).
+3.0.0 — 데이터 형식 판 6(IsoDataFormat.version 5 → 6 — 값 하나 · 이름 · 꼴 변화 0 · 이 SDK 는 판 5 파일을 tooOld 로 · 옛 SDK 는 판 6 파일을 tooNew 로 거절 — 파일 호환이 깨져 주 판 · 앱은 `mucb project upgrade --yes` 로 파일을 올린다).
