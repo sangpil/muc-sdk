@@ -3,7 +3,7 @@ import Foundation
 // 엔진 SDK `ProjectFormat` — 모델 파일의 형식 계약(꼴 · 인코딩 · 읽기 규율)은 엔진과 프로젝트의 도구 실행물이 같은 한 벌을 문다
 // (SDK 문서 §2). 생성물(Swift 스키마 · 문서 울타리)은 엔진의 몫이다.
 //
-// `.isodata` 5 — 한 형식, 두 모양, 한 판.
+// `.isodata` — 한 형식, 두 모양, 한 판(`IsoDataFormat.version`).
 //   삶 파일   : `domain` · `eras` · `series` · `milestones` · `people` · `nextIDs` — 빌더가 고치는 파일. 이 모듈은 **통째로 나르기만** 한다(뜻은 빌더의 것).
 //   모델 파일 : `schema` + `datasets` — 데이터 창이 고치는 파일. 모르는 칸은 보존한다(`DataModelCoding` 읽기 규율 ③ · 물러난 칸 `migrated` · `sql` 포함).
 // 두 모양 모두 `IsoDataFormat.version` 으로 읽고 쓴다 — 그보다 옛 판은 열지 않는다(`IsoDataError.tooOld` · 업그레이드 사슬이 한 번 고쳐 쓴 뒤에 연다).
