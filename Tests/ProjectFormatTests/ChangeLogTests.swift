@@ -2,11 +2,11 @@ import Foundation
 @testable import ProjectFormat
 import Testing
 
-// 고침 기록 규약(`ChangeLog`) — 정규화 · 요약의 바이트 · 보관 · 합치기 · 충돌 · 표지 둘의 꼴과 읽고 쓰기.
+// 변경 기록 규약(`ChangeLog`) — 정규화 · 요약의 바이트 · 보관 · 합치기 · 충돌 · 표지 둘의 꼴과 읽고 쓰기.
 // 정규화 · 요약의 기대 글자는 이 규약을 먼저 쓴 쪽의 셈(JSON 글 → 읽기(수는 십진) → 키 정렬 · 빗금 그대로 → SHA-256)으로 따로 잰 값이다 —
 // 두 앱이 같은 값에 같은 바이트를 내는 것이 이 규약의 몫이라 글자째 붙든다.
 
-@Suite("고침 기록 — 정규화 · 요약")
+@Suite("고침 줄 — 정규화 · 요약")
 struct ChangeLogValueTests {
 
     /// (입력 JSON 글, 정규화 글, 요약)
@@ -59,16 +59,16 @@ struct ChangeLogValueTests {
     }
 }
 
-@Suite("고침 기록 — 보관 · 합치기")
+@Suite("고침 줄 — 보관 · 합치기")
 struct ChangeLogKeepTests {
     static let now = Date(timeIntervalSince1970: 2_000_000_000)
 
     @Test func 보관은_30일() {
         #expect(ChangeLog.retention == 30 * 24 * 60 * 60 && ChangeLog.coalesceWindow == 30)
-        #expect(!ChangeLog.expired(Self.now.addingTimeInterval(-ChangeLog.retention), now: Self.now))
-        #expect(ChangeLog.expired(Self.now.addingTimeInterval(-ChangeLog.retention - 1), now: Self.now))
-        #expect(ChangeLog.expired(nil, now: Self.now), "때가 빈 줄은 지난 줄")
-        #expect(!ChangeLog.expired(Self.now.addingTimeInterval(-100), now: Self.now, keep: 200))
+        #expect(!ChangeLog.lapsed(Self.now.addingTimeInterval(-ChangeLog.retention), now: Self.now))
+        #expect(ChangeLog.lapsed(Self.now.addingTimeInterval(-ChangeLog.retention - 1), now: Self.now))
+        #expect(ChangeLog.lapsed(nil, now: Self.now), "때가 빈 줄은 지난 줄")
+        #expect(!ChangeLog.lapsed(Self.now.addingTimeInterval(-100), now: Self.now, keep: 200))
     }
 
     static let pot = UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!
@@ -104,7 +104,7 @@ struct ChangeLogKeepTests {
     }
 }
 
-@Suite("고침 기록 — 충돌")
+@Suite("고침 줄 — 충돌")
 struct ChangeLogConflictTests {
     static let t0 = Date(timeIntervalSince1970: 2_000_000_000)
     static let pot = UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!
@@ -187,7 +187,7 @@ struct ChangeLogConflictTests {
     }
 }
 
-@Suite("고침 기록 — 표지 둘의 꼴")
+@Suite("고침 줄 — 표지 둘의 꼴")
 struct ChangeLogShapeTests {
 
     static func marked(edit: [DataField] = ChangeLog.editFields, deletion: [DataField] = ChangeLog.deletionFields,

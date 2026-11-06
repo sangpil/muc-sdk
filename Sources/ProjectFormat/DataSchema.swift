@@ -139,7 +139,7 @@ public struct DataEntity: Equatable, Sendable {
     public var dropNote: String = ""
     public var fields: [DataField] = []
     public var rules: [DataRule] = []
-    /// 기록 엔티티 표지(파일 키 `log`) — 고침 기록 ⟂ 삭제 기록(`ChangeLog`). nil = 보통 엔티티.
+    /// 기록 엔티티 표지(파일 키 `log`) — 고침 줄 ⟂ 지움 줄(`ChangeLog`). nil = 보통 엔티티.
     public var log: DataLogKind?
     /// 이 SDK 가 모르는 칸(아는 하위 객체 안의 모르는 칸은 그 키 아래 객체로 — `swift` 안의 새 칸이면 `extra["swift"]`).
     public var extra: [String: JSONValue] = [:]

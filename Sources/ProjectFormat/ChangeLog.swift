@@ -1,16 +1,16 @@
 import CryptoKit
 import Foundation
 
-// 엔진 SDK `ProjectFormat` — 공유 데이터의 고침 기록 규약. 여러 앱이 같은 데이터(공유 데이터 모델 — `SharedDataModel`)를 함께 고칠 때
+// 엔진 SDK `ProjectFormat` — 공유 데이터의 변경 기록 규약. 여러 앱이 같은 데이터(공유 데이터 모델 — `SharedDataModel`)를 함께 고칠 때
 // 「누가 · 언제 · 무엇을 고치고 지웠나」를 같은 꼴 · 같은 바이트로 남기게 하는 **순수 규약**이다(SDK 문서 §2).
 //
 //   표지 둘(모델 파일 · 형식 판 그대로 — 키 더하기):
 //     공통 필드 묶음 `"role" : "provenance"` = 레코드 출처 세 칸(쓴 앱 · 쓴 판 · 고친 때 — `ChangeLog.provenanceFields`)
-//     엔티티 `"log" : "edit"` = 고침 기록(칸 하나의 고침 = 한 줄 — `EditLine` · `ChangeLog.editFields`)
-//     엔티티 `"log" : "deletion"` = 삭제 기록(지운 레코드 하나 = 한 줄 · 지운 때의 값 — `DeletionLine` · `ChangeLog.deletionFields`)
+//     엔티티 `"log" : "edit"` = 고침 줄(칸 하나의 고침 = 한 줄 — `EditLine` · `ChangeLog.editFields`)
+//     엔티티 `"log" : "deletion"` = 지움 줄(지운 레코드 하나 = 한 줄 · 지운 때의 값 — `DeletionLine` · `ChangeLog.deletionFields`)
 //   값의 꼴 — 기록 줄의 전 값 · 새 값 · 스냅샷은 모델 파일 레코드 값 꼴의 JSON 글 한 줄이다. 두 앱이 같은 값에 같은 글자를 내야 충돌 대조가 서므로
 //     정규화(`canonical`)와 요약(`digest` — `"sha256:<hex>"`)은 이 한 벌만 쓴다. 정규화는 JSON 글 → 읽기(수는 십진) → 키 정렬 · 빗금 그대로의 한 줄이다.
-//   판정 — 보관(`expired` — 고침 기록 `at` · 삭제 기록 `deletedAt` 이 비었거나 보관 기간보다 이르면 지난 줄) · 합치기(`coalesceTarget` — 같은 기기 · 기록 · 칸의
+//   판정 — 보관(`lapsed` — 고침 줄 `at` · 지움 줄 `deletedAt` 이 비었거나 보관 기간보다 이르면 지난 줄) · 합치기(`coalesceTarget` — 같은 기기 · 기록 · 칸의
 //     창 안 연속 고침은 한 줄) · 충돌(`conflicts` — 같은 칸을 두 곳이 서로 모르고 고쳤다 · 지운 기록을 다른 곳이 고쳤다 · 값만 본다).
 //
 // 이 규약에 들지 않는 것 — 저장 손(스토어의 저장 직전 변경을 읽어 줄을 넣는 손) · 스토어 · 동기화. 그것은 쓰는 쪽(앱)의 몫이다(SDK 문서 §4).
@@ -40,15 +40,15 @@ public struct DataLogKind: RawRepresentable, Hashable, Sendable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
 
-    /// 고침 기록 — `EditLine` · `ChangeLog.editFields`.
+    /// 고침 줄 — `EditLine` · `ChangeLog.editFields`.
     public static let edit = DataLogKind(rawValue: "edit")
-    /// 삭제 기록 — `DeletionLine` · `ChangeLog.deletionFields`.
+    /// 지움 줄 — `DeletionLine` · `ChangeLog.deletionFields`.
     public static let deletion = DataLogKind(rawValue: "deletion")
     /// 이 SDK 가 아는 낱말 — 차례 그대로.
     public static let known: [DataLogKind] = [.edit, .deletion]
 }
 
-/// 고침 기록 한 줄 — 칸 하나의 고침(기록 · 칸 · 전 값 → 새 값 · 쓴 앱 · 판 · 기기 · 때). 칸은 고침 기록 엔티티의 칸과 하나씩 맞는다(`ChangeLog.editFields`).
+/// 고침 줄 한 줄 — 칸 하나의 고침(기록 · 칸 · 전 값 → 새 값 · 쓴 앱 · 판 · 기기 · 때). 칸은 고침 줄 엔티티의 칸과 하나씩 맞는다(`ChangeLog.editFields`).
 /// 기록이 빈 칸을 들 수 있어 모두 선택이다 — 종류 · 기록 · 칸 · 때 가운데 하나라도 빈 줄은 판정이 읽지 않는다.
 public struct EditLine: Hashable, Sendable {
     /// 고친 기록의 종류 — 스토어의 레코드 종류 이름(모델 파일의 `swift.model` · 없으면 엔티티 이름).
@@ -78,7 +78,7 @@ public struct EditLine: Hashable, Sendable {
     }
 }
 
-/// 삭제 기록 한 줄 — 지운 기록 하나(종류 · 기록 · 묶음 · 지운 때의 값 · 쓴 앱 · 판 · 기기 · 때). 칸은 삭제 기록 엔티티의 칸과 하나씩 맞는다(`ChangeLog.deletionFields`).
+/// 지움 줄 한 줄 — 지운 기록 하나(종류 · 기록 · 묶음 · 지운 때의 값 · 쓴 앱 · 판 · 기기 · 때). 칸은 지움 줄 엔티티의 칸과 하나씩 맞는다(`ChangeLog.deletionFields`).
 public struct DeletionLine: Hashable, Sendable {
     public var kind: String?
     public var targetID: UUID?
@@ -139,14 +139,14 @@ public enum ChangeLog {
     public static let digestPrefix = "sha256:"
 
     /// 출처 묶음(`"role" : "provenance"`)의 칸 — 쓴 앱 · 쓴 판 · 고친 때. 모두 선택(빈 값 = 모름 — 시드 · 옛 레코드).
-    /// 이 칸들은 고침 기록에서 빠진다(저장마다 바뀐다).
+    /// 이 칸들은 고침 줄에서 빠진다(저장마다 바뀐다).
     public static let provenanceFields: [DataField] = [
         DataField(name: "writerApp", type: .text, optional: true),
         DataField(name: "writerVersion", type: .text, optional: true),
         DataField(name: "updatedAt", type: .instant, optional: true),
     ]
 
-    /// 고침 기록 엔티티(`"log" : "edit"`)의 칸 — `EditLine` 의 칸과 하나씩. 관계 칸이 없다(가리키는 기록은 종류 + id).
+    /// 고침 줄 엔티티(`"log" : "edit"`)의 칸 — `EditLine` 의 칸과 하나씩. 관계 칸이 없다(가리키는 기록은 종류 + id).
     public static let editFields: [DataField] = [
         DataField(name: "id", type: .id),
         DataField(name: "kind", type: .text, optional: true),
@@ -160,7 +160,7 @@ public enum ChangeLog {
         DataField(name: "at", type: .instant, optional: true),
     ]
 
-    /// 삭제 기록 엔티티(`"log" : "deletion"`)의 칸 — `DeletionLine` 의 칸과 하나씩.
+    /// 지움 줄 엔티티(`"log" : "deletion"`)의 칸 — `DeletionLine` 의 칸과 하나씩.
     public static let deletionFields: [DataField] = [
         DataField(name: "id", type: .id),
         DataField(name: "kind", type: .text, optional: true),
@@ -189,7 +189,7 @@ public enum ChangeLog {
     /// 정규화 — JSON 값.
     public static func canonical(_ value: JSONValue) -> String? { canonical(value.text(pretty: false)) }
 
-    /// 요약 — 정규화한 글의 SHA-256(`"sha256:<hex>"` · 소문자). 빈 값은 nil. 민감한 칸 · 긴 글 칸의 고침 기록이 평문 대신 이것을 JSON 글로 든다.
+    /// 요약 — 정규화한 글의 SHA-256(`"sha256:<hex>"` · 소문자). 빈 값은 nil. 민감한 칸 · 긴 글 칸의 고침 줄이 평문 대신 이것을 JSON 글로 든다.
     public static func digest(_ json: String?) -> String? {
         guard let text = canonical(json) else { return nil }
         return digestPrefix + SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -211,8 +211,8 @@ public enum ChangeLog {
 
     // MARK: 판정
 
-    /// 보관이 지난 줄인가 — 때가 비었거나 `now - keep` 보다 이르다. 고침 기록은 `at` · 삭제 기록은 `deletedAt` 을 준다.
-    public static func expired(_ at: Date?, now: Date, keep: TimeInterval = retention) -> Bool {
+    /// 보관이 지난 줄인가 — 때가 비었거나 `now - keep` 보다 이르다. 고침 줄은 `at` · 지움 줄은 `deletedAt` 을 준다.
+    public static func lapsed(_ at: Date?, now: Date, keep: TimeInterval = retention) -> Bool {
         (at ?? .distantPast) < now.addingTimeInterval(-keep)
     }
 
