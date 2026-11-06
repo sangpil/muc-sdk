@@ -10,6 +10,8 @@ import Foundation
 //     엔티티 `"log" : "deletion"` = 지움 줄(지운 레코드 하나 = 한 줄 · 지운 때의 값 — `DeletionLine` · `ChangeLog.deletionFields`)
 //   값의 꼴 — 기록 줄의 전 값 · 새 값 · 스냅샷은 모델 파일 레코드 값 꼴의 JSON 글 한 줄이다. 두 앱이 같은 값에 같은 글자를 내야 충돌 대조가 서므로
 //     정규화(`canonical`)와 요약(`digest` — `"sha256:<hex>"`)은 이 한 벌만 쓴다. 정규화는 JSON 글 → 읽기(수는 십진) → 키 정렬 · 빗금 그대로의 한 줄이다.
+//     정규화가 하지 않는 것 — 시각은 레코드 값 꼴의 글자(오프셋 포함) 그대로다(같은 때라도 오프셋이 다르면 다른 글이다 · 시각으로 읽어 맞추지 않는다) ·
+//     글자는 유니코드 정규화하지 않는다(미리 합친 글자 ⟂ 분해한 글자는 다른 바이트 · 다른 요약). 같은 글자를 내는 것은 쓰는 쪽의 몫이다.
 //   판정 — 보관(`lapsed` — 고침 줄 `at` · 지움 줄 `deletedAt` 이 비었거나 보관 기간보다 이르면 지난 줄) · 합치기(`coalesceTarget` — 같은 기기 · 기록 · 칸의
 //     창 안 연속 고침은 한 줄) · 충돌(`conflicts` — 같은 칸을 두 곳이 서로 모르고 고쳤다 · 지운 기록을 다른 곳이 고쳤다 · 값만 본다).
 //
@@ -84,7 +86,8 @@ public struct DeletionLine: Hashable, Sendable {
     public var targetID: UUID?
     /// 한 번에 지운 묶음(칸 `batchId`) — 저장 한 번의 지우기 전부(연쇄 지우기 포함). 함께 되살리는 단위다.
     public var batchID: UUID?
-    /// 지운 때의 값 — JSON 객체 글 한 줄(스토어 칸 이름 → 레코드 값 · 빈 칸은 키째 없다).
+    /// 지운 때의 값 — JSON 객체 글 한 줄(스토어 칸 이름 → 레코드 값 · 빈 칸은 키째 없다). 지운 기록의 `id`(소문자 UUID 글)를 늘 든다 —
+    /// 되살리는 쪽이 스냅샷 하나로 같은 기록을 다시 세운다.
     public var snapshot: String?
     /// 스냅샷을 뜬 스키마 판(`schema.revision`) — 꼴이 바뀐 뒤 옛 스냅샷을 읽는 열쇠.
     public var snapshotRevision: Int?
@@ -180,7 +183,8 @@ public enum ChangeLog {
     // MARK: 값
 
     /// 정규화 — JSON 글 → 읽기(수는 십진) → 키 정렬 · 빗금 그대로의 한 줄. 빈 값(nil · `null` · 읽지 못하는 글)은 nil.
-    /// 같은 값은 같은 글자다(`1.50` → `1.5` · `1e3` → `1000` · 키 차례 무관) — 두 앱이 비교 · 요약하는 바이트가 이것이다.
+    /// 같은 값은 같은 글자다(`1.50` → `1.5` · `1e3` → `1000` · `-0` → `0` · 키 차례 무관) — 두 앱이 비교 · 요약하는 바이트가 이것이다.
+    /// 빈 글자(`""`)는 빈 값이 아니다. 시각 글은 오프셋까지 글자 그대로 · 글자는 유니코드 정규화하지 않는다(미리 합친 `é` ⟂ 분해한 `é` 는 다른 글).
     public static func canonical(_ json: String?) -> String? {
         guard let value = CanonicalValue.parse(json) else { return nil }
         return value.text
@@ -272,7 +276,7 @@ public enum ChangeLog {
     // MARK: 꼴
 
     /// 표지가 단 꼴의 문제 — 출처 묶음 · 기록 엔티티의 칸이 이 규약의 칸(`provenanceFields` · `editFields` · `deletionFields`)과 이름 · 형 · 선택이 맞는가 ·
-    /// 규약에 없는 칸 · 모르는 낱말 · 같은 표지가 두 벌. 표지가 없는 스키마는 문제 0 이다. 막지 않는다(읽는 쪽이 경고로 싣는다) — 경로 차례.
+    /// 규약에 없는 칸 · 기본값을 둔 칸(빈 값 = 모름을 지킨다 — 정체 칸 밖) · 모르는 낱말 · 같은 표지가 두 벌. 표지가 없는 스키마는 문제 0 이다. 막지 않는다(읽는 쪽이 경고로 싣는다) — 경로 차례.
     public static func problems(_ schema: DataSchema) -> [SchemaIssue] {
         var out: [SchemaIssue] = []
         var provenance: [Int] = []
@@ -351,6 +355,9 @@ public enum ChangeLog {
             }
             if f.optional != w.optional {
                 out.append(SchemaIssue(path: fp, reason: "\(what)의 칸 ‘\(f.name)’ 은 \(w.optional ? "선택" : "필수") 칸이다"))
+            }
+            if f.default != nil && w.type != .id {
+                out.append(SchemaIssue(path: fp, reason: "\(what)의 칸 ‘\(f.name)’ 은 기본값을 두지 않는다(빈 값 = 모름)"))
             }
         }
         for w in want where !later.contains(w.name) && !fields.contains(where: { $0.name == w.name }) {

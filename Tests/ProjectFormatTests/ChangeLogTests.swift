@@ -24,6 +24,17 @@ struct ChangeLogValueTests {
         ("0.30000000000000004", "0.3", "sha256:221764976efe04132774d96b0253cc31434c5261737469324f222621baf34b20"),
         (#""a\"b\\cé\n""#, #""a\"b\\cé\n""#, "sha256:1f550f48637c3f5d89dc33aa1bde7cbb5d28c3d97ac2a64337cdb793bba038e6"),
         (#"{"pot":"창가","ml":200}"#, #"{"ml":200,"pot":"창가"}"#, "sha256:52deb450b9762aadf9c22136abca0683c564c6bf959d8576f0f0573cd89028a2"),
+        // 음의 0 은 0 · 작은 수는 지수 없이 · 빈 글자는 빈 값이 아니다
+        ("-0", "0", "sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"),
+        ("1e-7", "0.0000001", "sha256:4035c4eedb2f0cf061cb4aedac998085c68fc1a1f5a3cc5de86c5086ba770324"),
+        (#""""#, #""""#, "sha256:12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"),
+        (#"{"note":""}"#, #"{"note":""}"#, "sha256:c275a7593429639563e6599ebbac55412bdb7d6a76ca799cf4eada09fa80f18f"),
+        // 시각 글은 오프셋까지 글자 그대로 — 같은 때라도 다른 글 · 다른 요약
+        (#""2026-11-06T09:30:00+09:00""#, #""2026-11-06T09:30:00+09:00""#, "sha256:a7d26f4b53c7f03f7d94a82591c71f0d8f0d0f78ce408013af68e6faf07f44c6"),
+        (#""2026-11-06T00:30:00Z""#, #""2026-11-06T00:30:00Z""#, "sha256:9532c7356e85898fd12ee0b5d1c03a6114162e0c308bab8312d1f22d82497182"),
+        // 글자는 유니코드 정규화하지 않는다 — 미리 합친 é ⟂ 분해한 é(바이트는 아래 시험이 따로 잰다)
+        ("\"\u{E9}\"", "\"\u{E9}\"", "sha256:f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086"),
+        ("\"e\u{301}\"", "\"e\u{301}\"", "sha256:3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2"),
         ("null", nil, nil),
         ("not json", nil, nil),
     ]
@@ -42,6 +53,16 @@ struct ChangeLogValueTests {
             #expect(ChangeLog.canonical(canon) == canon, "\(input)")
             #expect(ChangeLog.digest(canon) == ChangeLog.digest(input), "\(input)")
         }
+    }
+
+    /// Swift 글자 비교는 정준 동치라 미리 합친 é 와 분해한 é 를 같다고 한다 — 정규화 글은 바이트로 잰다.
+    @Test func 글자는_유니코드_정규화하지_않는다() {
+        let composed = ChangeLog.canonical("\"\u{E9}\"").map { Array($0.utf8) }
+        let decomposed = ChangeLog.canonical("\"e\u{301}\"").map { Array($0.utf8) }
+        #expect(composed == [0x22, 0xC3, 0xA9, 0x22])
+        #expect(decomposed == [0x22, 0x65, 0xCC, 0x81, 0x22])
+        #expect(ChangeLog.digest("\"\u{E9}\"") != ChangeLog.digest("\"e\u{301}\""))
+        #expect(ChangeLog.canonical(#""""#) != nil, "빈 글자는 빈 값이 아니다")
     }
 
     @Test func JSON_값도_같은_글() {
@@ -220,6 +241,19 @@ struct ChangeLogShapeTests {
         let issues = ChangeLog.problems(Self.marked(edit: edit, provenance: prov))
         #expect(issues.map(\.path) == ["schema.traits[0].fields[2]", "schema.entities[1].fields[1]", "schema.entities[1].fields[9]", "schema.entities[1].fields"])
         #expect(issues[1].reason.contains("text") && issues[2].reason.contains("potId") && issues[3].reason.contains("field"))
+    }
+
+    /// 출처 칸 · 기록 칸은 기본값을 두지 않는다 — 빈 값이 「모름」이라 기본값은 쓴 적 없는 값을 앉힌다. 정체 칸은 생성물이 기본값을 준다(재지 않는다).
+    @Test func 기본값을_둔_칸은_자리를_댄다() {
+        var prov = ChangeLog.provenanceFields
+        prov[0].default = .string("com.example.garden")             // writerApp
+        var edit = ChangeLog.editFields
+        edit[7].default = .string("1.0")                            // appVersion
+        var deletion = ChangeLog.deletionFields
+        deletion[0].default = .string("00000000-0000-0000-0000-000000000000")   // id
+        let issues = ChangeLog.problems(Self.marked(edit: edit, deletion: deletion, provenance: prov))
+        #expect(issues.map(\.path) == ["schema.traits[0].fields[0]", "schema.entities[1].fields[7]"])
+        #expect(issues.allSatisfy { $0.reason.contains("기본값") })
     }
 
     @Test func 모르는_낱말과_두_벌() {
