@@ -22,7 +22,10 @@ struct IsoDataFileTests {
         let file = try IsoDataFile.read(bytes)
         guard case .model(let m) = file else { Issue.record("모델 파일로 읽혀야 한다"); return }
         #expect(m.schema.name == "sample")
-        #expect(m.schema.entities.map(\.name) == ["Pot", "Plant", "Watering", "Harvest"])
+        #expect(m.schema.entities.map(\.name) == ["Pot", "Plant", "Watering", "Harvest", "EditTrail", "RemovalTrail"])
+        // 표지 둘 — 출처 묶음 · 기록 엔티티(뒤에 더한 칸 `appVersion` 이 없는 삭제 기록 포함)가 규약의 꼴이다
+        #expect(m.schema.trait("Stamped")?.role == .provenance && m.schema.entity("EditTrail")?.log == .edit && m.schema.entity("RemovalTrail")?.log == .deletion)
+        #expect(ChangeLog.problems(m.schema) == [])
         #expect(m.datasetNames == ["bare", "spring"])
         #expect(m.issues == [])
         #expect(m.schema.revision == 1 && m.schema.idNamespace == nil)

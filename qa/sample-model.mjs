@@ -1,7 +1,7 @@
 // sample-model.mjs — 시험 표본 `Tests/ProjectFormatTests/Fixtures/sample-model.isodata`(판 6 모델 파일 — 판은 `IsoDataFormat.version` 과 같다)를 규칙으로 짓는다.
 // 표본은 손으로 고치지 않는다 — 이 스크립트가 유일한 원천이고, 기본 동작은 표본이 지은 바이트와 같은지 재는 것이다(다르면 빨강 · 러너가 부른다).
 //
-//   무엇을 덮나 — 형식의 꼴을 한 번 이상씩: 층 둘 · 엔티티 넷(한 엔티티는 목업) · 공통 필드 묶음 하나 · 값 타입 하나 · 데이터셋 둘(레코드 · 시계 ·
+//   무엇을 덮나 — 형식의 꼴을 한 번 이상씩: 층 둘 · 엔티티 여섯(한 엔티티는 목업 · 둘은 기록 엔티티 표지 `log` 의 두 낱말) · 공통 필드 묶음 둘(하나는 출처 묶음 표지 `role`) · 값 타입 하나 · 데이터셋 둘(레코드 · 시계 ·
 //     다음 번호 · 삶 블록이 든 벌 ⟂ 라벨만 든 벌) · 열 타입(id · text · int · enum · ref · value · instant · money · decimal) · 참조 onDelete 둘(restrict · setNull) ·
 //     규칙 넷(forbidden + when · sameAs · unique · code) · 별칭 둘 · 상태(목업 엔티티 · 예약 필드 · 미구현 묶음 필드) · CloudKit 경고 하나(필수인데 기본값이
 //     없는 열거) · Swift 이름 칸(`swift.model`) · 스키마 판(`revision`).
@@ -65,6 +65,7 @@ const schema = {
         { name: "kind", type: { enum: ["herb", "flower", "shrub"] }, doc: "갈래" },
         { name: "potId", type: { ref: "Pot", onDelete: "restrict" }, optional: true, doc: "심긴 화분" },
       ],
+      uses: ["Stamped"],
     },
     {
       name: "Watering", label: "물 주기", layer: "ground", doc: "물을 준 한 번",
@@ -95,8 +96,47 @@ const schema = {
         { name: "measure", type: { value: "Measure" }, optional: true },
       ],
     },
+    {
+      name: "EditTrail", label: "고친 자취", layer: "shed", log: "edit", doc: "칸 하나를 고친 한 번",
+      fields: [
+        { name: "id", type: "id" },
+        { name: "kind", type: "text", optional: true },
+        { name: "targetId", type: "text", optional: true, swift: { property: "targetID" } },
+        { name: "field", type: "text", optional: true },
+        { name: "before", type: "longText", optional: true },
+        { name: "after", type: "longText", optional: true },
+        { name: "app", type: "text", optional: true },
+        { name: "appVersion", type: "text", optional: true },
+        { name: "device", type: "text", optional: true },
+        { name: "at", type: "instant", optional: true },
+      ],
+    },
+    {
+      name: "RemovalTrail", label: "걷은 자취", layer: "shed", log: "deletion", doc: "걷은 것 하나",
+      fields: [
+        { name: "id", type: "id" },
+        { name: "kind", type: "text", optional: true },
+        { name: "targetId", type: "text", optional: true, swift: { property: "targetID" } },
+        { name: "batchId", type: "text", optional: true, swift: { property: "batchID" } },
+        { name: "snapshot", type: "longText", optional: true },
+        { name: "snapshotRevision", type: "int", optional: true },
+        { name: "deletedAt", type: "instant", optional: true },
+        { name: "app", type: "text", optional: true },
+        { name: "device", type: "text", optional: true },
+      ],
+    },
   ],
-  traits: [{ name: "Tagged", doc: "표 하나 → [표] 절", fields: [{ name: "tagId", type: "text", optional: true, status: "unbuilt", doc: "null = 표가 없음" }] }],
+  traits: [
+    { name: "Tagged", doc: "표 하나 → [표] 절", fields: [{ name: "tagId", type: "text", optional: true, status: "unbuilt", doc: "null = 표가 없음" }] },
+    {
+      name: "Stamped", role: "provenance", doc: "누가 언제 고쳤나",
+      fields: [
+        { name: "writerApp", type: "text", optional: true },
+        { name: "writerVersion", type: "text", optional: true },
+        { name: "updatedAt", type: "instant", optional: true },
+      ],
+    },
+  ],
   values: [{ name: "Measure", fields: [{ name: "grams", type: "decimal", optional: true }] }],
 };
 
