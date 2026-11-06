@@ -139,6 +139,8 @@ public struct DataEntity: Equatable, Sendable {
     public var dropNote: String = ""
     public var fields: [DataField] = []
     public var rules: [DataRule] = []
+    /// 기록 엔티티 표지(파일 키 `log`) — 고침 줄 ⟂ 지움 줄(`ChangeLog`). nil = 보통 엔티티.
+    public var log: DataLogKind?
     /// 이 SDK 가 모르는 칸(아는 하위 객체 안의 모르는 칸은 그 키 아래 객체로 — `swift` 안의 새 칸이면 `extra["swift"]`).
     public var extra: [String: JSONValue] = [:]
 
@@ -245,6 +247,8 @@ public struct DataTrait: Equatable, Sendable {
     public var name: String
     public var doc: String = ""
     public var fields: [DataField] = []
+    /// 묶음의 역할(파일 키 `role`) — 출처 묶음이면 `provenance`(`ChangeLog`). nil = 보통 묶음.
+    public var role: DataTraitRole?
     /// 이 SDK 가 모르는 칸.
     public var extra: [String: JSONValue] = [:]
     public init(name: String, doc: String = "", fields: [DataField] = []) { self.name = name; self.doc = doc; self.fields = fields }

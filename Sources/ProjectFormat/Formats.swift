@@ -1,6 +1,6 @@
 // 모듈 `ProjectFormat` — 계약 갈래(플랫폼 중립 · iOS · macOS). 모듈 지도는 `Docs/SDK.md` §2.
 //   무엇       : 프로젝트 문서의 형식 — 모델 파일(`.isodata`) · 안 파일 · IA 문서의 꼴과 판 상수 · 판 읽개 · 업그레이드 사슬의 꼴 ·
-//                CloudKit 호환 규칙 · 공유 데이터 모델 칸 · 폼팩터 낱말 · JSON 값.
+//                CloudKit 호환 규칙 · 공유 데이터 모델 칸 · 공유 데이터의 변경 기록 규약(`ChangeLog`) · 폼팩터 낱말 · JSON 값.
 //   누가 부르나 : 엔진의 도구 · 프로젝트(앱 제품 · 코어 · 미리보기 호스트 · 프로젝트 도구) · SDK 의 `PreviewProtocol` · `PreviewHostKit`.
 //   지키는 것   : 판을 몸보다 먼저 읽는다(`FormatStamp`) · 모르는 키는 보존해 되쓴다(형식 꼴은 `extra` 칸 · 사전 기반 꼴은 사전째) · SDK 가 읽고 쓰는 형식의 판 상수는
 //                이 파일 한 자리 · Foundation · CoreGraphics(값 꼴) · CryptoKit 만 문다.

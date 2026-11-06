@@ -165,7 +165,10 @@
         ],
         "label" : "식물",
         "layer" : "ground",
-        "name" : "Plant"
+        "name" : "Plant",
+        "uses" : [
+          "Stamped"
+        ]
       },
       {
         "aliases" : [
@@ -299,6 +302,126 @@
         "layer" : "shed",
         "name" : "Harvest",
         "status" : "mock"
+      },
+      {
+        "doc" : "칸 하나를 고친 한 번",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "name" : "kind",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "targetId",
+            "optional" : true,
+            "swift" : {
+              "property" : "targetID"
+            },
+            "type" : "text"
+          },
+          {
+            "name" : "field",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "before",
+            "optional" : true,
+            "type" : "longText"
+          },
+          {
+            "name" : "after",
+            "optional" : true,
+            "type" : "longText"
+          },
+          {
+            "name" : "app",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "appVersion",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "device",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "at",
+            "optional" : true,
+            "type" : "instant"
+          }
+        ],
+        "label" : "고친 자취",
+        "layer" : "shed",
+        "log" : "edit",
+        "name" : "EditTrail"
+      },
+      {
+        "doc" : "걷은 것 하나",
+        "fields" : [
+          {
+            "name" : "id",
+            "type" : "id"
+          },
+          {
+            "name" : "kind",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "targetId",
+            "optional" : true,
+            "swift" : {
+              "property" : "targetID"
+            },
+            "type" : "text"
+          },
+          {
+            "name" : "batchId",
+            "optional" : true,
+            "swift" : {
+              "property" : "batchID"
+            },
+            "type" : "text"
+          },
+          {
+            "name" : "snapshot",
+            "optional" : true,
+            "type" : "longText"
+          },
+          {
+            "name" : "snapshotRevision",
+            "optional" : true,
+            "type" : "int"
+          },
+          {
+            "name" : "deletedAt",
+            "optional" : true,
+            "type" : "instant"
+          },
+          {
+            "name" : "app",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "device",
+            "optional" : true,
+            "type" : "text"
+          }
+        ],
+        "label" : "걷은 자취",
+        "layer" : "shed",
+        "log" : "deletion",
+        "name" : "RemovalTrail"
       }
     ],
     "layers" : [
@@ -326,6 +449,28 @@
           }
         ],
         "name" : "Tagged"
+      },
+      {
+        "doc" : "누가 언제 고쳤나",
+        "fields" : [
+          {
+            "name" : "writerApp",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "writerVersion",
+            "optional" : true,
+            "type" : "text"
+          },
+          {
+            "name" : "updatedAt",
+            "optional" : true,
+            "type" : "instant"
+          }
+        ],
+        "name" : "Stamped",
+        "role" : "provenance"
       }
     ],
     "values" : [
