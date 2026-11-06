@@ -56,9 +56,10 @@ enum DataModelCoding {
         }
         for e in try r.optionalArray("entities") ?? [] { schema.entities.append(try decodeEntity(e)) }
         for t in try r.optionalArray("traits") ?? [] {
-            let te = t.keep(["name", "doc", "fields"])
+            let te = t.keep(["name", "doc", "fields", "role"])
             var trait = DataTrait(name: try t.string("name"), doc: try t.optionalString("doc") ?? "",
                                   fields: try (t.optionalArray("fields") ?? []).map(decodeField))
+            trait.role = try t.optionalString("role").map(DataTraitRole.init(rawValue:))
             trait.extra = te
             schema.traits.append(trait)
         }
@@ -73,7 +74,7 @@ enum DataModelCoding {
     }
 
     static func decodeEntity(_ r: Reader) throws -> DataEntity {
-        var extra = r.keep(["name", "label", "layer", "doc", "aliases", "uses", "swift", "uuidName", "status", "dropNote", "fields", "rules"],
+        var extra = r.keep(["name", "label", "layer", "doc", "aliases", "uses", "swift", "uuidName", "status", "dropNote", "fields", "rules", "log"],
                            retired: retiredEntity)
         var e = DataEntity(name: try r.string("name"))
         e.label = try r.optionalString("label") ?? ""
@@ -96,6 +97,7 @@ enum DataModelCoding {
         e.dropNote = try r.optionalString("dropNote") ?? ""
         e.fields = try (r.optionalArray("fields") ?? []).map(decodeField)
         e.rules = try (r.optionalArray("rules") ?? []).map(decodeRule)
+        e.log = try r.optionalString("log").map(DataLogKind.init(rawValue:))
         e.extra = extra
         return e
     }
@@ -274,6 +276,7 @@ enum DataModelCoding {
                 var to: [String: JSONValue] = ["name": .string(t.name)]
                 if !t.doc.isEmpty { to["doc"] = .string(t.doc) }
                 if !t.fields.isEmpty { to["fields"] = .array(t.fields.map { .object(encodeField($0)) }) }
+                if let role = t.role { to["role"] = .string(role.rawValue) }
                 return .object(ExtraKeys.merge(to, t.extra))
             })
         }
@@ -307,6 +310,7 @@ enum DataModelCoding {
         if !e.dropNote.isEmpty { o["dropNote"] = .string(e.dropNote) }
         if !e.fields.isEmpty { o["fields"] = .array(e.fields.map { .object(encodeField($0)) }) }
         if !e.rules.isEmpty { o["rules"] = .array(e.rules.map { .object(encodeRule($0)) }) }
+        if let log = e.log { o["log"] = .string(log.rawValue) }
         return ExtraKeys.merge(o, e.extra)
     }
 
