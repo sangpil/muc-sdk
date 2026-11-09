@@ -6,7 +6,7 @@ import Foundation
 //   ① 판을 먼저 읽는다 — 미래 판은 이름 대고 거부(`IsoDataFile.read` · 읽기 전용 창은 `allowingNewer`).
 //   ② 스키마가 먼저 선다 — 틀리면 경로를 대고 파일 전체를 거부(`SchemaValidation`).
 //   ③ 모르는 키는 **보존하고 알린다** — 그 객체의 꼴이 `extra` 로 들고 쓸 때 되쓴다(아는 하위 객체 안의 모르는 키는 그 키 아래 객체로) ·
-//      경로마다 한 줄(`DataModelFile.unknownKeys`). 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙)도 글자 그대로 든다(경고는 `SchemaValidation.warnings`).
+//      경로마다 한 줄(`DataModelFile.unknownKeys`). 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙 · 채우는 손)도 글자 그대로 든다(경고는 `SchemaValidation.warnings`).
 //      물러난 키(`retired` — 옛 판의 계약 칸)는 알리지 않고 그대로 들고 되쓴다(그 파일이 그 칸을 쓰던 시절의 값).
 //   ④ 레코드 오류는 파일을 거부하지 않는다 — 행 단위로 `issues` 에 싣는다(`RecordValidation`).
 // 쓰기: 빈 `doc` · 빈 `aliases` · 기본값인 칸은 키 자체를 쓰지 않는다(빈 칸은 없는 칸과 같다).
@@ -108,7 +108,7 @@ enum DataModelCoding {
     }
 
     static func decodeField(_ r: Reader) throws -> DataField {
-        var extra = r.keep(["name", "type", "optional", "default", "doc", "status", "dropNote", "swift", "renamedFrom"], retired: retiredField)
+        var extra = r.keep(["name", "type", "optional", "default", "doc", "status", "dropNote", "swift", "renamedFrom", "fill"], retired: retiredField)
         let name = try r.string("name")
         var typeExtra: JSONValue?
         var f = DataField(name: name, type: try decodeType(r.value("type"), path: r.at("type"), field: name, notes: r.notes, extra: &typeExtra))
@@ -124,6 +124,11 @@ enum DataModelCoding {
             f.swiftProperty = try swift.optionalString("property")
         }
         f.renamedFrom = try r.optionalString("renamedFrom")
+        // 채우는 손 — 글자면 낱말(모르는 낱말 · 빈 글자도 그대로) · 글자가 아니면(수 · 객체 · null) 파일을 거부하지 않고 `extra` 에 읽은 그대로 둔다
+        // (이 키를 모르던 판이 든 꼴과 같다 · 경고는 `SchemaValidation.warnings`).
+        if let raw = r.fields["fill"] {
+            if case .string(let word) = raw { f.fill = DataFill(rawValue: word) } else { extra["fill"] = raw }
+        }
         f.extra = extra
         return f
     }
@@ -323,6 +328,7 @@ enum DataModelCoding {
         if !f.dropNote.isEmpty { o["dropNote"] = .string(f.dropNote) }
         if let p = f.swiftProperty { o["swift"] = .object(["property": .string(p)]) }
         if let r = f.renamedFrom { o["renamedFrom"] = .string(r) }
+        if let fill = f.fill { o["fill"] = .string(fill.rawValue) }
         return ExtraKeys.merge(o, f.extra)
     }
 

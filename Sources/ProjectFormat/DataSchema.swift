@@ -5,7 +5,7 @@ import Foundation
 //
 // 데이터 모델 파일의 스키마 — 층 · 엔티티 · 필드 · 형 · 규칙 · 공통 필드 묶음 · 값 타입. 값만 담는다(검증은 `SchemaValidation` · `CloudKitRules`,
 // 읽고 쓰기는 `DataModelCoding`). 꼴마다 `extra` = 이 SDK 가 모르는 칸(읽은 그대로 들고 되쓴다 — 읽기 규율 ③).
-// 낱말 칸(상태 · 삭제 규칙)은 열린 꼴이고 형 · 규칙은 모르는 갈래(`DataType.unknown` · `DataRuleCheck.other`)를 하나씩 든다 — 더 새 판의 낱말도 글자 그대로 읽고 쓴다.
+// 낱말 칸(상태 · 삭제 규칙 · 채우는 손)은 열린 꼴이고 형 · 규칙은 모르는 갈래(`DataType.unknown` · `DataRuleCheck.other`)를 하나씩 든다 — 더 새 판의 낱말도 글자 그대로 읽고 쓴다.
 
 /// 스키마 한 벌 — 모델 파일의 `schema`.
 public struct DataSchema: Equatable, Sendable {
@@ -107,6 +107,26 @@ public struct DataStatus: RawRepresentable, Hashable, Sendable {
     public var isPhysical: Bool { self == .live }
 }
 
+/// 채우는 손(필드의 파일 키 `fill`) — 글에서 레코드를 뽑을 때 그 칸의 값을 누가 내는가. 열린 꼴: 아는 낱말 다섯(`known`) · 모르는 낱말은 글자 그대로 든다.
+/// 선택 칸이다 — 없으면(nil) 읽는 쪽이 형 · 값 낱말로 짐작한다. 있으면 짐작 대신 이 선언을 따른다. 어느 손이 칸을 어떻게 채우는가(모델 · 규칙의 몸)는 읽는 쪽의 몫이다.
+public struct DataFill: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// 언어 모델이 글에서 낸다(글자 · 열거 값).
+    public static let model = DataFill(rawValue: "model")
+    /// 규칙이 원문에서 읽는다(날짜 · 금액처럼 꼴이 정해진 값).
+    public static let rule = DataFill(rawValue: "rule")
+    /// 조회가 이미 있는 레코드의 id 를 잇는다.
+    public static let lookup = DataFill(rawValue: "lookup")
+    /// 사람이 확인하며 정한다.
+    public static let human = DataFill(rawValue: "human")
+    /// 코드가 다른 칸에서 셈한다.
+    public static let derived = DataFill(rawValue: "derived")
+    /// 이 SDK 가 아는 낱말 — 차례 그대로.
+    public static let known: [DataFill] = [.model, .rule, .lookup, .human, .derived]
+}
+
 /// 보기(`lens`)별 별칭 — 한 엔티티를 보기마다 다른 낱말(`word`)로 부르는 행.
 /// `doc` 은 그 낱말이 가리키는 실체의 설명(선택).
 public struct DataAlias: Equatable, Sendable {
@@ -182,6 +202,8 @@ public struct DataField: Equatable, Sendable {
     public var swiftProperty: String?
     /// 이름을 바꾼 순간 도구가 적는 옛 이름 — 생성물이 이름 바꿈을 반영하고 걷는다.
     public var renamedFrom: String?
+    /// 채우는 손(파일 키 `fill`) — nil = 선언 없음(읽는 쪽이 짐작한다). 없으면 키를 쓰지 않는다.
+    public var fill: DataFill?
     /// 이 SDK 가 모르는 칸(아는 하위 객체 안의 모르는 칸은 그 키 아래 객체로).
     public var extra: [String: JSONValue] = [:]
 
