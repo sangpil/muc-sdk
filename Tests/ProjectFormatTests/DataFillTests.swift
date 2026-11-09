@@ -138,12 +138,63 @@ struct DataFillTests {
         #expect(SchemaValidation.errors(m.schema).isEmpty)
     }
 
-    /// 낱말이 아니면 경로를 대고 파일 전체를 거부한다(스키마가 먼저 선다).
-    @Test func 글자가_아니면_거부() {
-        let json = #"{ "version" : \#(IsoDataFormat.version), "schema" : { "name" : "g", "entities" : [ { "name" : "A", "fields" : [ { "name" : "id", "type" : "id" }, { "name" : "n", "type" : "int", "fill" : 3 } ] } ] } }"#
-        #expect(throws: IsoDataError.invalid(path: "schema.entities[0].fields[1].fill", reason: "글자여야 한다")) {
-            try IsoDataFile.read(Data(json.utf8))
+    /// 글자가 아닌 값(수 · 객체 · null)은 파일을 거부하지 않는다 — 이 키를 모르던 판처럼 `extra` 에 읽은 그대로 들고 경고 한 줄 · 바이트 그대로 되쓴다.
+    /// 빈 글자는 모르는 낱말이다(그대로 들고 경고).
+    @Test func 글자가_아닌_값은_보존하고_경고() throws {
+        let bytes = Data(#"""
+        {
+          "schema" : {
+            "entities" : [
+              {
+                "fields" : [
+                  {
+                    "name" : "id",
+                    "type" : "id"
+                  },
+                  {
+                    "fill" : 3,
+                    "name" : "n",
+                    "type" : "int"
+                  },
+                  {
+                    "fill" : {
+                      "by" : "rule"
+                    },
+                    "name" : "m",
+                    "type" : "int"
+                  },
+                  {
+                    "fill" : null,
+                    "name" : "k",
+                    "type" : "int"
+                  },
+                  {
+                    "fill" : "",
+                    "name" : "e",
+                    "type" : "int"
+                  }
+                ],
+                "name" : "A"
+              }
+            ],
+            "name" : "g"
+          },
+          "version" : \#(IsoDataFormat.version)
         }
+        """#.utf8)
+        guard case .model(let m) = try IsoDataFile.read(bytes) else { Issue.record("모델 파일로 읽혀야 한다"); return }
+        let f = m.schema.entities[0].fields
+        #expect(f[1].fill == nil && f[1].extra["fill"] == .number(3))
+        #expect(f[2].fill == nil && f[2].extra["fill"] == .object(["by": "rule"]))
+        #expect(f[3].fill == nil && f[3].extra["fill"] == .null)
+        #expect(f[4].fill == DataFill(rawValue: "") && f[4].extra.isEmpty)
+        #expect(m.unknownKeys.isEmpty)
+        #expect(try IsoDataFile.model(m).encoded() == bytes)
+        let lines = SchemaValidation.warnings(m.schema).filter { $0.contains("채우는 손") }
+        #expect(lines == ["A.n — 채우는 손 ‘3’ 이 낱말(글자)이 아니다(그대로 둔다)",
+                          #"A.m — 채우는 손 ‘{"by":"rule"}’ 이 낱말(글자)이 아니다(그대로 둔다)"#,
+                          "A.k — 채우는 손 ‘null’ 이 낱말(글자)이 아니다(그대로 둔다)",
+                          "A.e — 이 빌드가 모르는 채우는 손 ‘’(그대로 둔다)"])
     }
 
     /// 이 키를 모르던 읽개가 든 꼴(`extra["fill"]`)과 아는 칸이 함께 있으면 아는 칸이 이긴다.

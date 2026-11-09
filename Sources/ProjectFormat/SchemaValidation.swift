@@ -143,7 +143,7 @@ public enum SchemaValidation {
 
     /// 경고(노랑) — 막지 않는다. 편집 창의 즉시 알림과 데이터 검사가 싣는다.
     /// 이 SDK 가 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙)이 든 자리마다 한 줄 — 더 새 판의 낱말이다(읽기 전용으로 다룬다).
-    /// 모르는 채우는 손(`DataFill`)도 한 줄 — 값은 재지 않으므로 읽기 전용까지는 아니다(글자 그대로 들고 되쓴다).
+    /// 모르는 채우는 손(`DataFill` — 빈 글자 포함) · 글자가 아닌 `fill`(`extra` 에 든 그대로)도 한 줄 — 값은 재지 않으므로 읽기 전용까지는 아니다(읽은 그대로 들고 되쓴다).
     public static func warnings(_ schema: DataSchema) -> [String] {
         var out: [String] = []
         func unknownType(_ t: DataType) -> String? {
@@ -159,6 +159,7 @@ public enum SchemaValidation {
                 if let w = unknownType(f.type) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 형 ‘\(w)’(읽기 전용)") }
                 if !DataStatus.known.contains(f.status) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 상태 ‘\(f.status.rawValue)’(읽기 전용)") }
                 if let fill = f.fill, !DataFill.known.contains(fill) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 채우는 손 ‘\(fill.rawValue)’(그대로 둔다)") }
+                if f.fill == nil, let raw = f.extra["fill"] { out.append("\(owner).\(f.name) — 채우는 손 ‘\(raw.plain)’ 이 낱말(글자)이 아니다(그대로 둔다)") }
             }
         }
         for t in schema.traits { words(t.name, t.fields) }

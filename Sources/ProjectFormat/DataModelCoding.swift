@@ -124,7 +124,11 @@ enum DataModelCoding {
             f.swiftProperty = try swift.optionalString("property")
         }
         f.renamedFrom = try r.optionalString("renamedFrom")
-        f.fill = try r.optionalString("fill").map(DataFill.init(rawValue:))
+        // 채우는 손 — 글자면 낱말(모르는 낱말 · 빈 글자도 그대로) · 글자가 아니면(수 · 객체 · null) 파일을 거부하지 않고 `extra` 에 읽은 그대로 둔다
+        // (이 키를 모르던 판이 든 꼴과 같다 · 경고는 `SchemaValidation.warnings`).
+        if let raw = r.fields["fill"] {
+            if case .string(let word) = raw { f.fill = DataFill(rawValue: word) } else { extra["fill"] = raw }
+        }
         f.extra = extra
         return f
     }
