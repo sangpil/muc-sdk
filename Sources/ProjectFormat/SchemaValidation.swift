@@ -159,7 +159,10 @@ public enum SchemaValidation {
                 if let w = unknownType(f.type) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 형 ‘\(w)’(읽기 전용)") }
                 if !DataStatus.known.contains(f.status) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 상태 ‘\(f.status.rawValue)’(읽기 전용)") }
                 if let fill = f.fill, !DataFill.known.contains(fill) { out.append("\(owner).\(f.name) — 이 빌드가 모르는 채우는 손 ‘\(fill.rawValue)’(그대로 둔다)") }
-                if f.fill == nil, let raw = f.extra["fill"] { out.append("\(owner).\(f.name) — 채우는 손 ‘\(raw.plain)’ 이 낱말(글자)이 아니다(그대로 둔다)") }
+                // 프로그램이 extra 에 둔 글자는 파일의 「글자 아닌 값」이 아니다(파일의 글자는 fill 로 읽힌다).
+                if f.fill == nil, let raw = f.extra["fill"] {
+                    if case .string = raw {} else { out.append("\(owner).\(f.name) — 채우는 손 ‘\(raw.plain)’ 이 낱말(글자)이 아니다(그대로 둔다)") }
+                }
             }
         }
         for t in schema.traits { words(t.name, t.fields) }
