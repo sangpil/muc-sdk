@@ -38,7 +38,7 @@ struct DataFillTests {
                 }
               },
               {
-                "fill" : "person",
+                "fill" : "human",
                 "name" : "note",
                 "optional" : true,
                 "type" : "longText"
@@ -105,7 +105,7 @@ struct DataFillTests {
     """#
 
     @Test func 아는_낱말은_다섯_차례대로() {
-        #expect(DataFill.known.map(\.rawValue) == ["model", "rule", "lookup", "person", "derived"])
+        #expect(DataFill.known.map(\.rawValue) == ["model", "rule", "lookup", "human", "derived"])
     }
 
     /// 엔티티 · 공통 필드 묶음 · 값 타입의 필드 모두 — 아는 낱말과 모르는 낱말을 글자 그대로 들고 · 모르는 키로 알리지 않고 · 바이트 그대로 되쓴다.
@@ -113,7 +113,7 @@ struct DataFillTests {
         let bytes = Data(Self.file.utf8)
         guard case .model(let m) = try IsoDataFile.read(bytes) else { Issue.record("모델 파일로 읽혀야 한다"); return }
         let plant = try #require(m.schema.entity("Plant"))
-        #expect(plant.fields.map(\.fill) == [nil, .model, .rule, .lookup, .person, .derived, DataFill(rawValue: "sensor"), nil])
+        #expect(plant.fields.map(\.fill) == [nil, .model, .rule, .lookup, .human, .derived, DataFill(rawValue: "sensor"), nil])
         #expect(m.schema.trait("Stamped")?.fields.first?.fill == .derived)
         #expect(m.schema.valueType("Length")?.fields.first?.fill == .rule)
         #expect(m.unknownKeys.isEmpty && plant.fields.allSatisfy { $0.extra.isEmpty })

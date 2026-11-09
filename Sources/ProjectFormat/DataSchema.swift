@@ -120,11 +120,11 @@ public struct DataFill: RawRepresentable, Hashable, Sendable {
     /// 조회가 이미 있는 레코드의 id 를 잇는다.
     public static let lookup = DataFill(rawValue: "lookup")
     /// 사람이 확인하며 정한다.
-    public static let person = DataFill(rawValue: "person")
+    public static let human = DataFill(rawValue: "human")
     /// 코드가 다른 칸에서 셈한다.
     public static let derived = DataFill(rawValue: "derived")
     /// 이 SDK 가 아는 낱말 — 차례 그대로.
-    public static let known: [DataFill] = [.model, .rule, .lookup, .person, .derived]
+    public static let known: [DataFill] = [.model, .rule, .lookup, .human, .derived]
 }
 
 /// 보기(`lens`)별 별칭 — 한 엔티티를 보기마다 다른 낱말(`word`)로 부르는 행.
