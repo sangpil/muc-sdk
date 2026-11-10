@@ -1,0 +1,49 @@
+{
+  "hubs" : [
+    {
+      "id" : "tabs",
+      "kind" : "tabBar",
+      "label" : "탭",
+      "slots" : [
+        "shelf"
+      ]
+    }
+  ],
+  "jumps" : [
+
+  ],
+  "nodes" : [
+    {
+      "id" : "shelf",
+      "label" : "선반",
+      "outside" : [
+        {
+          "kind" : "spotlight"
+        }
+      ],
+      "source" : "s",
+      "via" : "탭"
+    },
+    {
+      "entry" : {
+        "kind" : "button",
+        "screen" : "shelf"
+      },
+      "id" : "note",
+      "label" : "메모",
+      "outside" : [
+        {
+          "kind" : "shortcut",
+          "title" : "새 메모"
+        },
+        {
+          "kind" : "widget"
+        }
+      ],
+      "parent" : "shelf",
+      "source" : "s",
+      "via" : "선반 › 단추"
+    }
+  ],
+  "version" : 1
+}

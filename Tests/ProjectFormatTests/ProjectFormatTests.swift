@@ -363,6 +363,74 @@ import Testing
         #expect(try JSONDecoder().decode(ScreenNode.self, from: Data(#"{"id":"a","label":"A","source":"s","via":"v","entry":7}"#.utf8)).entry == nil)
     }
 
+    /// 앱 밖 진입(`outside`) — 왕복 · 빈 글은 적지 않는다 · 빈 목록은 없음(nil · 칸째 없음) · 없으면 칸째 없다(옛 파일의 바이트 불변) ·
+    /// 앱 안 진입과 함께 선다 · 모르는 종류 낱말 · 모르는 칸 보존 · 아는 낱말의 차례.
+    @Test func outsideRoundTripsAndOldFilesStayByteForByte() throws {
+        let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys]
+        let n = ScreenNode(id: "note", label: "메모", parent: "shelf", via: "선반 › 단추", source: "s",
+                           entry: ScreenEntry(screen: "shelf", kind: .button),
+                           outside: [OutsideEntry(kind: .shortcut, title: "새 메모"), OutsideEntry(kind: .widget, title: "")])
+        let data = try enc.encode(n)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""outside":[{"kind":"shortcut","title":"새 메모"},{"kind":"widget"}]"#))
+        #expect(String(decoding: data, as: UTF8.self).contains(#""entry":{"kind":"button","screen":"shelf"}"#), "앱 안 진입과 함께 선다")
+        let back = try JSONDecoder().decode(ScreenNode.self, from: data)
+        #expect(back.outside == [OutsideEntry(kind: .shortcut, title: "새 메모"), OutsideEntry(kind: .widget)])
+        #expect(back.entry == ScreenEntry(screen: "shelf", kind: .button) && back.extra.isEmpty)
+        // 빈 목록은 없음과 같다 — 손으로 놓아도 · 파일에서 읽어도 칸을 쓰지 않는다
+        let empty = ScreenNode(id: "a", label: "A", via: "v", source: "s", outside: [])
+        #expect(empty.outside == nil)
+        let read = try JSONDecoder().decode(ScreenNode.self, from: Data(#"{"id":"a","label":"A","source":"s","via":"v","outside":[]}"#.utf8))
+        #expect(read.outside == nil && read.extra.isEmpty)
+        #expect(String(decoding: try enc.encode(read), as: UTF8.self) == #"{"id":"a","label":"A","source":"s","via":"v"}"#)
+        var cleared = n
+        cleared.outside = []
+        #expect(!String(decoding: try enc.encode(cleared), as: UTF8.self).contains("outside"), "놓아 둔 빈 목록도 쓰지 않는다")
+        // 옛 파일(outside 없음) — 읽고 되쓴 바이트가 같다
+        let old = #"{"id":"home","label":"홈","source":"s","via":"탭"}"#
+        let home = try JSONDecoder().decode(ScreenNode.self, from: Data(old.utf8))
+        #expect(home.outside == nil)
+        #expect(String(decoding: try enc.encode(home), as: UTF8.self) == old)
+        // 열린 낱말 — 모르는 종류는 그대로 · 아는 낱말의 차례
+        let odd = try JSONDecoder().decode(OutsideEntry.self, from: Data(#"{"kind":"watch","title":"t","hint":1}"#.utf8))
+        #expect(odd.kind.rawValue == "watch" && odd.title == "t" && odd.extra == ["hint": 1])
+        #expect(String(decoding: try enc.encode(odd), as: UTF8.self) == #"{"hint":1,"kind":"watch","title":"t"}"#)
+        #expect(OutsideEntry.Kind.known.map(\.rawValue) == ["shortcut", "spotlight", "widget", "notification", "link", "other"])
+    }
+
+    /// `outside` 를 모르는 읽개 — **실제 SDK 3.2.0** 의 `IADoc` 이 3.3 이 쓴 파일(`Fixtures/ia-outside-3.3.json`)을 읽고 되쓴 바이트를 얼린 것
+    /// (`Fixtures/ia-outside-3.3.rewritten-by-3.2.0.json` — 3.2.0 을 문 실행물이 디코드 → 인코드(키 정렬 · 들여쓰기 · 슬래시 그대로 · 끝 개행)한 출력 그대로 ·
+    /// 손으로 고치지 않는다). 3.2 가 모르는 칸으로 보존한 앱 밖 진입이 지금 판에서 그대로 읽히고, 되쓴 바이트가 원본과 같다 — IA 형식 판 1 그대로.
+    @Test func theRealSDK320KeepsOutsideAsAnUnknownCell() throws {
+        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        let written = try Data(contentsOf: folder.appendingPathComponent("ia-outside-3.3.json"))
+        let rewritten = try Data(contentsOf: folder.appendingPathComponent("ia-outside-3.3.rewritten-by-3.2.0.json"))
+        #expect(rewritten == written, "3.2.0 이 열어 되쓴 파일이 3.3 이 쓴 바이트와 같다(앱 밖 진입 칸이 사라지지 않는다)")
+        let doc = try JSONDecoder().decode(IADoc.self, from: rewritten)
+        #expect(doc.version == 1)
+        #expect(doc.node("shelf")?.outside == [OutsideEntry(kind: .spotlight)])
+        #expect(doc.node("note")?.outside == [OutsideEntry(kind: .shortcut, title: "새 메모"), OutsideEntry(kind: .widget)])
+        #expect(doc.node("note")?.entry == ScreenEntry(screen: "shelf", kind: .button))
+        #expect(doc.nodes.allSatisfy { $0.extra.isEmpty }, "아는 칸이 된 outside 는 extra 에 남지 않는다")
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var again = try enc.encode(doc); again.append(0x0A)
+        #expect(again == written, "지금 판이 되쓴 바이트도 같다")
+    }
+
+    /// 못 읽는 앱 밖 진입 칸(종류가 빠짐 · 다른 형) — 마디째 거부하지 않는다: nil · 글자는 모르는 칸으로 읽은 그대로 들고 되쓴다 · 고쳐 놓으면 아는 칸이 이긴다.
+    @Test func anUnreadableOutsideIsKeptAsWritten() throws {
+        let json = #"{"id":"a","label":"A","source":"s","via":"v","outside":[{"title":"t"}]}"#
+        let n = try JSONDecoder().decode(ScreenNode.self, from: Data(json.utf8))
+        #expect(n.outside == nil)
+        #expect(n.extra == ["outside": [["title": "t"]]])
+        let back = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(n))
+        #expect(back == (try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))), "되쓰면 그대로")
+        var fixed = n
+        fixed.outside = [OutsideEntry(kind: .link)]
+        let out = try JSONDecoder().decode(ScreenNode.self, from: JSONEncoder().encode(fixed))
+        #expect(out.outside == [OutsideEntry(kind: .link)] && out.extra.isEmpty, "놓으면 아는 칸이 이긴다")
+        #expect(try JSONDecoder().decode(ScreenNode.self, from: Data(#"{"id":"a","label":"A","source":"s","via":"v","outside":"x"}"#.utf8)).outside == nil)
+    }
+
     /// 모르는 칸 보존 — 문서 · 마디 · 점프 · 진입 · 허브 · 읽는 칸의 모르는 칸이 왕복에 남는다(같은 판의 덧붙임을 옛 엔진이 지우지 않는다).
     @Test func unknownCellsSurviveARoundTrip() throws {
         let json = #"{"version":1,"theme":"x","nodes":[{"id":"a","label":"A","via":"v","source":"s","badge":2,"data":{"reads":["T"],"writes":["U"]}}],"jumps":[{"from":"a","to":"a","label":"l","weight":1,"entries":[{"control":"more","hint":"h"}]}],"hubs":[{"id":"h","label":"H","kind":"rail","slots":["a"],"pinned":true}]}"#

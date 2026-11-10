@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.2.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.3.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -62,7 +62,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.2.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.3.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -132,6 +132,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 3.1 은 공유 데이터의 변경 기록 규약을 더한다(`ChangeLog` — 순수 규약 · 저장할 때 줄을 넣는 손 · 스토어 · 동기화는 앱의 몫). 모델 파일에는 선택 키 둘로 표지를 단다 — 데이터 형식 판 6 그대로 · 옛 읽개는 모르는 키로 보존한다: 공통 필드 묶음 `"role": "provenance"`(레코드의 쓴 앱 · 쓴 판 · 고친 때 — `writerApp` · `writerVersion` · `updatedAt` · 모두 선택 · 빈 값 = 모름) · 엔티티 `"log": "edit"` ⟂ `"log": "deletion"`(칸 하나의 고침 = 한 줄 ⟂ 지운 레코드 하나 = 한 줄 · 스냅샷 — JSON 객체 한 줄 · 지운 레코드의 `id` 를 소문자 UUID 로 늘 든다). 칸의 꼴은 `ChangeLog.provenanceFields` · `editFields` · `deletionFields` · 표지 단 스키마를 그 꼴과 맞대는 것은 `ChangeLog.problems(_:)`. 기록 두 줄은 `app` · `device` 곁에 선택 칸 `appVersion` 을 든다(`ChangeWriter` — 앱 식별자 · 앱의 판 · 설치마다 하나인 무작위 기기 id). 두 앱이 같은 값에 같은 바이트를 내야 한다 — `ChangeLog.canonical`(JSON 글 → 읽기(수는 십진) → 키 정렬 · 빗금 그대로)과 `ChangeLog.digest`(그 글의 `"sha256:<hex>"` — 민감한 칸 · 긴 글 칸)가 한 벌이다. 시각을 바꾸지 않고(오프셋은 적힌 그대로) 유니코드 정규화도 하지 않는다(미리 합친 `é` ⟂ 분해한 `é` 는 다른 바이트 · 다른 요약) — 같은 글자를 내는 것은 쓰는 쪽의 몫이다. 판정도 순수 함수다 — `lapsed`(보관 30일 · 때가 비면 지난 줄) · `coalesceTarget`(한 기기의 같은 칸 30초 안 고침은 한 줄 · 그새 다른 기기가 그 칸을 썼으면 새 줄) · `conflicts`(서로를 보지 못한 두 쓴 쪽의 같은 칸 고침 · 다른 쪽이 지운 기록의 고침 — 값만 본다 · 시계는 마지막 줄을 고르는 데만). 덧붙임만이라 부 판이다.
 - **SDK 3.2 adds an optional key to a model file's field: who fills it** (`DataField.fill` — an open vocabulary `DataFill`: `model` · `rule` · `lookup` · `human` · `derived`, unknown words kept as they are with one warning line). When a tool pulls a record out of a paragraph of text, the key says which hand gives that field its value — a language model, a rule reading the original text, a lookup that links an existing record's id, someone confirming it, or code computing it from other fields. No key means "not declared": the reader keeps guessing from the field's type and values, as before. The key is written only when set, so a file without it reads and writes back byte for byte. The data format stays at version 6 and an older reader keeps the key as an unknown key and writes it back. What each hand does is up to the reader. Additive only — a minor version.
   SDK 3.2 는 모델 파일의 필드에 선택 키 하나를 더한다 — 채우는 손(`DataField.fill` — 열린 낱말 `DataFill`: `model` · `rule` · `lookup` · `human` · `derived` · 모르는 낱말은 글자 그대로 들고 경고 한 줄). 글 한 단락에서 레코드를 뽑을 때 그 칸의 값을 누가 내는가 — 언어 모델 · 원문을 읽는 규칙 · 이미 있는 레코드의 id 를 잇는 조회 · 확인하는 사람 · 다른 칸에서 셈하는 코드. 키가 없으면 「선언 없음」이다 — 읽는 쪽이 지금처럼 칸의 형 · 값으로 짐작한다. 적었을 때만 키를 쓰므로 이 키가 없는 파일은 읽고 쓰면 바이트가 같다. 데이터 형식 판 6 그대로 · 옛 읽개는 모르는 키로 보존해 되쓴다. 손마다 무엇을 하는가는 읽는 쪽의 몫이다. 덧붙임만이라 부 판이다.
+- **SDK 3.3 adds an optional key to a screen map node: where the system opens it from outside the app** (`ScreenNode.outside` — a list of `OutsideEntry`: what opens it, an open vocabulary `OutsideEntry.Kind` — `shortcut` · `spotlight` · `widget` · `notification` · `link` · `other`, unknown words kept as they are — and the text the system shows, optional). One screen may have several, beside its in-app entry (`entry`) — an outside entry has no screen it leaves from, so it is neither a choice nor a jump. An empty list is no list and is not written, so a file without the key reads and writes back byte for byte. The screen map format stays at version 1 and an older reader keeps the key as an unknown key and writes it back. What the app registers with the system is up to the app. Additive only — a minor version.
+  SDK 3.3 은 화면 지도의 마디에 선택 키 하나를 더한다 — 앱 밖 진입(`ScreenNode.outside` — `OutsideEntry` 의 목록: 무엇이 여나 — 열린 낱말 `OutsideEntry.Kind`: `shortcut` · `spotlight` · `widget` · `notification` · `link` · `other` · 모르는 낱말은 글자 그대로 — 와 시스템에 보이는 글(선택)). 한 화면에 여럿이고 앱 안 진입(`entry`)과 함께 선다 — 앱 밖 진입은 떠나는 화면이 없어 선택도 바로 연결도 아니다. 빈 목록은 없음과 같아 쓰지 않으므로 이 키가 없는 파일은 읽고 쓰면 바이트가 같다. 화면 지도 형식 판 1 그대로 · 옛 읽개는 모르는 키로 보존해 되쓴다. 시스템에 무엇을 등록하는가는 앱의 몫이다. 덧붙임만이라 부 판이다.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
 - **A major version freezes the contract**: the public surface a project uses keeps compiling across 3.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in the next major version; additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.

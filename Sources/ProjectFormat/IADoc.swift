@@ -19,6 +19,7 @@ import Foundation
 // 전부에 선다. 적으면 그 부분집합만. 판 번호는 1 그대로(추가 칸이라 옛 파일이 그대로 읽힌다).
 //
 // **진입 칸**(`ScreenNode.entry` — 어느 화면 · 무엇을 · 요소) 도 선택 칸이다 — 없으면 진입은 `via` 글뿐 · 있으면 `via` 는 그 선택에서 지은 글(판 1 그대로).
+// **앱 밖 진입 칸**(`ScreenNode.outside` — 시스템이 이 화면을 여는 자리들) 도 선택 칸이다 — 없으면 앱 밖 진입이 없다(판 1 그대로 · 옛 읽개는 모르는 칸으로 보존한다).
 //
 // **모르는 칸 보존** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다). 같은 판에 칸이 더해져도 옛 엔진이 열어 저장하면 사라지지 않는다.
 
@@ -64,6 +65,10 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// 진입의 **선택** — 어느 화면에서 · 무엇을 눌러 여나(`ScreenEntry`). **선택 칸**이다 — nil 이면 진입은 `via` 글뿐이다.
     /// 칸이 있는데 이 SDK 가 못 읽는 꼴이면 nil 이고 그 글자는 `extra["entry"]` 에 읽은 그대로 남는다(되쓰면 그대로 · 마디는 읽힌다).
     public var entry: ScreenEntry?
+    /// **앱 밖 진입** — 앱 바깥(시스템)이 이 화면을 여는 자리들(`OutsideEntry` — 무엇이 · 보이는 글). **선택 칸**이다 — nil 이면 없다 · 빈 목록은 쓰지 않는다(nil 로 읽힌다).
+    /// 앱 안 진입(`entry` — 어느 화면에서 무엇을 눌러)과 함께 설 수 있다 — 출발 화면이 없으므로 간선(`ScreenJump`)도 선택(`entry`)도 아니다.
+    /// 칸이 있는데 이 SDK 가 못 읽는 꼴이면 nil 이고 그 글자는 `extra["outside"]` 에 읽은 그대로 남는다(되쓰면 그대로 · 마디는 읽힌다).
+    public var outside: [OutsideEntry]?
     /// 이 SDK 가 모르는 칸.
     public var extra: [String: JSONValue] = [:]
 
@@ -82,11 +87,20 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
                   scenes: scenes, chrome: chrome, proposed: proposed, platforms: platforms, chromeChart: chromeChart, data: data)
         self.entry = entry
     }
+    /// 앱 밖 진입을 든 마디 — 위의 손과 같고 `outside` 하나를 더 받는다(덧붙인 칸은 오버로드로). 빈 목록은 nil 로 든다.
+    public init(id: String, label: String, parent: String? = nil, via: String, source: String, route: String? = nil,
+                mapID: String? = nil, form: Bool = false, states: [String] = [], scenes: String? = nil, chrome: JSONValue? = nil, proposed: Bool = false,
+                platforms: [String]? = nil, chromeChart: JSONValue? = nil, data: ScreenData? = nil, entry: ScreenEntry? = nil, outside: [OutsideEntry]?) {
+        self.init(id: id, label: label, parent: parent, via: via, source: source, route: route, mapID: mapID, form: form, states: states,
+                  scenes: scenes, chrome: chrome, proposed: proposed, platforms: platforms, chromeChart: chromeChart, data: data)
+        self.entry = entry
+        self.outside = outside?.isEmpty == true ? nil : outside
+    }
 
     /// 읽는 엔티티 이름(칸이 없으면 빈 목록).
     public var reads: [String] { data?.reads ?? [] }
 
-    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data, entry }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, label, parent, via, source, route, mapID, form, states, scenes, chrome, chromeChart, proposed, platforms, data, entry, outside }
     /// 파일엔 비어 있는 것을 적지 않는다(form=false · states=[] · nil) — 한 마디가 한 덩어리로 읽히게.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -107,10 +121,18 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         data = try c.decodeIfPresent(ScreenData.self, forKey: .data)
         // 진입 칸은 관대하게 — 이 SDK 가 못 읽는 꼴(빠진 칸 · 다른 형 · 뒤 판의 변형)이면 마디째 거부하지 않고 읽은 그대로 모르는 칸으로 든다(되쓰면 그대로).
         entry = c.contains(.entry) ? (try? c.decode(ScreenEntry.self, forKey: .entry)) : nil
-        extra = try ExtraKeys.decode(from: decoder, known: entry == nil ? Self.knownWithoutEntry : Self.known)
+        // 앱 밖 진입도 같은 관대함 — 못 읽는 꼴은 모르는 칸으로(되쓰면 그대로) · 빈 목록은 없음과 같다.
+        let read = c.contains(.outside) ? (try? c.decode([OutsideEntry].self, forKey: .outside)) : nil
+        outside = read?.isEmpty == true ? nil : read
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known(entry: entry != nil, outside: read != nil || !c.contains(.outside)))
     }
-    /// 진입 칸을 못 읽었을 때의 아는 칸 — 그 칸의 글자를 모르는 칸으로 보존한다.
-    static let knownWithoutEntry = known.subtracting([CodingKeys.entry.rawValue])
+    /// 읽은 칸만 아는 칸이다 — 못 읽은 진입 · 앱 밖 진입 칸의 글자는 모르는 칸으로 보존한다.
+    static func known(entry: Bool, outside: Bool) -> Set<String> {
+        var k = known
+        if !entry { k.remove(CodingKeys.entry.rawValue) }
+        if !outside { k.remove(CodingKeys.outside.rawValue) }
+        return k
+    }
     static let known = Set(CodingKeys.allCases.map(\.rawValue))
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -127,7 +149,8 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
         try c.encodeIfPresent(platforms, forKey: .platforms)
         if let d = data, !d.isEmpty { try c.encode(d, forKey: .data) }
         try c.encodeIfPresent(entry, forKey: .entry)
-        try ExtraKeys.encode(extra, to: encoder, known: entry == nil ? Self.knownWithoutEntry : Self.known)
+        if let o = outside, !o.isEmpty { try c.encode(o, forKey: .outside) }
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known(entry: entry != nil, outside: outside?.isEmpty == false))
     }
 }
 
@@ -193,6 +216,48 @@ public struct ScreenEntry: Sendable, Equatable, Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(screen, forKey: .screen); try c.encode(kind, forKey: .kind)
         if let e = element, !e.isEmpty { try c.encode(e, forKey: .element) }
+        try ExtraKeys.encode(extra, to: encoder, known: Self.known)
+    }
+}
+
+/// 마디의 `outside` 칸의 한 줄 — 앱 바깥(시스템)이 이 화면을 여는 자리 하나: 무엇이 여나(`kind` — 열린 낱말) · 시스템에 보이는 글(`title` — 선택:
+/// 단축어의 문구 · 위젯의 이름 같은 것). 한 화면에 여럿이다. 무엇을 실제로 내보내는가(시스템에 등록하는 일)는 프로젝트의 몫이다 — 이 꼴은 지도에 적는 사실이다.
+/// 파일 꼴 — `"outside": [{"kind": "shortcut", "title": "새 메모"}, {"kind": "spotlight"}]` · 빈 `title` 은 쓰지 않는다.
+public struct OutsideEntry: Sendable, Equatable, Codable {
+    /// 무엇이 여나 — 열린 꼴(모르는 낱말은 그대로 든다). 사람 말 이름은 읽는 쪽(엔진의 UI)의 몫이다.
+    public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
+        public let rawValue: String
+        public init(rawValue: String) { self.rawValue = rawValue }
+        public static let shortcut = Kind(rawValue: "shortcut")
+        public static let spotlight = Kind(rawValue: "spotlight")
+        public static let widget = Kind(rawValue: "widget")
+        public static let notification = Kind(rawValue: "notification")
+        public static let link = Kind(rawValue: "link")
+        public static let other = Kind(rawValue: "other")
+        /// 이 SDK 가 아는 낱말 — 고르개의 차례.
+        public static let known: [Kind] = [.shortcut, .spotlight, .widget, .notification, .link, .other]
+
+        public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+        public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
+    }
+    public var kind: Kind
+    public var title: String?
+    /// 이 SDK 가 모르는 칸.
+    public var extra: [String: JSONValue] = [:]
+    public init(kind: Kind, title: String? = nil) { self.kind = kind; self.title = title }
+
+    enum CodingKeys: String, CodingKey, CaseIterable { case kind, title }
+    static let known = Set(CodingKeys.allCases.map(\.rawValue))
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        extra = try ExtraKeys.decode(from: decoder, known: Self.known)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(kind, forKey: .kind)
+        if let t = title, !t.isEmpty { try c.encode(t, forKey: .title) }
         try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }
