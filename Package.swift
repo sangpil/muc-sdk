@@ -20,7 +20,7 @@ import PackageDescription
 //                     프레이밍 · 최신값 우선(`Coalescer`) · 프레임 형식 · 시계 · 소켓 경로 규칙 · 요소 경계(`SnapFrame`) · 그린 글줄과 요소 바탕(`DrawnText` · `DrawnStyle`) · Style 서술(`StyleSchema` · 칸 · 절 · 칸 종류 —
 //                     `hello` 에 실리고 엔진이 안 파일을 재는 잣대). Foundation · SDK `ProjectFormat`(JSON 값) · `DesignTokens`(스케일 종류).
 //
-// 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
+// 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS · tvOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
 //   PreviewWire     : 전송 — 유닉스 소켓 상주 연결(`Connection` · `UnixSocket`) · 공유 메모리 칸(`SharedRegion` — POSIX shm ⟂ `/tmp` mmap). 엔진 · 호스트가 함께 문다.
 //   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:ia:frames:tokensBuilt:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
