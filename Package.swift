@@ -20,7 +20,7 @@ import PackageDescription
 //                     프레이밍 · 최신값 우선(`Coalescer`) · 프레임 형식 · 시계 · 소켓 경로 규칙 · 요소 경계(`SnapFrame`) · 그린 글줄과 요소 바탕(`DrawnText` · `DrawnStyle`) · Style 서술(`StyleSchema` · 칸 · 절 · 칸 종류 —
 //                     `hello` 에 실리고 엔진이 안 파일을 재는 잣대). Foundation · SDK `ProjectFormat`(JSON 값) · `DesignTokens`(스케일 종류).
 //
-// 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
+// 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS · tvOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
 //   PreviewWire     : 전송 — 유닉스 소켓 상주 연결(`Connection` · `UnixSocket`) · 공유 메모리 칸(`SharedRegion` — POSIX shm ⟂ `/tmp` mmap). 엔진 · 호스트가 함께 문다.
 //   PreviewHostKit  : 호스트 런타임 — 진입점(`PreviewHost.main(name:screens:layers:ia:frames:tokensBuilt:arguments:onTokensChanged:)`) · 화면 등록 프로토콜(`PreviewScreen` · `PreviewSession`) · 렌더러
@@ -31,14 +31,14 @@ import PackageDescription
 //   TestScratch     : 시험의 임시 자리 한 벌 — 임시 폴더 · 파일 자리 · 설정 도메인(임시 폴더 안의 plist)을 만들고 끝에 지운다. 엔진 · 프로젝트의 시험이 다 이것만 쓴다
 //                     (무는 쪽의 경계 게이트). Foundation 만.
 //
-// **플랫폼 바닥 = 가장 낮은 소비자**(프로젝트 코어 패키지의 macOS 14 · iOS 17). 앱(iOS 18 · macOS 15)과
-// 엔진(macOS 15)은 그 위에서 그대로 문다. 계약 모듈은 AppKit · UIKit · RealityKit 을 쓰지 않는다 — 셋 중 하나가 필요한 것은 런타임 모듈이거나 SDK 가 아니다.
+// **플랫폼 바닥 = 가장 낮은 소비자**(프로젝트 코어 패키지의 macOS 14 · iOS 17 · tvOS 는 첫 소비자인 앱에 실리는 렌더 코어의 바닥 26 — RealityKit 의 tvOS 하한). 앱(iOS 18 · macOS 15)과
+// 엔진의 도구(macOS 15)는 그 위에서 그대로 문다. 적은 플랫폼만 약속이다(적지 않은 플랫폼은 SwiftPM 기본 바닥으로 지어질 뿐 · 게이트 ①″ 가 적은 기기 플랫폼마다 짓는다). tvOS 판은 글자 꼴(`.tvOS("26.0")`)이다 — 열거 꼴 `.v26` 은 매니페스트 6.2 부터라 6.1 매니페스트(트레이트)에서 못 쓴다. 계약 모듈은 AppKit · UIKit · RealityKit 을 쓰지 않는다 — 셋 중 하나가 필요한 것은 런타임 모듈이거나 SDK 가 아니다.
 //
 // 이름 — 패키지 이름 = 저장소 이름 `muc-sdk`(정체성). 무는 쪽은 `.package(url: …/muc-sdk.git, exact: <판>)` · 제품 참조 `package: "muc-sdk"` 다(경로 의존으로
 // 무는 소비자도 `name: "muc-sdk"` 로 같은 글자). 모듈 · 타입 · 트레이트 · define 에는 제품 이름을 쓰지 않는다.
 let package = Package(
     name: "muc-sdk",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS(.v14), .iOS(.v17), .tvOS("26.0")],
     products: [
         .library(name: "ProjectFormat", targets: ["ProjectFormat"]),
         .library(name: "ScreenMarks", targets: ["ScreenMarks"]),
