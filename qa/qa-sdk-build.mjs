@@ -2,9 +2,11 @@
 //
 //   ① **혼자 선다** — `swift build` · `swift test` · 시험 대상(`Tests/*`)마다 0건이 아니다(0건 통과는 통과가 아니다 · Swift Testing 요약은 대상마다 한 줄).
 //      + 표식 켠 빌드 — `swift test --traits ActiveMarks`(표식 시험만 · 빌드 자리 `.build/active-marks`) · 켠 빌드에만 있는 시험이 돌았다.
-//   ①″ **tvOS 로 선다** — 매니페스트가 tvOS 를 지원 플랫폼으로 적으므로 패키지의 제품 전부(`muc-sdk-Package` 스킴)를 tvOS 기기 일반 목적지로 짓는다
-//      (`xcodebuild -destination generic/platform=tvOS` · 빌드 자리 `.build/tvos`) — `swift build` 는 이 Mac 만 지어 tvOS 에 없는 API 가 계약에 새도 못 본다.
-//      런타임 소스는 `#if os(macOS)` 라 빈 모듈로 선다. 겨냥 확인은 로그가 아니라 산출물 자리(`Debug-appletvos`)로 잰다(증분 빌드는 컴파일 줄을 찍지 않는다).
+//   ①″ **기기 플랫폼마다 선다** — 매니페스트 `platforms` 가 적은 macOS 밖 플랫폼(지금 iOS · tvOS — `dump-package` 에서 읽는다 · 표를 따로 두지 않는다)마다
+//      패키지의 제품 전부(`muc-sdk-Package` 스킴)를 기기 일반 목적지로 짓는다(`xcodebuild -destination generic/platform=<플랫폼>` · 빌드 자리 `.build/<플랫폼>`) —
+//      `swift build` 는 이 Mac 만 지어 그 플랫폼에 없는 API 가 계약에 새도 못 본다. 런타임 소스는 `#if os(macOS)` 라 빈 모듈로 선다.
+//      이 게이트가 모르는 플랫폼 낱말이 매니페스트에 서면 빨강(`DEVICE` 에 한 줄) · 그 플랫폼이 이 Xcode 에 설치되지 않았으면 빌드 실패와 가른 문구로 빨강(`xcodebuild -showsdks`).
+//      겨냥 확인은 로그가 아니라 산출물 자리(`Debug-<기기 SDK>`)로 잰다(증분 빌드는 컴파일 줄을 찍지 않는다).
 //   ② **잎** — `swift package show-dependencies` 의 의존 0 · 매니페스트 의존 0 · 모든 타깃에 `unsafeFlags` 0(태그 의존으로 받는 패키지라 SwiftPM 이 거부한다).
 //   ③ **갈래**(계약 ⟂ 런타임 ⟂ 시험 — 아래 `CONTRACT` · `RUNTIME` · `TEST` · 새 모듈은 한쪽에 적어야 선다 · 정본 `Docs/SDK.md` §1):
 //      ⓐ 계약 소스의 `import` = Foundation · CryptoKit · CoreGraphics · SwiftUI · 계약 모듈 · 계약이 런타임 모듈을 물지 않는다
@@ -98,14 +100,26 @@ if (!/Test markRaisesBoundsWhenOn\(\) passed/.test(a.out)) { explain(a.out); fai
 const aTotal = aRuns.reduce((n, m) => n + Number(m[1]), 0);
 console.log(`  ✓ ① 혼자 선다 · swift test ${total}건 · 대상 ${testTargets.length} · 표식 켠 빌드 ${aTotal}건(${b.sec + t.sec + a.sec}s)`);
 
-// ①″ tvOS 로 선다 — 패키지 스킴 하나(제품 전부)를 tvOS 기기 일반 목적지로
-const tvosDir = join(ROOT, ".build", "tvos");
-const tv = run(["xcodebuild", "-scheme", "muc-sdk-Package", "-destination", "generic/platform=tvOS", "-derivedDataPath", tvosDir,
-  ...(process.env.SWIFT_BUILD_JOBS ? ["-jobs", process.env.SWIFT_BUILD_JOBS] : []), "build"]);
-if (!tv.ok || !tv.out.includes("** BUILD SUCCEEDED **")) { explain(tv.out); fail(`tvOS 빌드 실패 (${tv.sec}s · 계약에 tvOS 에 없는 API 가 샜나)`); }
-const tvMissing = CONTRACT.filter((m) => !existsSync(join(tvosDir, "Build", "Products", "Debug-appletvos", `${m}.o`)));
-if (tvMissing.length) fail(`tvOS 빌드 산출물이 없다 — ${tvMissing.join(" · ")}(목적지 · 스킴이 바뀌었나)`);
-console.log(`  ✓ ①″ tvOS 로 선다 — 계약 ${CONTRACT.length} 산출물 · generic/platform=tvOS (${tv.sec}s)`);
+// ①″ 기기 플랫폼마다 선다 — 매니페스트가 적은 macOS 밖 플랫폼마다 패키지 스킴 하나(제품 전부)를 기기 일반 목적지로
+// 플랫폼 낱말(dump-package) → 목적지 이름 · 기기 SDK(산출물 폴더 `Debug-<sdk>` · `xcodebuild -showsdks` 의 `-sdk <sdk>`)
+const DEVICE = { ios: { name: "iOS", sdk: "iphoneos" }, tvos: { name: "tvOS", sdk: "appletvos" }, watchos: { name: "watchOS", sdk: "watchos" }, visionos: { name: "visionOS", sdk: "xros" } };
+const named = (dump.platforms || []).map((x) => x.platformName).filter((n) => n !== "macos");
+const unknown = named.filter((n) => !DEVICE[n]);
+if (unknown.length) fail(`매니페스트가 적은 플랫폼 ${unknown.join(" · ")} 를 이 게이트가 모른다 — qa-sdk-build.mjs 의 DEVICE 에 한 줄(목적지 이름 · 기기 SDK)`);
+const sdks = run(["xcodebuild", "-showsdks"]).out;
+const deviceWords = [];
+for (const n of named) {
+  const d = DEVICE[n];
+  if (!new RegExp(`-sdk ${d.sdk}\\d`).test(sdks)) fail(`${d.name} 플랫폼이 이 Xcode 에 설치되지 않았다 — 빌드 실패가 아니다(Xcode ▸ Settings ▸ Components 에서 ${d.name} 를 받고 다시)`);
+  const dir = join(ROOT, ".build", n);
+  const r = run(["xcodebuild", "-scheme", "muc-sdk-Package", "-destination", `generic/platform=${d.name}`, "-derivedDataPath", dir,
+    ...(process.env.SWIFT_BUILD_JOBS ? ["-jobs", process.env.SWIFT_BUILD_JOBS] : []), "build"]);
+  if (!r.ok || !r.out.includes("** BUILD SUCCEEDED **")) { explain(r.out); fail(`${d.name} 빌드 실패 (${r.sec}s · 계약에 ${d.name} 에 없는 API 가 샜나)`); }
+  const missing = CONTRACT.filter((m) => !existsSync(join(dir, "Build", "Products", `Debug-${d.sdk}`, `${m}.o`)));
+  if (missing.length) fail(`${d.name} 빌드 산출물이 없다 — ${missing.join(" · ")}(목적지 · 스킴이 바뀌었나)`);
+  deviceWords.push(`${d.name} ${r.sec}s`);
+}
+console.log(`  ✓ ①″ 기기 플랫폼마다 선다 — ${deviceWords.join(" · ") || "적은 기기 플랫폼 없음"} · 계약 ${CONTRACT.length} 산출물`);
 
 // ② 잎 · unsafeFlags 0
 const deps = JSON.parse(run(["swift", "package", "show-dependencies", "--format", "json"]).out.replace(/^[^{]*/, "")).dependencies;
@@ -331,4 +345,4 @@ if (failures.length) {
   console.log(`=== qa-sdk-build FAIL — ${failures.length}건 ===`);
   process.exit(1);
 }
-console.log(`=== qa-sdk-build OK — SDK ${version} · 시험 ${total}건(대상 ${testTargets.length}) · tvOS 빌드 · 잎 · unsafeFlags 0 · 갈래 · 공개 적합 · ${tagWord} · 깨짐 진단 ${diagWord} · 공개 이름 = 표 · 판 품은 기본 인자 0 ===`);
+console.log(`=== qa-sdk-build OK — SDK ${version} · 시험 ${total}건(대상 ${testTargets.length}) · 기기 플랫폼 ${deviceWords.length} · 잎 · unsafeFlags 0 · 갈래 · 공개 적합 · ${tagWord} · 깨짐 진단 ${diagWord} · 공개 이름 = 표 · 판 품은 기본 인자 0 ===`);
