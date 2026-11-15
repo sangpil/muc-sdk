@@ -31,14 +31,14 @@ import PackageDescription
 //   TestScratch     : 시험의 임시 자리 한 벌 — 임시 폴더 · 파일 자리 · 설정 도메인(임시 폴더 안의 plist)을 만들고 끝에 지운다. 엔진 · 프로젝트의 시험이 다 이것만 쓴다
 //                     (무는 쪽의 경계 게이트). Foundation 만.
 //
-// **플랫폼 바닥 = 가장 낮은 소비자**(프로젝트 코어 패키지의 macOS 14 · iOS 17). 앱(iOS 18 · macOS 15)과
-// 엔진(macOS 15)은 그 위에서 그대로 문다. 계약 모듈은 AppKit · UIKit · RealityKit 을 쓰지 않는다 — 셋 중 하나가 필요한 것은 런타임 모듈이거나 SDK 가 아니다.
+// **플랫폼 바닥 = 가장 낮은 소비자**(프로젝트 코어 패키지의 macOS 14 · iOS 17 · tvOS 는 첫 소비자인 엔진의 렌더 런타임 바닥 26 — RealityKit 의 tvOS 하한). 앱(iOS 18 · macOS 15)과
+// 엔진(macOS 15)은 그 위에서 그대로 문다. tvOS 판은 글자 꼴(`.tvOS("26.0")`)이다 — 열거 꼴 `.v26` 은 매니페스트 6.2 부터라 6.1 매니페스트(트레이트)에서 못 쓴다. 계약 모듈은 AppKit · UIKit · RealityKit 을 쓰지 않는다 — 셋 중 하나가 필요한 것은 런타임 모듈이거나 SDK 가 아니다.
 //
 // 이름 — 패키지 이름 = 저장소 이름 `muc-sdk`(정체성). 무는 쪽은 `.package(url: …/muc-sdk.git, exact: <판>)` · 제품 참조 `package: "muc-sdk"` 다(경로 의존으로
 // 무는 소비자도 `name: "muc-sdk"` 로 같은 글자). 모듈 · 타입 · 트레이트 · define 에는 제품 이름을 쓰지 않는다.
 let package = Package(
     name: "muc-sdk",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS(.v14), .iOS(.v17), .tvOS("26.0")],
     products: [
         .library(name: "ProjectFormat", targets: ["ProjectFormat"]),
         .library(name: "ScreenMarks", targets: ["ScreenMarks"]),
