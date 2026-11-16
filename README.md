@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.4.0"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "4.0.0"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -63,7 +63,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "3.4.0",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "4.0.0",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -137,10 +137,12 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 3.3 은 화면 지도의 마디에 선택 키 하나를 더한다 — 앱 밖 진입(`ScreenNode.outside` — `OutsideEntry` 의 목록: 무엇이 여나 — 열린 낱말 `OutsideEntry.Kind`: `shortcut` · `spotlight` · `widget` · `notification` · `link` · `other` · 모르는 낱말은 글자 그대로 — 와 시스템에 보이는 글(선택)). 한 화면에 여럿이고 앱 안 진입(`entry`)과 함께 선다 — 앱 밖 진입은 떠나는 화면이 없어 선택도 바로 연결도 아니다. 빈 목록은 없음과 같아 쓰지 않으므로 이 키가 없는 파일은 읽고 쓰면 바이트가 같다. 화면 지도 형식 판 1 그대로 · 옛 읽개는 모르는 키로 보존해 되쓴다. 시스템에 무엇을 등록하는가는 앱의 몫이다. 덧붙임만이라 부 판이다.
 - **SDK 3.4 adds tvOS 26 as a platform** — the contract products build for tvOS as they are; runtime products are empty modules there, as on iOS. No public name, file or wire change; existing macOS · iOS consumers resolve the same graph. Protocol stays at version 9.
   SDK 3.4 는 플랫폼에 tvOS 26 을 더한다 — 계약 제품은 그대로 tvOS 로 서고 · 런타임 제품은 iOS 처럼 빈 모듈이다. 공개 이름 · 파일 · 와이어 변화 0 · 있던 macOS · iOS 소비자의 그래프 그대로. 프로토콜 판은 9 그대로.
+- **SDK 4.0 is a major version — one version per format.** The upgrade-chain shape is gone (`UpgradeStep` · `UpgradeEffect` · `UpgradeChain` · `UpgradeOutcome` · `UpgradeError` · `FieldPath` · `JSONValue.holdsSomething` · `JSONValue[path:]`), and so is the version range (`FormatVersions` · `FormatVersionsError` · the `versions` constants): each format has one version (`IsoDataFormat.version` · `DesignFormat.version` · `IAFormat.version`), its reader reads only that version and its writer writes it. An older file is an unsupported version — `IsoDataError.tooOld` is now `IsoDataError.unsupportedVersion`. Protocol stays at version 9; the data format stays at 6.
+  SDK 4.0 은 주 판이다 — 형식마다 한 판. 업그레이드 사슬의 꼴(`UpgradeStep` · `UpgradeEffect` · `UpgradeChain` · `UpgradeOutcome` · `UpgradeError` · `FieldPath` · `JSONValue.holdsSomething` · `JSONValue[path:]`)과 판 범위(`FormatVersions` · `FormatVersionsError` · 상수 `versions`)를 걷었다 — 형식마다 판은 하나(`IsoDataFormat.version` · `DesignFormat.version` · `IAFormat.version`)이고 읽개는 그 판만 읽고 쓰개는 그 판으로 쓴다. 더 옛 파일은 지원하지 않는 판이다 — `IsoDataError.tooOld` 는 `IsoDataError.unsupportedVersion` 이 되었다. 프로토콜 판 9 · 데이터 형식 판 6 그대로.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only and iPad-only projects are valid.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용도 선다).
-- **A major version freezes the contract**: the public surface a project uses keeps compiling across 3.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in the next major version; additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
-  주 판은 계약 동결 — 프로젝트가 문 공개 표면을 3.x 가 계속 지킨다(소스 · 파일 · 와이어 호환 · 게이트가 직전 꼬리표와 깨짐을 맞댄다). 깨는 변경은 다음 주 판에서만 · 덧붙임(새 타입 · 새 메서드 · 기본값 있는 새 칸)은 부 판 · 고침은 수 판.
+- **A major version freezes the contract**: the public surface a project uses keeps compiling across 4.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in the next major version; additions (new types · methods · fields with defaults) bump the minor; fixes bump the patch.
+  주 판은 계약 동결 — 프로젝트가 문 공개 표면을 4.x 가 계속 지킨다(소스 · 파일 · 와이어 호환 · 게이트가 직전 꼬리표와 깨짐을 맞댄다). 깨는 변경은 다음 주 판에서만 · 덧붙임(새 타입 · 새 메서드 · 기본값 있는 새 칸)은 부 판 · 고침은 수 판.
 
 The contract — modules, the three branches, version rules, what is *not* in the SDK — is [Docs/SDK.md](Docs/SDK.md) (Korean).
 계약의 정본은 [Docs/SDK.md](Docs/SDK.md).

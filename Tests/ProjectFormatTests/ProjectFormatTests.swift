@@ -68,19 +68,12 @@ import Testing
 }
 
 @Suite struct FormatVersionTests {
-    /// 데이터 — 판 한 줄(삶 · 모델 같은 판) · 디코더의 바닥 = 최신 = 쓰는 바닥 · 사슬은 판 1 부터.
-    @Test func isoDataHasOneVersion() {
-        #expect(IsoDataFormat.versions == (try? FormatVersions(oldest: 1, decodeOldest: IsoDataFormat.version, newest: IsoDataFormat.version,
-                                                               writeFloor: IsoDataFormat.version, stampKey: "version")))
-    }
-
-    /// 판 범위 한 벌 — 상수와 같은 값 · 사슬의 바닥 ≤ 디코더의 바닥 ≤ 쓰는 바닥 ≤ 최신(업그레이드가 쓰는 판의 바닥 · 쓴 문서를 디코더가 읽는다).
-    @Test func versionsAreTheConstants() {
-        #expect(DesignFormat.versions.newest == DesignFormat.version && IAFormat.versions.newest == IAFormat.version)
-        for v in [IsoDataFormat.versions, DesignFormat.versions, IAFormat.versions] {
-            #expect(v.oldest <= v.decodeOldest && v.decodeOldest <= v.writeFloor && v.writeFloor <= v.newest)
-            #expect(UpgradeChain(versions: v, steps: []).newest == v.newest)
-        }
+    /// 형식마다 판은 하나다 — 읽개가 그 판만 읽고 쓰개가 그 판으로 쓴다(데이터는 삶 · 모델 같은 판).
+    @Test func eachFormatHasOneVersion() throws {
+        for v in [IsoDataFormat.version, DesignFormat.version, IAFormat.version] { #expect(v >= 1) }
+        let life = try IsoDataFile.read(Data(#"{ "version" : \#(IsoDataFormat.version), "domain" : {} }"#.utf8))
+        let written = try JSONSerialization.jsonObject(with: life.encoded()) as? [String: Any]
+        #expect(written?["version"] as? Int == IsoDataFormat.version, "쓰개는 읽개가 읽는 그 판으로 쓴다")
     }
 }
 
