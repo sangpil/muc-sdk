@@ -12,11 +12,11 @@
 // 판마다의 **뜻**과 판을 올리는 차례는 형식을 읽고 쓰는 엔진(빌더)이 갖는다 — SDK 는 판 번호만 든다.
 // 형식마다 판은 하나다 — 읽개는 그 판만 읽고 쓰개는 그 판으로 쓴다. 더 옛 판은 「지원하지 않는 판」으로 거절하고, 더 새 판은 「새 판」으로 거절한다.
 
-/// 데이터(`.isodata`) — 한 형식, 두 모양: 삶 파일(`domain` · `eras` · `series` · `milestones` · `people` · `nextIDs`)과 모델 파일(`schema` + `datasets`).
+/// 데이터(`.isodata`) — 한 형식, 두 모양: 삶 파일(`domain` · `eras` · `series` · `events` · `scenarios` · `people` · `nextIDs`)과 모델 파일(`schema` + `datasets`).
 /// 판은 한 줄이다 — 두 모양 모두 `version` 으로 쓰고, 디코더는 이 판만 읽는다(다른 판은 이름 대고 거절한다 — `IsoDataError`).
 public enum IsoDataFormat {
     /// 이 SDK 가 읽고 쓰는 판(삶 파일 · 모델 파일 같은 판).
-    public static let version = 6
+    public static let version = 7
 
     /// 파일 상한 — 넘으면 이름을 대고 거부한다(바이트를 자를 수는 없다).
     public static let maxBytes = 8 * 1024 * 1024
