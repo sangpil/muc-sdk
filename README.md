@@ -81,7 +81,7 @@ swift build                        # app build — marks are empty modifiers · 
 
 | Product | Branch · 갈래 | What · 무엇 |
 |---|---|---|
-| `ProjectFormat` | contract · 계약 | Project document formats — version constants, version reader, upgrade-chain shape, `.isodata` model files, change-log rules for shared data, design files, screen components, IA document, JSON value · 프로젝트 문서의 형식 · 공유 데이터의 변경 기록 규약 |
+| `ProjectFormat` | contract · 계약 | Project document formats — one version per format (version constants · version reader), `.isodata` model files, change-log rules for shared data, design files, screen components, IA document, JSON value · 프로젝트 문서의 형식 · 공유 데이터의 변경 기록 규약 |
 | `ScreenMarks` | contract | Element marks `.snapID` — active only with the `ActiveMarks` trait on macOS · 화면 요소 표식 |
 | `DesignTokens` | contract | Design token shapes — colors, scales, providers, source-of-truth readers · 디자인 토큰의 꼴 |
 | `LaunchTrace` | contract | Window-open timing hook `OpenTrace` · 창 열기 실측 훅 |
