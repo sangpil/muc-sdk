@@ -199,7 +199,26 @@ import Testing
 @Suite struct FormFactorTests {
     /// 낱말과 차례 — 매니페스트 `platforms` 와 IA 플랫폼 칸이 이 글자를 쓴다.
     @Test func wordsAndOrder() {
-        #expect(FormFactor.known.map(\.rawValue) == ["iphone", "ipad", "mac"])
+        #expect(FormFactor.known.map(\.rawValue) == ["iphone", "ipad", "mac", "tv"])
+    }
+
+    /// 화면 벌 — iPhone · iPad · Mac 은 화면 한 벌을 나누고 TV 와 모르는 낱말은 제 벌을 갖는다 · iPad 앱을 그대로 여는 방식이면 어느 기기든 나눈다.
+    @Test func screenSets() {
+        #expect([FormFactor.iphone, .ipad, .mac].allSatisfy { $0.sharesScreens() })
+        #expect(!FormFactor.tv.sharesScreens() && !FormFactor(rawValue: "vision").sharesScreens())
+        #expect(FormFactor.mac.sharesScreens(mode: "native") && FormFactor.mac.sharesScreens(mode: "catalyst"))
+        #expect(FormFactor(rawValue: "vision").sharesScreens(mode: "designed-for-ipad") && !FormFactor(rawValue: "vision").sharesScreens(mode: "native"))
+    }
+
+    /// 칸 없는 화면이 서는 기기 — TV 를 더해도 있던 화면은 TV 화면이 되지 않는다 · TV 전용 앱의 화면은 칸 없이 TV 화면 · 제 칸은 그대로.
+    @Test func inheritedScreens() {
+        #expect(FormFactor.inheritedScreenPlatforms(["iphone", "ipad", "mac"]) == ["iphone", "ipad", "mac"], "TV 없는 앱은 그대로")
+        #expect(FormFactor.inheritedScreenPlatforms(["iphone", "tv"]) == ["iphone"])
+        #expect(FormFactor.inheritedScreenPlatforms(["tv"]) == ["tv"])
+        #expect(FormFactor.inheritedScreenPlatforms(["tv", "vision"]).isEmpty, "제 벌 기기만 둘이면 화면마다 적는다")
+        #expect(FormFactor.inheritedScreenPlatforms(["tv", "vision"], modes: ["vision": "designed-for-ipad"]) == ["vision"])
+        #expect(FormFactor.screenPlatforms(own: ["tv"], app: ["iphone", "tv"]) == ["tv"])
+        #expect(FormFactor.screenPlatforms(own: nil, app: ["iphone", "tv"]) == ["iphone"])
     }
 
     /// 열린 꼴 — 모르는 낱말도 글자 그대로 들고 나온다.
@@ -211,7 +230,7 @@ import Testing
 
     /// 어느 폼팩터도 필수가 아니다 — iPhone 없는 조합(맥 전용 · iPad 전용 · iPad + 맥)도 선다 · 비었다 · 겹친다 · 낱말 꼴만 문제.
     @Test func noFormFactorIsRequired() {
-        for ok in [["mac"], ["ipad"], ["ipad", "mac"], ["iphone"], ["vision"]] { #expect(FormFactor.problems(in: ok).isEmpty, "\(ok)") }
+        for ok in [["mac"], ["ipad"], ["ipad", "mac"], ["iphone"], ["tv"], ["iphone", "tv"], ["vision"]] { #expect(FormFactor.problems(in: ok).isEmpty, "\(ok)") }
         #expect(FormFactor.problems(in: []) == ["플랫폼 목록이 비었다"])
         #expect(FormFactor.problems(in: ["mac", "mac"]).count == 1)
         #expect(FormFactor.problems(in: ["Mac"]).count == 1)
