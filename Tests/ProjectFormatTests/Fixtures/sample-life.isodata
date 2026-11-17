@@ -38,37 +38,37 @@
   "events" : [
     {
       "day" : "2050-01-01",
-      "id" : "event-1",
-      "label" : "Event 1"
+      "id" : "e1",
+      "label" : "Stop 1"
     },
     {
       "day" : "2059-12-31",
-      "id" : "event-2",
-      "label" : "Event 2"
+      "id" : "e2",
+      "label" : "Stop 2"
     },
     {
       "day" : "2070-01-01",
-      "id" : "event-3",
-      "label" : "Event 3"
+      "id" : "e3",
+      "label" : "Stop 3"
     },
     {
       "day" : "2080-01-01",
-      "id" : "event-4",
-      "label" : "Event 4"
+      "id" : "e4",
+      "label" : "Stop 4"
     },
     {
       "day" : "2100-01-01",
-      "id" : "event-5",
-      "label" : "Event 5"
+      "id" : "e5",
+      "label" : "Stop 5"
     },
     {
-      "id" : "event-6",
+      "id" : "w1",
       "label" : "Wish 1",
       "status" : "wish"
     },
     {
       "day" : "2075-06-01",
-      "id" : "event-7",
+      "id" : "w2",
       "label" : "Wish 2",
       "status" : "wish"
     }
@@ -82,21 +82,21 @@
   "scenarios" : [
     {
       "horizon" : "2085-01-01",
-      "id" : "scenario-1",
-      "label" : "Scenario 1",
+      "id" : "p1",
+      "label" : "Path 1",
       "status" : "open",
       "via" : [
-        "event-6",
-        "event-7"
+        "w1",
+        "w2"
       ]
     },
     {
-      "id" : "scenario-2",
-      "label" : "Scenario 2",
-      "rejoin" : "event-4",
+      "id" : "p2",
+      "label" : "Path 2",
+      "rejoin" : "e4",
       "status" : "folded",
       "via" : [
-        "event-7"
+        "w2"
       ]
     }
   ],
