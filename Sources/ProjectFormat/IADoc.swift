@@ -16,7 +16,8 @@ import Foundation
 // 어댑터와 「모르는 낱말」 검사는 프로젝트의 몫이다. 파일 꼴은 그대로다(같은 칸 · 같은 글자).
 //
 // **플랫폼 칸**(IA 하나 + 플랫폼별 틀과 안) — 마디 · 허브의 `platforms` 는 **선택 칸**이다: 없으면 매니페스트(`muc.json` `platforms`)
-// 전부에 선다. 적으면 그 부분집합만. 판 번호는 1 그대로(추가 칸이라 옛 파일이 그대로 읽힌다).
+// 중 화면을 나누는 기기에 선다(`FormFactor.inheritedScreenPlatforms` — 제 화면 벌을 갖는 `tv` 는 적어야 선다). 적으면 그 부분집합만.
+// 판 번호는 1 그대로(추가 칸이라 옛 파일이 그대로 읽힌다).
 //
 // **진입 칸**(`ScreenNode.entry` — 어느 화면 · 무엇을 · 요소) 도 선택 칸이다 — 없으면 진입은 `via` 글뿐 · 있으면 `via` 는 그 선택에서 지은 글(판 1 그대로).
 // **앱 밖 진입 칸**(`ScreenNode.outside` — 시스템이 이 화면을 여는 자리들) 도 선택 칸이다 — 없으면 앱 밖 진입이 없다(판 1 그대로 · 옛 읽개는 모르는 칸으로 보존한다).
@@ -57,7 +58,8 @@ public struct ScreenNode: Identifiable, Sendable, Equatable, Codable {
     /// **제안** 마디 — 엔진의 IA 창에서 더한 새 화면(「마디 추가」). 화면 목록 문서에 행이 아직 없어 `mapID` 가 없다 —
     /// 앱에서는 준비 중 화면으로 떨어진다. 문서에 행을 세우면 `mapID` 를 적고 이 표를 내린다(테스트가 둘을 맞댄다).
     public var proposed: Bool
-    /// 이 화면이 서는 플랫폼(`iphone` · `ipad` · `mac`) — **선택 칸** · nil 이면 매니페스트 `platforms` 전부. 적으면 비지 않은 부분집합(생성기가 잰다).
+    /// 이 화면이 서는 플랫폼(`iphone` · `ipad` · `mac` · `tv`) — **선택 칸** · nil 이면 매니페스트 `platforms` 중 화면을 나누는 기기(`FormFactor.screenPlatforms(own:app:modes:)`).
+    /// 적으면 비지 않은 부분집합(생성기가 잰다).
     public var platforms: [String]?
     /// 이 화면이 읽는 **데이터** — 모델 파일(`*.isodata`)의 엔티티 이름 목록(`data.reads`). **선택 칸**이다 —
     /// 없으면 nil · 적는 것은 사람의 사실이다(화면의 입력 함수가 실제로 읽는 것과 같은지는 재지 않는다). 이름이 모델에 있는지는 엔진의 데이터 검사가 잰다.
@@ -353,7 +355,8 @@ public struct Hub: Sendable, Equatable, Codable, Identifiable {
     public var kind: Kind
     /// 슬롯 = 탭 루트 화면 코드명(순서대로)
     public var slots: [String]
-    /// 이 허브(내비 틀)가 서는 플랫폼 — **선택 칸** · nil 이면 매니페스트 `platforms` 전부. 어느 플랫폼에 어느 내비 틀이 서는가는 프로젝트가 적는다.
+    /// 이 허브(내비 틀)가 서는 플랫폼 — **선택 칸** · nil 이면 매니페스트 `platforms` 중 화면을 나누는 기기(`FormFactor.screenPlatforms(own:app:modes:)`).
+    /// 어느 플랫폼에 어느 내비 틀이 서는가는 프로젝트가 적는다.
     public var platforms: [String]?
     /// 슬롯마다 **손댄 내비 항목** · 열쇠 = 슬롯 id · **선택 칸** — 항목의 꼴(표시명 · 기호 · 숨김 같은)은 프로젝트가 정하는 칸이라 JSON 그대로 든다.
     /// 차례는 `slots` 가 갖는다(항목 칸에 차례를 또 두지 않는다).

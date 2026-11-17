@@ -78,7 +78,7 @@
 | `DesignFile` | 프로젝트 | 안 파일(`<화면>/<안>.design.json`)의 꼴 — 자리 · 이름들 · 판(`version(_:)` — 맨 위 정수 칸 · 없으면 `DesignFormat.version`) · 머리(확정 · 만든 때 · 판) · Style 값 채우기 · 의견 폴더 이름 · 바이트 규칙(`encoder` · `decoder` — 엔진이 안 파일을 쓰는 한 벌 · 프로젝트 시험이 같은 규칙으로 바이트 동치를 잰다). Style 의 **꼴**(화면마다의 값 타입)은 프로젝트의 것이라 사전으로만 다룬다 |
 | `ScreenComponent` | 프로젝트 | 안 파일 `components` 칸 한 줄(일반 · 씬 · 모델 · 영역 · 조작 · 구성요소와 영역의 모르는 칸 보존 `extra`) + 관대한 읽기(모르는 종류 · 깨진 줄은 건너뛴다 — 종류는 닫힌 열거: 새 종류는 앱이 그리는 코드와 함께 온다) · 칸 크기 → 그릴 픽셀의 셈 한 벌 |
 | `IAWiring` | 프로젝트 | 배선 고르기 — 배선 → 확정 → 가장 최근(안) ⟂ 배선 → 이름 순 첫(씬) |
-| `FormFactor` | 프로젝트 | 폼팩터 낱말 — 매니페스트 `platforms` 와 IA 플랫폼 칸의 한 벌 · 열린 꼴(아는 낱말 `iphone` · `ipad` · `mac` = `known` · 모르는 낱말도 글자 그대로) · **어느 폼팩터도 필수가 아니다** — 플랫폼 목록은 비지 않고 겹치지 않으면 선다(맥 전용 · iPad 전용 포함 · `problems(in:)`) |
+| `FormFactor` | 프로젝트 | 폼팩터 낱말 — 매니페스트 `platforms` 와 IA 플랫폼 칸의 한 벌 · 열린 꼴(아는 낱말 `iphone` · `ipad` · `mac` · `tv` = `known` · 모르는 낱말도 글자 그대로) · **어느 폼팩터도 필수가 아니다** — 플랫폼 목록은 비지 않고 겹치지 않으면 선다(맥 전용 · iPad 전용 · TV 전용 포함 · `problems(in:)`) · **화면 벌**(판정의 한 자리 — `sharesScreens(mode:)`): 화면 한 벌을 나누는 기기(`iphone` · `ipad` · `mac` · 방식 `designed-for-ipad` 인 기기)와 제 화면 벌을 갖는 기기(`tv` · 모르는 낱말) — 제 `platforms` 칸 없는 화면 · 허브는 앱의 나누는 기기에만 선다(`inheritedScreenPlatforms(_:modes:)` — 나누는 기기가 없는 앱은 기기가 하나면 그 기기 · `screenPlatforms(own:app:modes:)` — 화면 하나) |
 | `IADoc` · `ScreenNode` · `ScreenData` · `ScreenEntry` · `OutsideEntry` · `ScreenJump` · `JumpEntry` · `Hub` | 프로젝트 | IA 문서(`paths.ia`)의 꼴 — 마디 · 점프 · 허브 · 읽는 엔티티 · 제안 표지 · 진입 선택(`ScreenEntry` — 어느 화면 · 무엇을(열린 낱말 `ScreenEntry.Kind`) · 요소 · 선택 칸 · 있으면 `via` 는 그 선택에서 지은 글이고 어긋나면 글이 이긴다 · 못 읽는 꼴이면 마디째 거부하지 않고 읽은 그대로 모르는 칸으로 든다) · 앱 밖 진입(`ScreenNode.outside` — `OutsideEntry` 의 목록: 무엇이 여나(열린 낱말 `OutsideEntry.Kind`) · 시스템에 보이는 글(선택) · 선택 칸 · 빈 목록은 쓰지 않는다 · 앱 안 진입과 함께 선다 · 못 읽는 꼴은 진입 선택과 같은 관대함) · 꼴마다 모르는 칸 보존(`extra`). **프로젝트 낱말은 글자 · JSON 그대로 든다**: 진입 손 `JumpEntry.control` 은 글자 · 크롬 구성 `ScreenNode.chrome` · `chromeChart` 와 내비 항목 `Hub.items` 는 `JSONValue`(읽은 그대로 쓴다 — 파일 꼴 불변 · 형식 판 1) · 허브 종류는 열린 꼴. 엔진(저장소 · 화면 지도)과 미리보기 호스트(층 자료 `PreviewProtocol.LayerContext` — 크롬의 구성 · 탭 슬롯을 호스트가 이 문서에서 셈한다)가 함께 문다 |
 | `JSONValue` · `JSONValueError` | 프로젝트 | JSON 값 한 덩이(널 · 참거짓 · 수 · 큰 정수 · 글자 · 배열 · 객체 — 수의 정본 꼴: Double 로 정확히 담기는 수는 `number` · 크기 2^53 을 넘는 정수는 `integer`(Int64 — 시각 ns · 큰 id 가 깎이지 않는다) · `int(_:)` · `integerValue` · `numberValue`) — 프로젝트가 뜻을 정하는 칸(IA 의 크롬 구성 · 내비 항목 · 안 파일의 Style 값) · 모르는 칸 주머니(`extra`) · 엔진 명령의 결과 · 미리보기 호스트의 조절판 값이 같은 한 벌이다. 정수로 떨어지는 수는 정수로 쓴다 · 쓸 때 키 정렬(`text`) · Codable 값 → JSON 값(`from`) · → JSON 객체(`dictionary(from:)` — 객체가 아니면 던진다) · JSON 값 → 프로젝트의 타입(`decode` — 칸의 꼴은 그 타입의 Codable 이 정한다) · 글자 · 수 · 배열 · 사전 리터럴 |
 
@@ -195,7 +195,7 @@
 
 ## 5. 판
 
-**SDK 판: 4.0.0** — 계약 동결(아래 「주 판의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 4.1.0** — 계약 동결(아래 「주 판의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 
