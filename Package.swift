@@ -6,8 +6,7 @@ import PackageDescription
 // 모듈은 세 갈래다 — **계약**(플랫폼 중립 · iOS 앱도 문다) · **런타임**(macOS 전용 · 미리보기 호스트 · 엔진의 도구가 문다 · 앱은 물지 않는다) · **시험**(시험 타깃만).
 //
 // 계약:
-//   ProjectFormat   : 프로젝트 문서의 형식 — SDK 가 읽고 쓰는 형식의 판 상수(데이터 · 안 · IA — **한 자리**) · 판 읽개(`FormatStamp`) ·
-//                     업그레이드 사슬의 꼴(`UpgradeStep` · `UpgradeChain` — 스텝의 몸은 엔진 쪽 타깃) ·
+//   ProjectFormat   : 프로젝트 문서의 형식 — SDK 가 읽고 쓰는 형식의 판 상수(데이터 · 안 · IA — **한 자리** · 형식마다 한 판) · 판 읽개(`FormatStamp`) ·
 //                     `.isodata` 레코드 UUID 규약(`IsoDataIDs`) · `.isodata` 의 꼴과 읽기 규율(`IsoDataFile` · `DataModelFile` · `DataSchema` · 검증 둘 · 모르는 키 보존) · CloudKit 호환 규칙(`CloudKitRules`) · 공유 데이터 모델 칸(`SharedDataModel`) · 변경 기록 규약(`ChangeLog`) · 안 파일의 꼴(`DesignFile`) · 화면 구성요소(`ScreenComponent`) ·
 //                     배선 고르기(`IAWiring`) · 폼팩터 낱말(`FormFactor`) · JSON 값(`JSONValue`). Foundation · CryptoKit 만(CoreGraphics 값 꼴은 Foundation 이 싣는다).
 //   ScreenMarks     : 화면 요소 표식(`.snapID`) — 프로젝트의 화면 코드가 요소에 이름을 달고, 엔진의 도구가 그 경계를 모은다. SwiftUI 만.

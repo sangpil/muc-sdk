@@ -23,7 +23,7 @@
             "to" : "2060-01-01"
           }
         ],
-        "milestones" : [
+        "events" : [
 
         ],
         "series" : [
@@ -486,5 +486,5 @@
       }
     ]
   },
-  "version" : 6
+  "version" : 7
 }

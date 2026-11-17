@@ -35,38 +35,71 @@
       "to" : "2100-01-01"
     }
   ],
-  "milestones" : [
+  "events" : [
     {
       "day" : "2050-01-01",
-      "id" : "milestone-1",
-      "label" : "Mark 1"
+      "id" : "e1",
+      "label" : "Stop 1"
     },
     {
       "day" : "2059-12-31",
-      "id" : "milestone-2",
-      "label" : "Mark 2"
+      "id" : "e2",
+      "label" : "Stop 2"
     },
     {
       "day" : "2070-01-01",
-      "id" : "milestone-3",
-      "label" : "Mark 3"
+      "id" : "e3",
+      "label" : "Stop 3"
     },
     {
       "day" : "2080-01-01",
-      "id" : "milestone-4",
-      "label" : "Mark 4"
+      "id" : "e4",
+      "label" : "Stop 4"
     },
     {
       "day" : "2100-01-01",
-      "id" : "milestone-5",
-      "label" : "Mark 5"
+      "id" : "e5",
+      "label" : "Stop 5"
+    },
+    {
+      "id" : "w1",
+      "label" : "Wish 1",
+      "status" : "wish"
+    },
+    {
+      "day" : "2075-06-01",
+      "id" : "w2",
+      "label" : "Wish 2",
+      "status" : "wish"
     }
   ],
   "nextIDs" : {
     "era" : 6,
-    "milestone" : 6,
+    "event" : 8,
+    "scenario" : 3,
     "series" : 2
   },
+  "scenarios" : [
+    {
+      "horizon" : "2085-01-01",
+      "id" : "p1",
+      "label" : "Path 1",
+      "status" : "open",
+      "via" : [
+        "w1",
+        "w2"
+      ]
+    },
+    {
+      "id" : "p2",
+      "label" : "Path 2",
+      "rejoin" : "e4",
+      "status" : "folded",
+      "via" : [
+        "w2"
+      ]
+    }
+  ],
   "series" : [
     {
       "bars" : [
@@ -675,5 +708,5 @@
       "label" : "Series 1"
     }
   ],
-  "version" : 6
+  "version" : 7
 }

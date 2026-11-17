@@ -53,13 +53,13 @@ struct IsoDataFileTests {
         #expect(throws: IsoDataError.tooNew(IsoDataFormat.version + 1)) { try IsoDataFile.read(Data(#"{ "version" : \#(IsoDataFormat.version + 1) }"#.utf8)) }
     }
 
-    /// 옛 판(디코더의 바닥 아래)은 열지 않는다 — 삶 · 모델 모양 모두 · 업그레이드 사슬이 먼저 올린다(읽기 전용 창도 열지 않는다).
-    @Test func 옛_판은_이름을_대고_거부() {
-        for v in 1..<IsoDataFormat.versions.decodeOldest {
-            #expect(throws: IsoDataError.tooOld(v)) { try IsoDataFile.read(Data(#"{ "version" : \#(v), "domain" : {} }"#.utf8)) }
-            #expect(throws: IsoDataError.tooOld(v)) { try IsoDataFile.read(Data(#"{ "version" : \#(v), "schema" : { "name" : "x" } }"#.utf8), allowingNewer: true) }
+    /// 옛 판은 지원하지 않는 판 — 삶 · 모델 모양 모두 열지 않는다(읽기 전용 창도 열지 않는다).
+    @Test func 옛_판은_지원하지_않는_판() {
+        for v in 1..<IsoDataFormat.version {
+            #expect(throws: IsoDataError.unsupportedVersion(v)) { try IsoDataFile.read(Data(#"{ "version" : \#(v), "domain" : {} }"#.utf8)) }
+            #expect(throws: IsoDataError.unsupportedVersion(v)) { try IsoDataFile.read(Data(#"{ "version" : \#(v), "schema" : { "name" : "x" } }"#.utf8), allowingNewer: true) }
         }
-        #expect(IsoDataError.tooOld(4).errorDescription?.contains("옛 판") == true)
+        #expect(IsoDataError.unsupportedVersion(4).errorDescription?.contains("지원하지 않는 판") == true)
     }
 
     @Test func 판이_없으면_거부() {
