@@ -5,7 +5,7 @@ import Foundation
 //
 // `.isodata` — 한 형식, 두 모양, 한 판(`IsoDataFormat.version`).
 //   삶 파일   : `domain` · `eras` · `series` · `events` · `scenarios` · `people` · `nextIDs` — 빌더가 고치는 파일. 이 모듈은 **통째로 나르기만** 한다(뜻은 빌더의 것).
-//   모델 파일 : `schema` + `datasets` — 데이터 창이 고치는 파일. 모르는 칸은 보존한다(`DataModelCoding` 읽기 규율 ③ · 물러난 칸 `migrated` · `sql` 포함).
+//   모델 파일 : `schema` + `datasets` — 데이터 창이 고치는 파일. 모르는 칸은 보존하고 알린다(`DataModelCoding` 읽기 규율 ③).
 // 두 모양 모두 `IsoDataFormat.version` 으로 읽고 쓴다 — 그보다 옛 판은 지원하지 않는 판으로 열지 않는다(`IsoDataError.unsupportedVersion`).
 // 판 번호 · 상한은 엔진 SDK 의 한 자리(`ProjectFormat.IsoDataFormat`) · 판 읽개는 `FormatStamp.version` — 빌더 코어의 읽는 손과 같은 값이다.
 
@@ -125,7 +125,7 @@ public struct DataModelFile: Equatable, Sendable {
     public var schema: DataSchema
     /// 이름 → 벌. 이름은 화면 픽스처의 상태 이름과 같은 낱말(`seed` · `normal` · `empty` · `long` …).
     public var datasets: [String: DataSet] = [:]
-    /// 맨 위의 모르는 칸 · 물러난 칸(`migrated` — 저장 백엔드의 생성 사본) — 읽은 그대로 되쓴다.
+    /// 맨 위의 모르는 칸 — 읽은 그대로 되쓴다.
     public var extra: [String: JSONValue] = [:]
 
     /// 읽을 때 잰 레코드 오류 — 파일에 쓰지 않는다. 창이 열 때 한 번 알린다(읽기 규율 ④).

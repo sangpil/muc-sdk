@@ -7,23 +7,17 @@ import Foundation
 //   ② 스키마가 먼저 선다 — 틀리면 경로를 대고 파일 전체를 거부(`SchemaValidation`).
 //   ③ 모르는 키는 **보존하고 알린다** — 그 객체의 꼴이 `extra` 로 들고 쓸 때 되쓴다(아는 하위 객체 안의 모르는 키는 그 키 아래 객체로) ·
 //      경로마다 한 줄(`DataModelFile.unknownKeys`). 모르는 낱말(형 · 상태 · 삭제 규칙 · 규칙 · 채우는 손)도 글자 그대로 든다(경고는 `SchemaValidation.warnings`).
-//      물러난 키(`retired` — 옛 판의 계약 칸)는 알리지 않고 그대로 들고 되쓴다(그 파일이 그 칸을 쓰던 시절의 값).
 //   ④ 레코드 오류는 파일을 거부하지 않는다 — 행 단위로 `issues` 에 싣는다(`RecordValidation`).
 // 쓰기: 빈 `doc` · 빈 `aliases` · 기본값인 칸은 키 자체를 쓰지 않는다(빈 칸은 없는 칸과 같다).
 
 enum DataModelCoding {
-
-    /// 물러난 키 — 이 SDK 의 계약이 아닌 칸(저장 백엔드의 생성 사본 · 그 이름 칸). 읽은 그대로 들고 되쓴다 · 알리지 않는다.
-    static let retiredTop: Set<String> = ["migrated"]
-    static let retiredEntity: Set<String> = ["sql"]
-    static let retiredField: Set<String> = ["sql"]
 
     // MARK: 읽기
 
     static func decode(_ top: [String: JSONValue]) throws -> DataModelFile {
         let notes = Notes()
         let r = Reader(top, path: "", notes: notes)
-        let extra = r.keep(["schema", "datasets"], retired: retiredTop)
+        let extra = r.keep(["schema", "datasets"])
         let schema = try decodeSchema(r.object("schema"))
         try SchemaValidation.require(schema)
         var file = DataModelFile(schema: schema)
@@ -74,8 +68,7 @@ enum DataModelCoding {
     }
 
     static func decodeEntity(_ r: Reader) throws -> DataEntity {
-        var extra = r.keep(["name", "label", "layer", "doc", "aliases", "uses", "swift", "uuidName", "status", "dropNote", "fields", "rules", "log"],
-                           retired: retiredEntity)
+        var extra = r.keep(["name", "label", "layer", "doc", "aliases", "uses", "swift", "uuidName", "status", "dropNote", "fields", "rules", "log"])
         var e = DataEntity(name: try r.string("name"))
         e.label = try r.optionalString("label") ?? ""
         e.layer = try r.optionalString("layer")
@@ -108,7 +101,7 @@ enum DataModelCoding {
     }
 
     static func decodeField(_ r: Reader) throws -> DataField {
-        var extra = r.keep(["name", "type", "optional", "default", "doc", "status", "dropNote", "swift", "renamedFrom", "fill"], retired: retiredField)
+        var extra = r.keep(["name", "type", "optional", "default", "doc", "status", "dropNote", "swift", "renamedFrom", "fill"])
         let name = try r.string("name")
         var typeExtra: JSONValue?
         var f = DataField(name: name, type: try decodeType(r.value("type"), path: r.at("type"), field: name, notes: r.notes, extra: &typeExtra))
@@ -411,12 +404,12 @@ struct Reader {
 
     func error(_ key: String, _ reason: String) -> IsoDataError { .invalid(path: at(key), reason: reason) }
 
-    /// 아는 키 밖의 칸을 돌려준다(읽기 규율 ③ — 보존) · 물러난 키가 아니면 자리마다 한 줄을 남긴다.
-    func keep(_ keys: Set<String>, retired: Set<String> = []) -> [String: JSONValue] {
+    /// 아는 키 밖의 칸을 돌려준다(읽기 규율 ③ — 보존) · 자리마다 한 줄을 남긴다.
+    func keep(_ keys: Set<String>) -> [String: JSONValue] {
         var out: [String: JSONValue] = [:]
         for k in fields.keys.sorted() where !keys.contains(k) {
             out[k] = fields[k]
-            if !retired.contains(k) { notes.add("\(at(k)) — 이 빌드가 모르는 키(더 새 판의 칸 · 보존해 되쓴다)") }
+            notes.add("\(at(k)) — 이 빌드가 모르는 키(더 새 판의 칸 · 보존해 되쓴다)")
         }
         return out
     }

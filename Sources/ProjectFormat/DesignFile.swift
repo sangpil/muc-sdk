@@ -5,7 +5,7 @@ import Foundation
 /// 여기는 그 값을 JSON 사전으로만 다룬다.
 ///
 /// 판 칸 `version`(맨 위 정수 · 선택 — 없으면 `DesignFormat.version` · `version(_:)`)으로 「이 SDK 보다 새 안」을 가른다. 칸: `screen` · `name` · `createdAt`(ISO 8601) · `confirmed` · `basedOn` · `style`(값 한 덩이) ·
-/// `components`(`ScreenComponent` 배열 · 없으면 키가 안 선다) · 옛 칸 `notes` · `overall`(읽기만).
+/// `components`(`ScreenComponent` 배열 · 없으면 키가 안 선다).
 public enum DesignFile {
     /// 파일 이름 꼬리.
     public static let suffix = ".design.json"

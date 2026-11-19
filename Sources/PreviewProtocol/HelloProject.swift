@@ -8,7 +8,7 @@ import ProjectFormat
 // 보존) — 프로젝트가 다듬을 때마다 바뀌는 칸을 필수 칸으로 얼리지 않는다. 자료 안의 꼴은 제 판을 싣는다(콜아웃 값의 칸 `v` — 판 칸만은 필수 ·
 // IA 문서 `IADoc.version`).
 //
-//   hello.ia            IA 낱말 — 앱이 실제로 여는 화면 · 진입 손의 낱말과 이름 · 탭마다 손 · 옛 낱말 → IA id · 앱에 뷰가 아직 없는 화면
+//   hello.ia            IA 낱말 — 앱이 실제로 여는 화면 · 진입 손의 낱말과 이름 · 탭마다 손 · 앱에 뷰가 아직 없는 화면
 //   hello.frames        기기 틀 — 틀의 낱말 · 폼팩터 · 크기 · 코너 · 안전영역 · 편집기 기기 틀의 씬 띠
 //   hello.tokensBuilt   빌드된 표 요약 — 호스트(와 같은 소스로 빌드되는 앱)가 굳혀 든 토큰 값. 엔진이 읽은 정본과 다르면 「재빌드 필요」(`BuiltTokens.differs`)
 //   screens[].fixtureColorUsage   픽스처가 데이터로 고른 색 역할의 수(`ScreenInfo`)
@@ -31,8 +31,6 @@ public struct IAInfo: Codable, Equatable, Sendable {
     public var entryWords: [EntryWord] = []
     /// 탭(IA id) → 그 탭에서 앱이 실제로 세우는 손의 낱말.
     public var entryHands: [String: [String]] = [:]
-    /// 옛 낱말 → IA id.
-    public var aliases: [String: String] = [:]
     /// 앱에 뷰가 아직 없는 화면(IA id · 이름 차례).
     public var planned: [String] = []
     /// 이 SDK 가 모르는 칸.
@@ -40,28 +38,27 @@ public struct IAInfo: Codable, Equatable, Sendable {
 
     /// 빈 값 — 칸은 하나씩 채운다.
     public init() {}
-    public init(appScreens: [String], entryWords: [EntryWord], entryHands: [String: [String]], aliases: [String: String], planned: [String]) {
-        self.appScreens = appScreens; self.entryWords = entryWords; self.entryHands = entryHands; self.aliases = aliases; self.planned = planned
+    public init(appScreens: [String], entryWords: [EntryWord], entryHands: [String: [String]], planned: [String]) {
+        self.appScreens = appScreens; self.entryWords = entryWords; self.entryHands = entryHands; self.planned = planned
     }
 
     /// 진입 손의 낱말(차례 그대로).
     public var controls: [String] { entryWords.map(\.control) }
 
-    enum CodingKeys: String, CodingKey, CaseIterable { case appScreens, entryWords, entryHands, aliases, planned }
+    enum CodingKeys: String, CodingKey, CaseIterable { case appScreens, entryWords, entryHands, planned }
     static let known = Set(CodingKeys.allCases.map(\.rawValue))
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         appScreens = try c.decodeIfPresent([String].self, forKey: .appScreens) ?? []
         entryWords = try c.decodeIfPresent([EntryWord].self, forKey: .entryWords) ?? []
         entryHands = try c.decodeIfPresent([String: [String]].self, forKey: .entryHands) ?? [:]
-        aliases = try c.decodeIfPresent([String: String].self, forKey: .aliases) ?? [:]
         planned = try c.decodeIfPresent([String].self, forKey: .planned) ?? []
         extra = try ExtraKeys.decode(from: decoder, known: Self.known)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(appScreens, forKey: .appScreens); try c.encode(entryWords, forKey: .entryWords); try c.encode(entryHands, forKey: .entryHands)
-        try c.encode(aliases, forKey: .aliases); try c.encode(planned, forKey: .planned)
+        try c.encode(planned, forKey: .planned)
         try ExtraKeys.encode(extra, to: encoder, known: Self.known)
     }
 }

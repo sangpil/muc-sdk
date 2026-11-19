@@ -18,7 +18,7 @@ import ProjectFormat
 //            따라온다(`Framing.swift`) — 공유 메모리면 칸 번호만 실린다.
 //   시각   : 전부 `PreviewClock`(CLOCK_UPTIME_RAW ns) — 같은 기계의 두 프로세스가 같은 시계를 읽으므로 구간을 프로세스 넘어 뺄 수 있다.
 
-// 판(`PreviewProtocolVersion`) · 맞대기(`ProtocolJudge` — 엔진이 판정자 · 지금 판과 바닥까지의 옛 판을 받는다)는 `Negotiation.swift`.
+// 판(`PreviewProtocolVersion`) · 맞대기(`ProtocolJudge` — 엔진이 판정자 · 같은 판만 받는다)는 `Negotiation.swift`.
 
 public struct Size: Codable, Hashable, Sendable {
     public var w: Double, h: Double

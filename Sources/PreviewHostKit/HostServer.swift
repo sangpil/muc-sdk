@@ -283,7 +283,7 @@ final class HostServer {
                                  texts: drawn?.texts, styles: drawn?.styles,
                                  ms: PreviewClock.ms(t0, t1), payload: payload,
                                  timing: HostTiming(recv: recv, start: start, rendered: rendered, sent: PreviewClock.now()))
-        _ = try withExtendedLifetime(f) { try conn.send(.frame(header), payload: body) }
+        try withExtendedLifetime(f) { try conn.send(.frame(header), payload: body) }
     }
 
     /// 창 모드의 답 — 그 바퀴의 커밋이 끝난 뒤 ack.
