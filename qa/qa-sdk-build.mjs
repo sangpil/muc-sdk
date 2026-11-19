@@ -26,7 +26,7 @@
 //      기준선 매니페스트(`dump-package`)의 제품 · 트레이트 이름을 지금 매니페스트와 맞대 사라진 이름을 센다(도구 · 선언 목록이 못 보는 자리) ·
 //      프로토콜 판(`PreviewProtocolVersion.current`)을 기준선의 것과 맞댄다(다르면 와이어 호환이 깨진다 — 엔진은 같은 판의 호스트만 받는다).
 //      넷 중 하나라도 있으면 빨강 — 주 판을 올리는 변경이면 `qa/api-major.txt` 에 **지금 판 글자**와 까닭 한 줄이
-//      있을 때만 통과(판이 바뀌면 지난 선언은 무효 — 판 글자가 없는 선언 파일은 빨강).
+//      있을 때만 통과(판이 바뀌면 지난 선언은 무효 — 판 글자가 없는 선언 파일은 빨강 · 선언 판은 N.0.0 꼴이고 N 이 기준선 꼬리표의 주 번호보다 커야 한다 — 부 판 글자는 빨강).
 //      기본 구현 없는 프로토콜 요구를 더한 것도 이 도구가 깨짐으로 센다. git 밖 · 기준 꼬리표 없음이면 건너뛴다(그 까닭을 적는다). `SDK_API_LIST=1` 이면 깨짐을 줄마다 찍는다.
 //   ⑧ **공개 이름 = §2 표** — `Sources/**` 의 맨 위 `public` 타입 이름(struct · enum · class · protocol · typealias · actor) 집합 = `Docs/SDK.md` §2 표 첫 칸의 백틱 이름
 //      (점 · 괄호 없는 이름) 집합(차집합 0 양방향) · 「종류를 얼린 이름」 표의 이름마다 선언 종류가 표와 같다(소비자의 범위 import 가 기댄다).
@@ -216,7 +216,8 @@ console.log(`  ${selfBad || left.length ? "✗" : "✓"} ⑥ 시험이 남긴 �
 // ⑦ 공개 표면 깨짐 진단 — 진단 도구 + 보조 점검(소스의 public 선언 목록 ⟂ 직전 꼬리표 — `public → package` 강등 · 빼기를 도구가 못 보는 자리)
 // 주 판 선언 — `qa/api-major.txt` 에 지금 판 글자(SDKVersion)가 적혀 있을 때만 유효(판이 바뀌면 지난 선언은 무효)
 const majorNote = existsSync(join(QA, "api-major.txt")) ? readFileSync(join(QA, "api-major.txt"), "utf8") : "";
-const majorDeclared = !!version && majorNote.split(/\s+/).includes(version);
+// 선언은 주 판 글자(N.0.0)이고 그 N 이 기준선 꼬리표의 주 번호보다 클 때만 유효하다(기준선을 고른 뒤 잰다 — 부 판 글자를 적기만 해서 깨짐을 통과시키지 못하게)
+let majorDeclared = !!version && majorNote.split(/\s+/).includes(version);
 /// 소스 한 벌의 public 선언 — `<둘레 타입>.<종류> <이름>(<레이블>)` 집합(줄 단위 · 둘레는 중괄호 깊이로 · 주석 · 글자 리터럴은 걷고 센다).
 const publicDecls = (files) => {
   const out = new Set();
@@ -259,6 +260,13 @@ let diagWord;
 let declWord = "";
 let manifestWord = "";
 const lastTag = inRepo ? (spawnSync("git", ["-C", ROOT, ...baselineArgs(headTags, version)], { encoding: "utf8" }).stdout || "").trim() : "";
+if (majorDeclared && lastTag) {
+  const m = /^(\d+)\.0\.0$/.exec(version), base = Number((/^(\d+)\./.exec(lastTag) || [])[1]);
+  if (!m || !(Number(m[1]) > base)) {
+    failures.push(`⑦ qa/api-major.txt 의 선언 ${version} 은 주 판이 아니다 — 주 판 선언은 N.0.0 꼴이고 N 이 기준선 ${lastTag} 의 주 번호 ${base} 보다 커야 한다`);
+    majorDeclared = false;
+  }
+}
 if (!lastTag) diagWord = "기준 꼬리표 없음(git 밖 · 첫 판) — 건너뜀";
 else {
   // 진단 도구는 `-j` 를 받지 않는다 — JOBS 를 넘기지 않는다
@@ -309,7 +317,7 @@ else {
   }
   manifestWord += ` · 프로토콜 판 ${baseProtocol || "?"} → ${nowProtocol || "?"}`;
 }
-if (majorNote && !majorDeclared) failures.push(`⑦ qa/api-major.txt 에 지금 판 글자 ${version} 가 없다 — 지난 판의 주 판 선언이다(지우거나 이 판의 까닭으로 고친다)`);
+if (majorNote && !majorNote.split(/\s+/).includes(version)) failures.push(`⑦ qa/api-major.txt 에 지금 판 글자 ${version} 가 없다 — 지난 판의 주 판 선언이다(지우거나 이 판의 까닭으로 고친다)`);
 console.log(`  ${failures.some((f) => f.startsWith("⑦")) ? "✗" : "✓"} ⑦ 공개 표면 깨짐 진단 — ${diagWord}${declWord}${manifestWord}`);
 
 // ⑧ 공개 이름 = SDK.md §2 표 · 종류를 얼린 이름
