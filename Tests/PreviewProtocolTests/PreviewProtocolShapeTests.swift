@@ -238,7 +238,8 @@ import Testing
         }
         #expect(last.digest == mark, """
             메시지 꼴이 판 \(now) 의 지문과 다르다 — 판을 올리고(`PreviewProtocolVersion.current = \(now + 1)`) \
-            protocol-shapes.txt 끝에 지문 한 줄을 더하라: `\(now + 1) \(mark)`
+            protocol-shapes.txt 끝에 지문 한 줄을 더하라: `\(now + 1) \(mark)` · 프로토콜 판 올림은 와이어 호환을 깨므로 주 판이다 — \
+            `qa/api-major.txt` 에 그 SDK 판 글자와 까닭 한 줄(Docs/SDK.md §5)
             지금 꼴:
             \(shape)
             """)

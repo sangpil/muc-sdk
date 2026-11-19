@@ -23,8 +23,9 @@
 //      기준선 = HEAD 가 지금 판의 꼬리표 그 자체면 그 앞 꼬리표 · 아니면 HEAD 에서 닿는 가장 가까운 꼬리표(지금 판의 꼬리표 포함 — 꼬리표 뒤 개발 커밋은 그 꼬리표와 맞댄다)
 //      · 1.x 의 꼬리표 사슬은 1.0.0 에서 시작하므로 1.0.0 표면이 바닥이다 · 고르는 손은 갈래마다 자체 시험이 붙든다.
 //      보조 점검 — 소스의 public 선언 목록(멤버 포함 · `<둘레>.<종류> <이름>(<레이블>)`)을 기준선의 것과 맞대 사라진 선언을 센다(도구가 못 보는 `public → package` 강등) ·
-//      기준선 매니페스트(`dump-package`)의 제품 · 트레이트 이름을 지금 매니페스트와 맞대 사라진 이름을 센다(도구 · 선언 목록이 못 보는 자리).
-//      셋 중 하나라도 있으면 빨강 — 주 판을 올리는 변경이면 `qa/api-major.txt` 에 **지금 판 글자**와 까닭 한 줄이
+//      기준선 매니페스트(`dump-package`)의 제품 · 트레이트 이름을 지금 매니페스트와 맞대 사라진 이름을 센다(도구 · 선언 목록이 못 보는 자리) ·
+//      프로토콜 판(`PreviewProtocolVersion.current`)을 기준선의 것과 맞댄다(다르면 와이어 호환이 깨진다 — 엔진은 같은 판의 호스트만 받는다).
+//      넷 중 하나라도 있으면 빨강 — 주 판을 올리는 변경이면 `qa/api-major.txt` 에 **지금 판 글자**와 까닭 한 줄이
 //      있을 때만 통과(판이 바뀌면 지난 선언은 무효 — 판 글자가 없는 선언 파일은 빨강).
 //      기본 구현 없는 프로토콜 요구를 더한 것도 이 도구가 깨짐으로 센다. git 밖 · 기준 꼬리표 없음이면 건너뛴다(그 까닭을 적는다). `SDK_API_LIST=1` 이면 깨짐을 줄마다 찍는다.
 //   ⑧ **공개 이름 = §2 표** — `Sources/**` 의 맨 위 `public` 타입 이름(struct · enum · class · protocol · typealias · actor) 집합 = `Docs/SDK.md` §2 표 첫 칸의 백틱 이름
@@ -297,6 +298,16 @@ else {
     failures.push(`⑦ 기준선 ${lastTag} 의 제품 · 트레이트 ${goneNames.length} 이 사라졌다(빼기 · 이름 바꿈 — 주 판이면 qa/api-major.txt 에 지금 판 글자):\n    ${goneNames.join("\n    ")}`);
   }
   manifestWord = ` · 제품 · 트레이트 ${baseNames.size} → ${nowNames.size}(사라짐 ${goneNames.length})`;
+  // 보조 점검 셋 — 프로토콜 판(`PreviewProtocolVersion.current`)이 기준선과 다르면 와이어 호환이 깨진다(엔진은 같은 판의 호스트만 받는다 — 진단 도구 · 선언 목록이 못 본다)
+  const negotiation = "Sources/PreviewProtocol/Negotiation.swift";
+  const protocolOf = (t) => Number((/enum PreviewProtocolVersion[\s\S]*?static let current = (\d+)/.exec(t) || [])[1] || 0);
+  const baseProtocol = protocolOf(spawnSync("git", ["-C", ROOT, "show", `${lastTag}:${negotiation}`], { encoding: "utf8" }).stdout || "");
+  const nowProtocol = protocolOf(readFileSync(join(ROOT, negotiation), "utf8"));
+  if (!baseProtocol || !nowProtocol) failures.push(`⑦ 프로토콜 판을 못 읽었다(기준선 ${lastTag} ${baseProtocol || "?"} · 지금 ${nowProtocol || "?"} — 보조 점검이 거짓 초록이 된다)`);
+  else if (baseProtocol !== nowProtocol && !majorDeclared) {
+    failures.push(`⑦ 프로토콜 판이 기준선 ${lastTag} 의 ${baseProtocol} 에서 ${nowProtocol} 로 바뀌었다 — 엔진은 같은 판의 호스트만 받아 와이어 호환이 깨진다(주 판 — qa/api-major.txt 에 지금 판 글자 ${version} 와 까닭 한 줄)`);
+  }
+  manifestWord += ` · 프로토콜 판 ${baseProtocol || "?"} → ${nowProtocol || "?"}`;
 }
 if (majorNote && !majorDeclared) failures.push(`⑦ qa/api-major.txt 에 지금 판 글자 ${version} 가 없다 — 지난 판의 주 판 선언이다(지우거나 이 판의 까닭으로 고친다)`);
 console.log(`  ${failures.some((f) => f.startsWith("⑦")) ? "✗" : "✓"} ⑦ 공개 표면 깨짐 진단 — ${diagWord}${declWord}${manifestWord}`);
