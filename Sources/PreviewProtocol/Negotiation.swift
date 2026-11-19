@@ -8,7 +8,7 @@ import ProjectFormat
 //            (`PreviewProtocolTests/protocol-shapes.txt` — 꼴이 바뀌었는데 판이 그대로면 빨강).
 //   판정   : **엔진이 판정자**다. 호스트가 먼저 hello 를 보내고, 엔진은 그 첫 줄에서 몸을 풀기 전에 판(`protocolVersion`)만 읽어(`FormatStamp`) 가른다 —
 //            같은 판만 받고, 그 밖(새 판 · 옛 판 · 판 없음)은 연결을 닫고 사람 말 한 줄(`ProtocolMismatch`). 줄은 늘 지금 판의 꼴(`Message` 의 Codable)이다.
-//   호스트 : 늘 제 판의 꼴로 말한다. 엔진 hello 의 판이 제 판보다 옛것이면 거절하고 · 같거나 새것이면 받는다(`hostAccepts`).
+//   호스트 : 늘 제 판의 꼴로 말한다. 엔진 hello 의 판이 제 판과 같을 때만 받는다(`hostAccepts` — 판이 다른 호스트는 엔진이 먼저 끊으므로 방어선이다).
 //   불변   : hello 의 `type` · `protocolVersion` 두 칸은 판이 올라도 이름 · 자리(줄의 맨 위 객체 · 정수)가 그대로다 — 판 읽개가 이 둘만 본다.
 //   기본값 : 판을 공개 손의 기본 인자로 두지 않는다(`Hello.protocolVersion` · `hostAccepts(host:)` 는 필수 인자). 비탄력 모듈의 공개 손의 기본 인자는 부르는 쪽
 //            목적 코드에 들어가고 부르는 파일의 소스엔 판의 이름이 없어 증분 빌드의 의존에 안 잡힌다 — 판을 올려도 그 파일은 다시 지어지지 않고 옛 판을 지닌다
@@ -33,7 +33,7 @@ public enum ProtocolMismatch: Error, Equatable, Sendable, CustomStringConvertibl
         case .hostNewer(let h, let e):
             "미리보기 호스트가 이 빌더보다 새 판입니다 — 빌더를 업데이트하세요 (프로토콜 판 호스트 \(h) · 빌더 \(e))"
         case .hostTooOld(let h, let e):
-            "미리보기 호스트가 이 빌더보다 옛 판입니다 — 프로젝트를 pull 하고 다시 여세요 (프로토콜 판 호스트 \(h.map(String.init) ?? "없음") · 빌더 \(e))"
+            "미리보기 호스트가 이 빌더보다 옛 판입니다 — 프로젝트의 SDK 판을 올린 뒤 다시 여세요 (프로토콜 판 호스트 \(h.map(String.init) ?? "없음") · 빌더 \(e))"
         }
     }
 }
@@ -65,7 +65,7 @@ public struct ProtocolJudge: Sendable {
         if let mismatch = judge(host: FormatStamp.integer("protocolVersion", in: line)) { throw mismatch }
     }
 
-    /// 호스트 쪽 규칙 — 엔진 hello 의 판이 호스트의 판과 같거나 새것이면 받는다(엔진이 판정자 — 판이 다른 호스트는 엔진이 이미 끊는다).
-    /// 엔진이 옛 판이면 거절한다(그 엔진은 이 호스트의 꼴을 모른다 — 빌더를 올려야 한다).
-    public static func hostAccepts(engine: Int, host: Int) -> Bool { engine >= host }
+    /// 호스트 쪽 규칙 — 엔진 hello 의 판이 호스트의 판과 같을 때만 받는다. 거절하는 쪽은 엔진(판정자)이다 — 판이 다른 호스트는 엔진이 hello 를 보내기 전에 끊으므로
+    /// 이 규칙은 판정자 없는 상대에 대한 방어선이다(그 사람 말은 `ProtocolJudge(version: <엔진의 판>).judge(host: <호스트의 판>)`).
+    public static func hostAccepts(engine: Int, host: Int) -> Bool { engine == host }
 }

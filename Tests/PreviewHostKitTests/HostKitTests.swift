@@ -51,10 +51,11 @@ import Testing
         p.hide()
     }
 
-    /// 엔진 hello 의 판 — 같거나 새 판이면 받는다(새 엔진은 호스트의 판으로 말한다 · 엔진이 판정자) · 옛 판이면 사람 말을 오류로 보내고 끊는다.
-    @MainActor @Test func hostRefusesAnOlderEngineAndTakesANewerOne() async throws {
+    /// 엔진 hello 의 판 — 같은 판이면 받는다 · 다른 판이면(판정을 모르는 상대 — 거절하는 쪽은 엔진이라 방어선) 사람 말을 오류로 보내고 끊는다.
+    @MainActor @Test func hostTakesOnlyAnEngineOfItsVersion() async throws {
         let now = PreviewProtocolVersion.current
-        for (engine, refused) in [(now - 1, true), (now, false), (now + 1, false)] {
+        let older = ProtocolMismatch.hostNewer(host: now, engine: now - 1), newer = ProtocolMismatch.hostTooOld(host: now, engine: now + 1)
+        for (engine, refused) in [(now - 1, Optional(older)), (now, nil), (now + 1, Optional(newer))] {
             let (a, b) = try UnixSocket.pair()
             let server = HostServer(screens: [], onTokensChanged: {})
             server.conn = Connection(fd: a)
@@ -63,9 +64,9 @@ import Testing
             engineSide.start(name: "test.engine", onInbound: { got.put($0.message) }, onClose: { _ in got.close() })
             _ = server.mailbox.push(.hello(Hello(role: .engine, protocolVersion: engine, pid: 1, name: "e")), recv: 0)
             await server.drain()
-            if refused {
-                #expect(got.waitClosed(), "옛 엔진 \(engine) — 끊었다")
-                #expect(got.messages == [.error(ErrorMessage(seq: nil, message: ProtocolMismatch.hostNewer(host: now, engine: engine).description))])
+            if let refused {
+                #expect(got.waitClosed(), "다른 판 엔진 \(engine) — 끊었다")
+                #expect(got.messages == [.error(ErrorMessage(seq: nil, message: refused.description))])
             } else {
                 #expect(!got.waitClosed(timeout: 0.1), "엔진 \(engine) — 받았다")
                 #expect(got.messages.isEmpty)

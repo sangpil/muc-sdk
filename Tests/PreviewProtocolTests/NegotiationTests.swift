@@ -69,10 +69,10 @@ import Testing
         #expect(try (try Framing.header(hello)).withUnsafeBytes { try plain.feed($0) }.map(\.message) == [hello])
     }
 
-    /// 호스트 쪽 — 엔진이 같거나 새 판이면 받는다(판이 다른 호스트는 엔진이 끊는다) · 옛 판이면 거절한다.
-    @Test func hostAcceptsTheSameOrANewerEngine() {
+    /// 호스트 쪽 — 엔진이 같은 판일 때만 받는다(거절하는 쪽은 엔진 — 이 규칙은 방어선).
+    @Test func hostAcceptsOnlyTheSameEngine() {
         #expect(ProtocolJudge.hostAccepts(engine: 3, host: 3))
-        #expect(ProtocolJudge.hostAccepts(engine: 4, host: 3))
+        #expect(!ProtocolJudge.hostAccepts(engine: 4, host: 3))
         #expect(!ProtocolJudge.hostAccepts(engine: 2, host: 3))
         #expect(ProtocolJudge.hostAccepts(engine: Self.now, host: Self.now))
     }
@@ -82,7 +82,7 @@ import Testing
         #expect(ProtocolMismatch.hostNewer(host: 2, engine: 1).description
                 == "미리보기 호스트가 이 빌더보다 새 판입니다 — 빌더를 업데이트하세요 (프로토콜 판 호스트 2 · 빌더 1)")
         #expect(ProtocolMismatch.hostTooOld(host: 0, engine: 2).description
-                == "미리보기 호스트가 이 빌더보다 옛 판입니다 — 프로젝트를 pull 하고 다시 여세요 (프로토콜 판 호스트 0 · 빌더 2)")
+                == "미리보기 호스트가 이 빌더보다 옛 판입니다 — 프로젝트의 SDK 판을 올린 뒤 다시 여세요 (프로토콜 판 호스트 0 · 빌더 2)")
         #expect(!ProtocolMismatch.hostTooOld(host: nil, engine: 1).description.contains("\n"))
     }
 }

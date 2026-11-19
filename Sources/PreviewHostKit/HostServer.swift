@@ -153,9 +153,11 @@ final class HostServer {
     private func handle(_ m: Message, recv: UInt64, start: UInt64) async throws {
         switch m {
         case .hello(let h):
-            // 판 — 엔진이 판정자다(새 엔진은 이 호스트의 판으로 말한다). 엔진이 옛 판이면 이 꼴을 모른다 — 사람 말을 오류로 보내고 끊는다(엔진의 떠남과 같은 길로 끝난다)
+            // 판 — 엔진이 판정자다(판이 다른 호스트는 엔진이 먼저 끊는다). 그래도 판이 다른 엔진 hello 가 오면 사람 말을 오류로 보내고 끊는다(엔진의 떠남과 같은 길로 끝난다)
             guard ProtocolJudge.hostAccepts(engine: h.protocolVersion, host: PreviewProtocolVersion.current) else {
-                let why = ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: h.protocolVersion).description
+                let mismatch = ProtocolJudge(version: h.protocolVersion).judge(host: PreviewProtocolVersion.current)
+                    ?? .hostTooOld(host: PreviewProtocolVersion.current, engine: h.protocolVersion)
+                let why = mismatch.description
                 FileHandle.standardError.write(Data("\(ProcessInfo.processInfo.processName): \(why)\n".utf8))
                 _ = try? conn.send(.error(ErrorMessage(seq: nil, message: why)))
                 conn.close()
