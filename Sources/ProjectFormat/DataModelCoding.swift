@@ -409,7 +409,7 @@ struct Reader {
         var out: [String: JSONValue] = [:]
         for k in fields.keys.sorted() where !keys.contains(k) {
             out[k] = fields[k]
-            notes.add("\(at(k)) — 이 빌드가 모르는 키(더 새 판의 칸 · 보존해 되쓴다)")
+            notes.add("\(at(k)) — 이 판의 칸이 아니다 · 보존해 되쓴다")
         }
         return out
     }

@@ -16,7 +16,7 @@ import Testing
         return try! JSONSerialization.data(withJSONObject: top)
     }
 
-    /// 엔진은 제 판의 호스트만 받는다 — 새 판은 빌더를 올리고 · 옛 판 · 판 없음은 프로젝트를 받아 온다.
+    /// 엔진은 제 판의 호스트만 받는다 — 새 판은 빌더를 올리고 · 옛 판 · 판 없음은 프로젝트의 SDK 판을 올린다.
     @Test func judgeTakesOnlyItsOwnVersion() {
         let e = ProtocolJudge.engine, now = Self.now
         #expect(e.version == now)

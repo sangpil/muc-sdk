@@ -89,7 +89,7 @@ extension FieldKind: Codable {
 
 /// 요소가 쓰는 시스템 효과 하나 — 열린 낱말(`ScaleKind` 와 같은 꼴: 아는 낱말 `known` · 모르는 낱말도 글자 그대로 들고 그대로 쓴다).
 /// **사실의 선언**이다 — 「이 요소는 이 효과로 그려진다」. 그 효과를 어느 렌더가 그리지 못하는가는 읽는 쪽(엔진)의 판단이라 이 낱말에 없다.
-/// 닫힌 열거로 두지 않는 까닭 — 새 낱말이 와도 서술이 읽히고(옛 SDK 로 지은 엔진이 새 호스트의 서술을 거절하지 않는다) 갈래를 더해도 소비자의 전수 `switch` 가 깨지지 않는다.
+/// 닫힌 열거로 두지 않는 까닭 — 갈래를 더해도 소비자의 전수 `switch` 가 깨지지 않는다(아는 낱말을 더하면 와이어 지문이 바뀌어 프로토콜 판이 오른다 — 주 판).
 public struct StyleEffect: RawRepresentable, Codable, Hashable, Sendable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }

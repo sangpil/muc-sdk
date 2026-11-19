@@ -25,7 +25,7 @@ public enum PreviewProtocolVersion {
 public enum ProtocolMismatch: Error, Equatable, Sendable, CustomStringConvertible {
     /// 호스트가 엔진보다 새 판 — 빌더(엔진)를 올려야 한다.
     case hostNewer(host: Int, engine: Int)
-    /// 호스트가 엔진보다 옛 판(또는 판을 못 읽음) — 프로젝트(호스트를 짓는 SDK)를 받아 와야 한다.
+    /// 호스트가 엔진보다 옛 판(또는 판을 못 읽음) — 프로젝트의 SDK 판(호스트를 짓는 SDK)을 올려야 한다.
     case hostTooOld(host: Int?, engine: Int)
 
     public var description: String {
