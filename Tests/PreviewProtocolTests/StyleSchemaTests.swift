@@ -221,9 +221,9 @@ import Testing
         #expect(PreviewProtocolVersion.current >= 4, "문구 목록은 프로토콜 판 4 부터의 꼴")
         let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
                                         screens: [ScreenInfo(name: "home", states: ["n"], style: Self.texted)]))
-        let greeting = try ProtocolDialect.current.encode(hello)
-        let engine3 = ProtocolJudge(version: 3, dialects: [])
-        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 3), "판 3 엔진은 판 4 이상 호스트를 거절한다") { try engine3.dialect(greeting: greeting) }
+        let greeting = try Framing.header(hello)
+        let engine3 = ProtocolJudge(version: 3)
+        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 3), "판 3 엔진은 판 4 이상 호스트를 거절한다") { try engine3.check(greeting: greeting) }
         // 읽기 방어 — 서술 디코더는 모르는 키를 넘긴다(판정을 거친 상대의 뜻밖의 칸을 잃지 않고 읽을 뿐 · 판을 올리지 않아도 된다는 뜻이 아니다)
         var wire = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(Self.texted)) as? [String: Any])
         wire["future"] = ["shape": 1]
@@ -371,9 +371,9 @@ import Testing
         #expect(PreviewProtocolVersion.current >= 5, "자리 목록은 프로토콜 판 5 부터의 꼴")
         let hello = Message.hello(Hello(role: .host, protocolVersion: PreviewProtocolVersion.current, pid: 1, name: "h",
                                         screens: [ScreenInfo(name: "home", states: ["n"], style: Self.slotted)]))
-        let greeting = try ProtocolDialect.current.encode(hello)
-        let engine4 = ProtocolJudge(version: 4, dialects: [])
-        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 4), "판 4 엔진은 판 5 이상의 호스트를 거절한다") { try engine4.dialect(greeting: greeting) }
+        let greeting = try Framing.header(hello)
+        let engine4 = ProtocolJudge(version: 4)
+        #expect(throws: ProtocolMismatch.hostNewer(host: PreviewProtocolVersion.current, engine: 4), "판 4 엔진은 판 5 이상의 호스트를 거절한다") { try engine4.check(greeting: greeting) }
 
         let fromNewEngine = try Self.slotted.normalize(["potPicture": "isomodel:fern"])
         #expect(try Self.texted.normalize(["potTitle": "화분"].merging(fromNewEngine) { a, _ in a })["potPicture"] == nil, "자리 값은 서술 밖 칸으로 빠진다")

@@ -8,7 +8,7 @@ import Testing
 // 꼴 변경 게이트 — 메시지 꼴(종류 · 칸 키 · 값의 꼴 · 낱말)이 바뀌었는데 판이 그대로면 빨강. 정본 `Docs/SDK.md` §5.
 // 이 시험은 상수 자체(꼴 · 지문)만 잰다 — 정본 문서(이 패키지의 `Docs/SDK.md`)의 판 글자 맞대기는 `ProtocolDocumentTests`.
 //
-//   지문   : 메시지 종류마다 칸을 **빠짐없이** 채운 표본을 지금 판의 줄로 써서(`ProtocolDialect.current`) 키 경로와 값의 꼴(글자 · 수 · 참거짓 · JSON 값)을 모으고,
+//   지문   : 메시지 종류마다 칸을 **빠짐없이** 채운 표본을 지금 판의 줄(`Message` 의 Codable)로 써서 키 경로와 값의 꼴(글자 · 수 · 참거짓 · JSON 값)을 모으고,
 //            키마다 **선택인가**(그 키를 줄에서 걷어도 지금 판의 디코더가 읽는가 — `optional <경로>` 줄)를 더하고,
 //            낱말 목록(칸 종류 · hello 의 쪽 · 공유 메모리 종류 · 구성 칸 종류 · 프레임 형식 — 열린 꼴은 아는 낱말 `known`)을 더한 서술 한 벌의 SHA-256 앞 16자.
 //            선택 칸을 더하거나 필수 칸을 선택으로 바꿔도 지문이 바뀐다(선택 칸도 판을 올린다).
@@ -34,7 +34,7 @@ import Testing
     static let style = DrawnStyle(id: "a", background: "#ffffff", radius: 1)
     static let shared = SharedMemoryInfo(kind: .posix, name: "/m", slotBytes: 1, slots: 3)
     static let ia = IAInfo(appScreens: ["s"], entryWords: [.init(control: "plus", label: "＋")], entryHands: ["s": ["plus"]],
-                           aliases: ["old": "s"], planned: ["p"])
+                           planned: ["p"])
     static let frame = DeviceFrameInfo(id: "phone", platform: "iphone", name: "Phone", symbol: "iphone", size: Size(w: 1, h: 2), corner: 1,
                                        safeTop: 1, safeBottom: 1, scene: .init(name: "Phone", bands: Insets(top: 1)))
     static let built = BuiltTokens(scales: ["space": [.init(name: "md", pt: 1, doc: "d", apple: "a")]], layout: [.init(name: "gap-wide", pt: 1, doc: "d", apple: "a")],
@@ -100,13 +100,13 @@ import Testing
     static func shape() throws -> String {
         var lines = Set<String>()
         for m in samples {
-            guard let top = try JSONSerialization.jsonObject(with: ProtocolDialect.current.encode(m)) as? [String: Any] else { throw ShapeError.notObject }
+            guard let top = try JSONSerialization.jsonObject(with: JSONEncoder().encode(m)) as? [String: Any] else { throw ShapeError.notObject }
             for (k, v) in top where k != "type" { walk(v, "\(m.type).\(k)", into: &lines) }
             // 선택 칸 — 그 키를 (배열 안이면 모든 원소에서) 걷어도 읽히면 선택
             for path in keyPaths(top, []) where path != ["type"] {
                 let cut = removing(top, path[...])
                 let data = try JSONSerialization.data(withJSONObject: cut)
-                if (try? ProtocolDialect.current.decode(data)) != nil { lines.insert("optional \(m.type).\(path.joined(separator: "."))") }
+                if (try? JSONDecoder().decode(Message.self, from: data)) != nil { lines.insert("optional \(m.type).\(path.joined(separator: "."))") }
             }
         }
         // 콜아웃 값 — 같은 셈(키 경로 · 값의 꼴 · 선택 칸)
@@ -237,8 +237,9 @@ import Testing
             return
         }
         #expect(last.digest == mark, """
-            메시지 꼴이 판 \(now) 의 지문과 다르다 — 판을 올리고(`PreviewProtocolVersion.current = \(now + 1)` · 엔진이 판 \(now) 을 받는 말을 \
-            `PreviewProtocolVersion.previous` 에) protocol-shapes.txt 끝에 지문 한 줄을 더하라: `\(now + 1) \(mark)`
+            메시지 꼴이 판 \(now) 의 지문과 다르다 — 판을 올리고(`PreviewProtocolVersion.current = \(now + 1)`) \
+            protocol-shapes.txt 끝에 지문 한 줄을 더하라: `\(now + 1) \(mark)` · 프로토콜 판 올림은 와이어 호환을 깨므로 주 판이다 — \
+            `qa/api-major.txt` 에 그 SDK 판 글자와 까닭 한 줄(Docs/SDK.md §5)
             지금 꼴:
             \(shape)
             """)

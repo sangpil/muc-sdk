@@ -4,14 +4,14 @@ import PreviewProtocol
 import ProjectFormat
 import Testing
 
-// hello 의 프로젝트 데이터 — 칸이 왕복하고 · 없으면 nil(옛 호스트) · 판 1 의 말로 내리면 새 칸이 걷히고 판 1 의 줄은 그대로 읽힌다 ·
+// hello 의 프로젝트 데이터 — 칸이 왕복하고 · 없으면 nil ·
 // 프로젝트 데이터 꼴 안의 칸은 모두 선택(빠지면 기본값 · 모르는 칸은 보존) · 빌드된 표 요약의 맞대기 · 구성 서술의 꼴 재기(모르는 종류는 재지 않는다) ·
 // 콜아웃 푼 값의 층 자료 왕복(판 칸 `v` — 없으면 1).
 
 @Suite struct HelloProjectTests {
     static let schema = StyleSchema(screen: "s", elements: [], fields: [], defaults: [:])
     static let ia = IAInfo(appScreens: ["home"], entryWords: [.init(control: "plus", label: "＋"), .init(control: "more", label: "⋯")],
-                           entryHands: ["home": ["plus"]], aliases: ["old": "home"], planned: ["later"])
+                           entryHands: ["home": ["plus"]], planned: ["later"])
     static let frames = [DeviceFrameInfo(id: "phone", platform: "iphone", name: "Phone 390×844", symbol: "iphone", size: Size(w: 390, h: 844),
                                          corner: 47, safeTop: 47, safeBottom: 34, scene: .init(name: "Phone 390×844")),
                          DeviceFrameInfo(id: "pad-portrait", platform: "ipad", name: "Pad", symbol: "ipad", size: Size(w: 820, h: 1180),
@@ -29,13 +29,13 @@ import Testing
 
     @Test func theProjectDataRoundTripsAndIsOptional() throws {
         let h = Self.hello()
-        let line = try ProtocolDialect.current.encode(.hello(h))
-        #expect(try ProtocolDialect.current.decode(line) == .hello(h))
+        let line = try Framing.header(.hello(h))
+        #expect(try JSONDecoder().decode(Message.self, from: line) == .hello(h))
         #expect(h.ia?.controls == ["plus", "more"])
         #expect(h.frames?.first?.formFactor == .iphone)
         #expect(h.frames?.last?.scene == nil, "편집기 틀이 아닌 틀")
-        // 옛 호스트 — 칸이 없으면 nil
-        let bare = try ProtocolDialect.current.decode(Data(#"{"type":"hello","role":"host","protocolVersion":2,"pid":1,"name":"h","screens":[{"name":"a","states":["n"],"style":{"screen":"a","elements":[],"fields":[],"defaults":{}}}],"layers":[{"name":"c","style":{"screen":"c","elements":[],"fields":[],"defaults":{}}}]}"#.utf8))
+        // 프로젝트 데이터가 없는 호스트 — 칸이 없으면 nil
+        let bare = try JSONDecoder().decode(Message.self, from: Data(#"{"type":"hello","role":"host","protocolVersion":2,"pid":1,"name":"h","screens":[{"name":"a","states":["n"],"style":{"screen":"a","elements":[],"fields":[],"defaults":{}}}],"layers":[{"name":"c","style":{"screen":"c","elements":[],"fields":[],"defaults":{}}}]}"#.utf8))
         guard case .hello(let b) = bare else { Issue.record("hello 가 아니다"); return }
         #expect(b.ia == nil && b.frames == nil && b.tokensBuilt == nil)
         #expect(b.screens?.first?.fixtureColorUsage == nil && b.layers?.first?.composition == nil)
@@ -115,8 +115,8 @@ import Testing
     /// 프로젝트 데이터 꼴 안의 칸은 모두 선택 — 빠지면 기본값 · 모르는 칸은 들고 되쓴다(필수 칸으로 얼리지 않는다).
     @Test func projectDataCellsAreOptionalAndKeepUnknownCells() throws {
         let ia = try JSONDecoder().decode(IAInfo.self, from: Data(#"{"appScreens":["home"],"tabs":3}"#.utf8))
-        #expect(ia.appScreens == ["home"] && ia.entryWords.isEmpty && ia.aliases.isEmpty && ia.extra == ["tabs": 3])
-        #expect(try JSONValue.from(ia) == ["appScreens": ["home"], "entryWords": [], "entryHands": [:], "aliases": [:], "planned": [], "tabs": 3])
+        #expect(ia.appScreens == ["home"] && ia.entryWords.isEmpty && ia.extra == ["tabs": 3])
+        #expect(try JSONValue.from(ia) == ["appScreens": ["home"], "entryWords": [], "entryHands": [:], "planned": [], "tabs": 3])
         let mac = try JSONDecoder().decode(DeviceFrameInfo.self, from: Data(#"{"id":"desk","platform":"mac","size":{"w":1280,"h":800},"titleBar":28}"#.utf8))
         #expect(mac.formFactor == .mac && mac.safeTop == 0 && mac.corner == 0 && mac.extra == ["titleBar": 28], "안전영역 없는 틀(맥 창)도 선다")
         #expect(try JSONDecoder().decode(DeviceFrameInfo.self, from: JSONEncoder().encode(mac)) == mac)

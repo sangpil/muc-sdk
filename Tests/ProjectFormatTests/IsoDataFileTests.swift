@@ -117,8 +117,8 @@ struct IsoDataFileTests {
         #expect(ent["swift"] == ["model": "A", "module": "M"])
     }
 
-    /// 물러난 키(`migrated` · 엔티티와 필드의 `sql` — 저장 백엔드의 생성 사본)는 알리지 않고 들고 되쓴다 — 값이 그대로 남는다.
-    @Test func 물러난_키는_알리지_않고_바이트_그대로() throws {
+    /// 계약 밖의 칸(맨 위 `migrated` · 엔티티와 필드의 `sql` 같은 것)은 모르는 키다 — 자리마다 알리고 값은 그대로 들고 되쓴다.
+    @Test func 계약_밖의_칸은_모르는_키로_알리고_값_그대로() throws {
         let json = #"""
         { "version" : \#(IsoDataFormat.version), "migrated" : { "sql" : { "tables" : { "as" : { "id" : { "type" : "text", "primaryKey" : true } } } }, "swift" : { "schemaVersion" : 1 } },
           "schema" : { "name" : "j", "entities" : [ { "name" : "A", "sql" : { "table" : "as" },
@@ -126,7 +126,8 @@ struct IsoDataFileTests {
         """#
         let file = try IsoDataFile.read(Data(json.utf8))
         guard case .model(let m) = file else { Issue.record(); return }
-        #expect(m.unknownKeys.isEmpty, "물러난 키는 더 새 판의 흔적이 아니다")
+        #expect(m.unknownKeys.map { String($0.prefix { $0 != " " }) } == ["migrated", "schema.entities[0].sql", "schema.entities[0].fields[0].sql"],
+                "\(m.unknownKeys)")
         #expect(m.extra["migrated"] != nil && m.schema.entities[0].extra["sql"] == ["table": "as"])
         let back = try JSONDecoder().decode(JSONValue.self, from: try file.encoded())
         #expect(back == (try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))), "값이 그대로 남는다")

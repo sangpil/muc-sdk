@@ -7,8 +7,8 @@ import Foundation
 //
 // 디코더는 상태 기계 하나다. 바이트를 조각으로 먹이는 길(`feed` — 시험 · 작은 읽기)과, 바이너리를 기다리는 동안 소켓에서
 // **목적지 버퍼로 바로** 읽는 길(`directTarget` → `didFillDirect` — 5 MB 급 프레임을 중간 복사 없이)이 같은 상태를 공유한다.
-// 줄은 판 하나의 말(`ProtocolDialect`)로 읽고 쓴다 — 판을 적지 않은 손은 지금 판. 엔진 쪽 디코더는 판정자(`ProtocolJudge`)를 받아 첫 줄(호스트 hello)에서 판을 읽고
-// 그 판의 말을 고른다(`dialect` — 연결이 같은 말로 쓴다).
+// 줄은 지금 판의 꼴(`Message` 의 Codable)이다. 엔진 쪽 디코더는 판정자(`ProtocolJudge`)를 받아 첫 줄(호스트 hello)에서 판을 가른다 —
+// 판이 다르면 몸을 풀기 전에 `ProtocolMismatch` 를 던진다.
 
 public enum Framing {
     public static let maxLineBytes = 16 << 20
@@ -18,18 +18,9 @@ public enum Framing {
         let e = JSONEncoder(); e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]; return e
     }()
 
-    /// 메시지 한 줄 + (inline 프레임이면) 길이 접두 — 지금 판의 말로. 바이트 몸은 호출자가 이어 쓴다(복사하지 않게).
-    public static func header(_ message: Message) throws -> Data { try header(message, dialect: .current) }
-
-    /// 메시지 한 줄 + (inline 프레임이면) 길이 접두 — 판 하나의 말로(그 판에 없는 메시지면 `ProtocolDialectError.notSpoken`).
-    public static func header(_ message: Message, dialect: ProtocolDialect) throws -> Data {
-        guard let d = try headerIfSpoken(message, dialect: dialect) else { throw ProtocolDialectError.notSpoken(type: message.type, version: dialect.version) }
-        return d
-    }
-
-    /// 메시지 한 줄 + 길이 접두 — 그 판에 없는 메시지면 nil(연결은 보내지 않는다).
-    public static func headerIfSpoken(_ message: Message, dialect: ProtocolDialect) throws -> Data? {
-        guard var d = try dialect.encodeIfSpoken(message) else { return nil }
+    /// 메시지 한 줄 + (inline 프레임이면) 길이 접두. 바이트 몸은 호출자가 이어 쓴다(복사하지 않게).
+    public static func header(_ message: Message) throws -> Data {
+        var d = try encoder.encode(message)
         d.append(0x0A)
         if let n = message.inlineBytes {
             precondition(n >= 0 && n <= maxPayloadBytes, "프레임이 너무 크다: \(n)")
@@ -83,8 +74,6 @@ package struct StreamDecoder {
     private var prefixBuf: [UInt8] = []
     private var ready: [Inbound] = []
     private let decoder = JSONDecoder()
-    /// 줄을 읽는 판의 말 — 판정자가 있으면 첫 줄에서 고른다.
-    package private(set) var dialect: ProtocolDialect
     /// 첫 줄(호스트 hello)의 판을 가르는 판정자 — 엔진 쪽만 · 첫 줄을 읽으면 놓는다.
     private var judge: ProtocolJudge?
     /// 계측 — 조각 길(`feed`)로 프레임 버퍼에 memcpy 한 바이트 · 프레임 버퍼 할당 수 · 바이트(바로 읽기 길은 복사 0).
@@ -92,14 +81,10 @@ package struct StreamDecoder {
     package private(set) var allocs = 0
     package private(set) var allocBytes = 0
 
-    /// 지금 판의 말로 읽는다(호스트 쪽).
-    package init() { self.init(dialect: .current, judge: nil) }
+    /// 판을 가르지 않고 읽는다(호스트 쪽).
+    package init() { self.init(judge: nil) }
     /// 첫 줄에서 판을 가른다(엔진 쪽 — 판이 맞지 않으면 `feed` 가 `ProtocolMismatch` 를 던진다).
-    package init(judge: ProtocolJudge?) { self.init(dialect: .current, judge: judge) }
-    /// `dialect` = 처음 읽는 판의 말 · `judge` = 첫 줄에서 판을 가를 판정자.
-    package init(dialect: ProtocolDialect, judge: ProtocolJudge?) {
-        self.dialect = dialect; self.judge = judge
-    }
+    package init(judge: ProtocolJudge?) { self.judge = judge }
 
     /// 조각을 먹인다 — 다 찬 메시지들을 돌려준다.
     package mutating func feed(_ chunk: UnsafeRawBufferPointer) throws -> [Inbound] {
@@ -161,10 +146,10 @@ package struct StreamDecoder {
         let line = Data(lineBuf)
         if let j = judge {
             judge = nil
-            dialect = try j.dialect(greeting: line)   // 판이 맞지 않으면 그대로 던진다(사람 말 — 줄이 깨진 것과 가른다)
+            try j.check(greeting: line)   // 판이 맞지 않으면 그대로 던진다(사람 말 — 줄이 깨진 것과 가른다)
         }
         let m: Message
-        do { m = try dialect.decode(line, using: decoder) }
+        do { m = try decoder.decode(Message.self, from: line) }
         catch { throw Framing.Failure.badJSON(String(describing: error)) }
         if let n = m.inlineBytes { state = .prefix(m, header: n) } else { ready.append(Inbound(message: m, payload: nil)) }
     }
