@@ -32,6 +32,9 @@
 //      (점 · 괄호 없는 이름) 집합(차집합 0 양방향) · 「종류를 얼린 이름」 표의 이름마다 선언 종류가 표와 같다(소비자의 범위 import 가 기댄다).
 //   ⑨ **판 품은 기본 인자 0** — `public` 함수 · init 의 기본 인자 값에 `.current` · `currentVersion` · `Format.` · `Version` 글자가 없다(판은 이름으로 적는다 —
 //      기본 인자는 부르는 쪽 목적 코드에 묻혀 증분 빌드가 판의 변경을 놓친다 · 판 없는 손은 오버로드로).
+//   ⑩ **자원 낱말은 자원에만** — 자원(`resources`)을 든 타깃의 Swift 소스에서 주석 밖 코드 전체(글자 리터럴 · 끼움 안 리터럴 · 정규식 리터럴 · 식별자)에
+//      ASCII 밖 글자 0 · 유니코드 이스케이프 `\u{` 0(낱말 · 꼴은 그 모듈의 자원 파일이 정본이다 — 소스에 낱말이 서면 실행물에 낱말이 실리고 정본이 둘이 된다 · 주석은 셈 밖).
+//      주석을 가르는 손은 자체 시험이 붙든다(주석 · 블록 주석의 글자는 빼고 리터럴 셋 · 끼움 · 이스케이프 · 정규식 리터럴 둘 · 식별자를 잡는가).
 //
 // 인자 없음 · macOS + Swift 툴체인 · git(⑤ 꼬리표 — 저장소가 아니면 「꼬리표 없음」) · 빌드 자리는 패키지의 `.build`.
 // 사용: node qa/qa-sdk-build.mjs       SWIFT_BUILD_JOBS=6 node qa/qa-sdk-build.mjs
@@ -47,7 +50,7 @@ const ROOT = resolve(QA, "..");
 const JOBS = process.env.SWIFT_BUILD_JOBS ? ["-j", process.env.SWIFT_BUILD_JOBS] : [];
 
 // 갈래 — 정본 `Docs/SDK.md` §1
-const CONTRACT = ["ProjectFormat", "ScreenMarks", "DesignTokens", "LaunchTrace", "PreviewProtocol"];
+const CONTRACT = ["ProjectFormat", "ScreenMarks", "DesignTokens", "LaunchTrace", "PreviewProtocol", "SpokenTime"];
 const RUNTIME = ["CShm", "PreviewWire", "PreviewHostKit"];
 const TEST = ["TestScratch"];
 const CONTRACT_IMPORTS = new Set(["Foundation", "CryptoKit", "CoreGraphics", "SwiftUI", "Testing", ...CONTRACT]);
@@ -359,9 +362,48 @@ for (const f of walk(join(ROOT, "Sources"), (e) => e.endsWith(".swift"))) {
 if (versionedDefaults.length) failures.push(`⑨ 판 품은 기본 인자 ${versionedDefaults.length} — 오버로드로(판 없는 손의 몸이 판을 든다):\n    ${versionedDefaults.join("\n    ")}`);
 console.log(`  ${versionedDefaults.length ? "✗" : "✓"} ⑨ 판 품은 기본 인자 ${versionedDefaults.length}`);
 
+// ⑩ 자원 낱말은 자원에만 — 자원을 든 타깃의 소스에서 주석 밖 코드 전체에 ASCII 밖 글자 0 · 유니코드 이스케이프 `\u{` 0
+/// Swift 소스의 주석을 빈칸으로 지운 줄들 — `{ line, text }`(글자 리터럴 안의 `//` · `/*` 는 주석이 아니다 · 줄 수는 그대로).
+/// 리터럴은 보통 `"…"` · 날 `#"…"#` · 여러 줄 `"""…"""` 을 안다(보통 리터럴의 `\` 는 다음 글자와 함께 건넌다). 정규식 리터럴 · 식별자 · 끼움 안은 코드로 남는다.
+const codeLines = (src) => {
+  let out = "", i = 0;
+  while (i < src.length) {
+    if (src.startsWith("//", i)) { while (i < src.length && src[i] !== "\n") { out += " "; i += 1; } continue; }
+    if (src.startsWith("/*", i)) { const e = src.indexOf("*/", i + 2), stop = e < 0 ? src.length : e + 2; out += src.slice(i, stop).replace(/[^\n]/g, " "); i = stop; continue; }
+    const m = /^(#*)("""|")/.exec(src.slice(i, i + 12));
+    if (!m) { out += src[i]; i += 1; continue; }
+    const close = m[2] + m[1];
+    let j = i + m[0].length;
+    while (j < src.length && !src.startsWith(close, j) && !(m[2] === '"' && src[j] === "\n")) j += !m[1] && src[j] === "\\" ? 2 : 1;
+    const stop = Math.min(src.length, j + close.length);
+    out += src.slice(i, stop);
+    i = stop;
+  }
+  return out.split("\n").map((text, k) => ({ line: k + 1, text }));
+};
+const nonAscii = /[^\x00-\x7F]/;
+const escaped = /\\u\{/;
+const bad = (t) => nonAscii.test(t) || escaped.test(t);
+// 자체 시험 — 주석 · 블록 주석은 셈 밖 · 리터럴(보통 · 날 · 여러 줄) · 끼움 안 리터럴 · 이스케이프 · 정규식 리터럴 둘 · 식별자를 잡는다
+const sample = ["// 주석 \"낱말\"", "/* 블록 \"낱말\" */ let a = \"ascii\"", "let b = #\"날\\d\"#", "let c = \"\\(x)값\"", "let d = \"\"\"", "여러 줄", "\"\"\"",
+  "let e = \"ok\" // 뒤 주석 \\u{B0B1}", "let f = \"\\(g(\"낱말\"))\"", "let h = \"\\u{B0B1}\"", "let i = #/낱말/#", "let j = /낱말/", "let 낱말 = 1"].join("\n");
+const want = [3, 4, 6, 9, 10, 11, 12, 13];
+const sampleHits = codeLines(sample).filter((l) => bad(l.text)).map((l) => l.line);
+const selfOK = JSON.stringify(sampleHits) === JSON.stringify(want);
+if (!selfOK) failures.push(`⑩ 주석 가르기 자체 시험 어긋남 — 잡힌 줄 [${sampleHits.join(" · ")}] ≠ [${want.join(" · ")}]`);
+const resourced = dump.targets.filter((x) => x.type !== "test" && (x.resources || []).length).map((x) => x.name);
+const wordHits = [];
+for (const m of resourced) {
+  for (const f of walk(join(ROOT, "Sources", m), (e) => e.endsWith(".swift"))) {
+    for (const l of codeLines(readFileSync(f, "utf8"))) if (bad(l.text)) wordHits.push(`${rel(f)}:${l.line} — ${l.text.trim().slice(0, 80)}`);
+  }
+}
+if (wordHits.length) failures.push(`⑩ 자원을 든 모듈의 주석 밖 코드에 ASCII 밖 글자 · 유니코드 이스케이프 ${wordHits.length} — 낱말 · 꼴은 그 모듈의 자원 파일로:\n    ${wordHits.join("\n    ")}`);
+console.log(`  ${wordHits.length || !selfOK ? "✗" : "✓"} ⑩ 자원 낱말은 자원에만 — 자원 모듈 ${resourced.join(" · ") || "없음"} · 주석 밖 코드의 ASCII 밖 글자 · 이스케이프 ${wordHits.length}`);
+
 if (failures.length) {
   for (const f of failures) console.error(`✗ ${f}`);
   console.log(`=== qa-sdk-build FAIL — ${failures.length}건 ===`);
   process.exit(1);
 }
-console.log(`=== qa-sdk-build OK — SDK ${version} · 시험 ${total}건(대상 ${testTargets.length}) · 기기 플랫폼 ${deviceWords.length} · 잎 · unsafeFlags 0 · 갈래 · 공개 적합 · ${tagWord} · 깨짐 진단 ${diagWord} · 공개 이름 = 표 · 판 품은 기본 인자 0 ===`);
+console.log(`=== qa-sdk-build OK — SDK ${version} · 시험 ${total}건(대상 ${testTargets.length}) · 기기 플랫폼 ${deviceWords.length} · 잎 · unsafeFlags 0 · 갈래 · 공개 적합 · ${tagWord} · 깨짐 진단 ${diagWord} · 공개 이름 = 표 · 판 품은 기본 인자 0 · 자원 낱말은 자원에만 ===`);

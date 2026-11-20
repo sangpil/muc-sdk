@@ -18,6 +18,8 @@ import PackageDescription
 //   PreviewProtocol : 엔진 ⟂ 미리보기 호스트의 말(프로토콜 판 `PreviewProtocolVersion` — 한 자리) — 메시지 열(Codable · 평평한 `type` 칸) · 줄 JSON + 길이 접두
 //                     프레이밍 · 최신값 우선(`Coalescer`) · 프레임 형식 · 시계 · 소켓 경로 규칙 · 요소 경계(`SnapFrame`) · 그린 글줄과 요소 바탕(`DrawnText` · `DrawnStyle`) · Style 서술(`StyleSchema` · 칸 · 절 · 칸 종류 —
 //                     `hello` 에 실리고 엔진이 안 파일을 재는 잣대). Foundation · SDK `ProjectFormat`(JSON 값) · `DesignTokens`(스케일 종류).
+//   SpokenTime      : 말한 때 읽기(`SpokenReading.read` — 문장 + 기준 시각 + 시간대(+ 생년 · 기준 사건) → 구간 · 앵커 날 · 정밀도 ⟂ 묻기 ⟂ 되풀이). Foundation 만.
+//                     낱말 · 꼴은 모듈 자원 `Resources/words.json` 한 파일에만 산다(이 패키지의 첫 자원 번들 — 무는 쪽은 번들을 함께 싣는다).
 //
 // 런타임(macOS 전용 — 소스는 `#if os(macOS)` · iOS · tvOS 에서는 빈 모듈 · 앱 제품의 의존 닫힘에 들면 무는 쪽의 경계 게이트가 빨강):
 //   CShm            : POSIX `shm_open` 이 가변 인자 C 함수라 Swift 에서 바로 못 부른다 — 고정 인자로 감싼 C 심 한 줄(제품 아님 · `PreviewWire` 만 문다).
@@ -44,6 +46,7 @@ let package = Package(
         .library(name: "DesignTokens", targets: ["DesignTokens"]),
         .library(name: "LaunchTrace", targets: ["LaunchTrace"]),
         .library(name: "PreviewProtocol", targets: ["PreviewProtocol"]),
+        .library(name: "SpokenTime", targets: ["SpokenTime"]),
         // 런타임(macOS 전용) — 앱(iOS)이 링크하는 제품과 따로 둔다
         .library(name: "PreviewWire", targets: ["PreviewWire"]),
         .library(name: "PreviewHostKit", targets: ["PreviewHostKit"]),
@@ -63,6 +66,8 @@ let package = Package(
         .target(name: "DesignTokens"),
         .target(name: "LaunchTrace"),
         .target(name: "PreviewProtocol", dependencies: ["ProjectFormat", "DesignTokens"]),
+        // 낱말 · 꼴의 정본 `Resources/words.json` 은 자원으로 싣는다(번들 `muc-sdk_SpokenTime` — 소스의 글자 리터럴에는 낱말이 없다)
+        .target(name: "SpokenTime", resources: [.process("Resources")]),
         .target(name: "CShm"),
         .target(name: "PreviewWire", dependencies: ["PreviewProtocol", "CShm"]),
         .target(name: "PreviewHostKit", dependencies: ["PreviewProtocol", "ProjectFormat", "PreviewWire", "ScreenMarks", "LaunchTrace"]),
@@ -72,6 +77,7 @@ let package = Package(
         .testTarget(name: "DesignTokensTests", dependencies: ["DesignTokens", "TestScratch"]),
         .testTarget(name: "TestScratchTests", dependencies: ["TestScratch"]),
         .testTarget(name: "LaunchTraceTests", dependencies: ["LaunchTrace"]),
+        .testTarget(name: "SpokenTimeTests", dependencies: ["SpokenTime"]),
         // 표식 시험은 표식의 몸과 같은 조건(macOS ∧ 트레이트)으로 갈린다 — 꺼진 빌드에서만 「빈 모디파이어」를 잰다
         .testTarget(name: "ScreenMarksTests", dependencies: ["ScreenMarks"],
                     swiftSettings: [.define("ACTIVE_MARKS", .when(platforms: [.macOS], traits: ["ActiveMarks"]))]),

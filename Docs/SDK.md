@@ -4,8 +4,8 @@
 의존 방향 · SDK 판 · 프로토콜 판 · 형식이 자라는 규칙 · 주 판의 약속 · 공개 표면의 변경 규칙 · SDK 에 들지 않는 것과 그 까닭. 이 저장소는 **공개**다 — `public` 한 줄이 곧 외부 프로젝트와의 약속이다(§6).
 파일 형식의 열기 판정 · 판을 올리는 차례 · 프로젝트 폴더의 꼴(`muc.json`) · SDK 가 디코드하지 않는 형식의 판은 빌더(엔진)가 갖는다 — 이 문서는 SDK 에 든 꼴과 상수만 다룬다.
 
-몸 — 이 저장소 뿌리의 [`Package.swift`](../Package.swift)(SwiftPM 패키지 `muc-sdk`). 시험 — `Tests/ProjectFormatTests` · `ScreenMarksTests` · `DesignTokensTests` · `LaunchTraceTests` · `PreviewProtocolTests` ·
-`PreviewWireTests` · `PreviewHostKitTests` · `TestScratchTests`(게이트 [`qa/qa-sdk-build.mjs`](../qa/qa-sdk-build.mjs) — 대상마다 0건이면 빨강 · 기기 플랫폼(iOS · tvOS) 빌드 · 잎 · 갈래 · 공개 적합 · 판 꼬리표 · 공개 표면 깨짐 진단 · 공개 이름 = §2 표 · 판 품은 기본 인자 0 · 모델 파일 표본은 [`qa/sample-model.mjs`](../qa/sample-model.mjs) 가 짓고 잰다).
+몸 — 이 저장소 뿌리의 [`Package.swift`](../Package.swift)(SwiftPM 패키지 `muc-sdk`). 시험 — `Tests/ProjectFormatTests` · `ScreenMarksTests` · `DesignTokensTests` · `LaunchTraceTests` · `PreviewProtocolTests` · `SpokenTimeTests` ·
+`PreviewWireTests` · `PreviewHostKitTests` · `TestScratchTests`(게이트 [`qa/qa-sdk-build.mjs`](../qa/qa-sdk-build.mjs) — 대상마다 0건이면 빨강 · 기기 플랫폼(iOS · tvOS) 빌드 · 잎 · 갈래 · 공개 적합 · 판 꼬리표 · 공개 표면 깨짐 진단 · 공개 이름 = §2 표 · 판 품은 기본 인자 0 · 자원 낱말은 자원에만 · 모델 파일 표본은 [`qa/sample-model.mjs`](../qa/sample-model.mjs) 가 짓고 잰다).
 
 ## 1. 의존 방향 — 하나
 
@@ -18,7 +18,7 @@
 
   | 갈래 | 모듈 | 무엇을 무나 | 누가 무나 |
   |---|---|---|---|
-  | **계약** — 플랫폼 중립 | `ProjectFormat` · `ScreenMarks` · `DesignTokens` · `LaunchTrace` · `PreviewProtocol` | Foundation · CryptoKit · CoreGraphics · SwiftUI · 계약 모듈 | 엔진 · 프로젝트(앱 제품 포함) · 미리보기 호스트 |
+  | **계약** — 플랫폼 중립 | `ProjectFormat` · `ScreenMarks` · `DesignTokens` · `LaunchTrace` · `PreviewProtocol` · `SpokenTime` | Foundation · CryptoKit · CoreGraphics · SwiftUI · 계약 모듈 | 엔진 · 프로젝트(앱 제품 포함) · 미리보기 호스트 |
   | **런타임** — macOS 전용 | `PreviewWire`(+ C 심 `CShm`) · `PreviewHostKit` | 계약의 것 + 플랫폼 프레임워크(Darwin · AppKit · Observation · ImageIO · UniformTypeIdentifiers · PDFKit) + 런타임 모듈 | 미리보기 호스트(프로젝트가 자기 코드로 빌드한 실행물) · 엔진의 도구 · 프로젝트의 호스트 시험 — **앱은 물지 않는다** |
   | **시험** — 시험 타깃만 | `TestScratch` | Foundation | 엔진 · 프로젝트의 **시험 타깃** — 제품 타깃(앱 제품 · 실행물 · 도구 라이브러리)이 물면 무는 쪽의 경계 게이트가 빨강 |
 
@@ -34,9 +34,9 @@
 
 | 소비자 | 무는 제품 |
 |---|---|
-| 엔진(빌더 — 앱 · CLI · 도구 패키지 · 렌더 코어 · 편집기) | `ProjectFormat` · `DesignTokens` · `ScreenMarks` · `LaunchTrace` · `PreviewProtocol` · `PreviewWire`(미리보기 클라이언트 · 원격 화면 창) · `PreviewHostKit`(창 없는 렌더 · 커밋 눈금) |
-| 프로젝트의 앱 제품 · 코어 패키지 | `ProjectFormat` · `ScreenMarks` · `DesignTokens` · `LaunchTrace` |
-| 프로젝트의 미리보기 호스트 · 프로젝트 도구(엔진 내부를 물지 않는다) | 위 넷 + `PreviewProtocol` · `PreviewHostKit` |
+| 엔진(빌더 — 앱 · CLI · 도구 패키지 · 렌더 코어 · 편집기) | `ProjectFormat` · `DesignTokens` · `ScreenMarks` · `LaunchTrace` · `PreviewProtocol` · `SpokenTime`(데이터 도구 — 문장에서 레코드 뽑기) · `PreviewWire`(미리보기 클라이언트 · 원격 화면 창) · `PreviewHostKit`(창 없는 렌더 · 커밋 눈금) |
+| 프로젝트의 앱 제품 · 코어 패키지 | `ProjectFormat` · `ScreenMarks` · `DesignTokens` · `LaunchTrace` · `SpokenTime`(기록 입력의 때 칸) |
+| 프로젝트의 미리보기 호스트 · 프로젝트 도구(엔진 내부를 물지 않는다) | 위 다섯 + `PreviewProtocol` · `PreviewHostKit` |
 | 시험 타깃 — 엔진 · 프로젝트 | `TestScratch`(시험의 임시 자리 한 벌) + 제 대상의 제품 · 호스트 시험은 `PreviewHostKit`(렌더러 · 세션 꼴) |
 
 **앱 제품의 공개 표면은 프로젝트의 것이다** — SDK 의 타입을 앱 타깃(Xcode)의 소스나 그 제품의 생성물이 쓰면 그 제품이 그 이름만 범위를 좁혀 다시 낼 수 있다
@@ -55,6 +55,7 @@
 | **DesignTokens** | 계약 | 엔진의 도구 · 프로젝트(토큰 생성물 · 미리보기 호스트) · `PreviewProtocol` | `HexColor` · `ColorTokenProvider` · `SoTColorProvider` · `SoTScaleProvider` | 꼴만 든다 — 토큰의 값과 플랫폼 색 손은 프로젝트의 것 | [Colors.swift](../Sources/DesignTokens/Colors.swift) | [DesignTokensTests](../Tests/DesignTokensTests) |
 | **LaunchTrace** | 계약 | 프로젝트의 화면 코드 · 엔진의 도구 · `PreviewHostKit` | `OpenTrace` | `MUC_OPEN_TRACE=1` ∧ DEBUG 일 때만 잰다 — 그 밖엔 몸이 빈 함수 | [OpenTrace.swift](../Sources/LaunchTrace/OpenTrace.swift) | [LaunchTraceTests](../Tests/LaunchTraceTests) |
 | **PreviewProtocol** | 계약 | 엔진의 미리보기 클라이언트 · 미리보기 호스트 · `PreviewWire` · `PreviewHostKit` | `Message` · `Hello` · `ProtocolJudge` · `Framing` · `StyleSchema` | 메시지 꼴이 바뀌면 프로토콜 판을 올린다 · 엔진이 판정자 | [Messages.swift](../Sources/PreviewProtocol/Messages.swift) | [PreviewProtocolTests](../Tests/PreviewProtocolTests) |
+| **SpokenTime** | 계약 | 엔진의 데이터 도구 · 프로젝트의 앱(기록 입력의 때 칸) | `SpokenReading` | 낱말 · 꼴은 모듈 자원 한 파일에만(주석 밖 코드의 ASCII 밖 글자 0) · 앵커는 구간 첫 날 · 못 읽으면 지어내지 않고 묻는다 | [SpokenReading.swift](../Sources/SpokenTime/SpokenReading.swift) | [SpokenTimeTests](../Tests/SpokenTimeTests) |
 | **CShm** | 런타임 · 제품 아님(C 심) | `PreviewWire` 만 | `cshm_open` | 고정 인자로 감싼 한 줄 밖의 일을 하지 않는다 | [CShm.h](../Sources/CShm/include/CShm.h) | — (`PreviewWireTests` 가 공유 메모리로 잰다) |
 | **PreviewWire** | 런타임 | 엔진(미리보기 클라이언트 · 원격 화면 창) · `PreviewHostKit` — 앱은 물지 않는다 | `Connection` · `UnixSocket` · `SharedRegion` | 쓰기는 락 하나로 줄 세운다 · 상대가 죽으면 `onClose` 한 번 | [Connection.swift](../Sources/PreviewWire/Connection.swift) | [PreviewWireTests](../Tests/PreviewWireTests) |
 | **PreviewHostKit** | 런타임 | 미리보기 호스트 실행물 · 호스트 시험 · 엔진의 도구 — 앱은 물지 않는다 | `PreviewHost` · `PreviewScreen` · `PreviewSession` · `FrameRenderer` | 프로젝트를 모른다 · 연결 = 세션 · 엔진의 수명에 묶인다 | [PreviewHost.swift](../Sources/PreviewHostKit/PreviewHost.swift) | [PreviewHostKitTests](../Tests/PreviewHostKitTests) |
@@ -131,6 +132,17 @@
 `{ "screens": { "<화면>": <픽스처 JSON>, … } }`. 프로젝트 도구가 데이터 묶음에서 화면 입력을 내는 답이 같은 꼴이다.
 **엔진이 파일을 읽고 호스트는 열지 않는다** — 엔진이 그 화면의 값을 `render.fixture` 에 싣는다(경로가 아니라 값의 바이트가 줄에 실린다 · 줄 하나의 상한 `Framing.maxLineBytes` 16 MiB 안). 그래서 와이어 · 프로토콜 판이 그대로이고 호스트가 할 일은 이미 하는 픽스처 갈아 끼우기(`load(style:layers:fixture:)`) 하나다 — 샌드박스 · 다른 기계의 호스트도 파일 자리를 몰라도 된다 · 파일에 없는 화면은 상태의 픽스처로 그린다.
 
+**`SpokenTime`** — 말한 때 읽기(한국어 문장). Foundation 만 · 모듈 자원 `Resources/words.json`(이 패키지의 첫 자원 번들 — 아래).
+
+| 이름 | 약속 | 무엇 |
+|---|---|---|
+| `SpokenReading` | 프로젝트 | 문장 하나가 말한 때 — 닫힌 열거(`span` · `ask` · `recurring`) · 손 넷 · `SpokenReading` 결과 열거는 Codable 이 아니다 — 담아 둘 것은 안의 값 꼴로(`Span` · `Ask` · `Day` · `Precision` · `Direction` · `Ask.Reason` 은 Codable). **구간** `read(_:now:zone:context:direction:)`(문장 + 기준 시각 + 시간대 + 맥락 + 방향 — 맥락의 기본은 빈 맥락 · 방향의 기본은 지난 일)이 셋 중 하나를 낸다: 구간 `span`(`Span` — 첫 날 `from` · 끝 날 `to`(포함) · 저장할 날 `anchor` = 첫 날 · 정밀도 `Precision`(`exact` 하루 · `month` 한 달 이하 · `year` 한 해 이하 · 흐리면 둘 다 `circa` · `period` 한 해 넘음 — 구간을 저장 · 닫힌 열거) · 읽은 규칙 `rule`(열린 낱말 — `absolute` · `relative` · `era` · `age` · `ageBand` · `grade` · `schoolStage` · `lifeEvent` · 계절로 좁히면 `+season` · 생년으로 읽은 때와 겹쳐 좁히면 그 이름 · 부 판에서 늘 수 있다) · 흐림 `soft` · 맞은 토막 `phrase`) ⟂ 묻기 `ask`(`Ask` — 까닭 `Ask.Reason`(열린 꼴 — `noExpression` · `unbounded` · `needsBirth` · `needsAnchor` · `known`) · 기준 사건 키 `anchorKey` · `rule`) ⟂ 되풀이 `recurring`. **날 하나** `day(_:now:zone:direction:)` → `Day?`(기준 시간대의 정오 `date` · `year` · `month` · `day` · `text` 「YYYY-MM-DD」 · 정밀도 `exact` · `month` · `year` · `circa` — 말한 단위까지 · 앵커는 단위의 첫 날 · 되풀이는 말한 시작만 · 생년으로 읽는 때는 nil · 짓는 손 `Day(year:month:day:precision:zone:)` — 그 시간대의 정오 · 넘친 값은 달력이 굴림 · 못 지으면 nil). **끝 날** `end(_:start:now:zone:direction:)` → `Day?`(「A부터 B까지」 = B — 빠진 해 · 달은 시작의 연 · 월 · 일에서 잇고 이은 끝이 시작보다 앞이면 빠진 쪽의 윗 단위를 하나 올린다 · 「N박」 = 시작 + N일(시작이 `exact` · 「박」 뒤가 낱말 경계) · 그 밖 nil). **기간 신호** `hasSpanSignal(_:)`(「N박」 — 빈칸을 뺀 글에서 · 「동안」 · 「…부터 …까지」 — 빈칸이 있는 글에서). 방향 `Direction`(닫힌 열거 — `past` 지난 일 · `future` 앞일 · 부르는 쪽이 문장 분류로 넘긴다 · 문장의 수식어가 늘 이긴다): 앞일이 바꾸는 것은 셋 — 두 자리 해 · 연대(지난 일 = 기준 해의 세기 · 기준 해보다 뒤면 한 세기 앞 ⟂ 앞일 = 기준 해 이상 가장 가까운 해) · 수식 없는 달 · 달과 날(오늘 · 이번 달을 넣어 오늘 이후 가장 가까운 것) · 수식 없는 계절(아직 끝나지 않은 가장 가까운 것). 맥락 `Context` — 생년 `birth` · 기준 사건 `anchors`(`Context.Anchor` — 키 · 시작 · 끝(선택) · 같은 키가 여럿이면 가장 이른 것) · `empty` · 날은 읽는 손의 `zone` 으로 읽는다. 날은 모두 기준 시간대의 정오다 · 빈칸은 U+0020 만 · 수는 네 자리까지 |
+
+**읽는 규칙** — 좁은 것이 이긴다: 날 단위 상대(어제 · N일 전 · 요일)가 있으면 그것이 때이고 같은 문장의 달 표현은 대상이다 · 절대 > 상대 > 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대) — 둘이 서면 겹치는 구간만. 앵커는 늘 구간 첫 날(달 초 · 중순 · 말 = 1 · 11 · 21일 · 해 말 = 10월 · 계절 = 첫 달) · 해 없는 달은 바로 앞 수식이 해를 정한다 · 학년도는 3월 1일 ~ 이듬해 2월 말일 ·
+기준 사건이 없거나 생년이 없으면 지어내지 않고 묻는다 · 되풀이는 둘레 구간이 서지 않으면 시점이 아니다 · 주는 월요일에 시작한다.
+**낱말의 자리** — 낱말 · 꼴(정규식) · 표(계절 · 학교급 · 기준 사건 · 사건 뒤 수식)는 자원 [`Sources/SpokenTime/Resources/words.json`](../Sources/SpokenTime/Resources/words.json) 한 파일이 정본이다 — 소스의 주석 밖 코드(리터럴 · 정규식 리터럴 · 식별자)에는 ASCII 밖 글자가 없다(게이트 `qa-sdk-build` ⑩ · 실행물에 낱말이 실리지 않는다).
+자원의 꼴은 모듈 안의 약속이다(공개 표면 밖 — 칸 이름 · 꼴은 [README](../README.md) 의 한 단락). **무는 쪽은 자원 번들을 함께 싣는다** — SwiftPM 이 짓는 `muc-sdk_SpokenTime` 번들이 실행물 곁에 있어야 하고, 빠지면 첫 읽기에서 멈춘다(낱말 없이 읽은 답은 조용히 틀린다).
+
 **`PreviewWire`** — 전송(런타임 · macOS 전용). 계약 + Darwin · C 심 `CShm`(POSIX `shm_open` 이 가변 인자라 고정 인자로 감싼 한 줄 — 제품 아님).
 
 | 이름 | 약속 | 무엇 |
@@ -195,7 +207,7 @@
 
 ## 5. 판
 
-**SDK 판: 5.0.0** — 계약 동결(아래 「주 판의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
+**SDK 판: 5.1.0** — 계약 동결(아래 「주 판의 약속」 — 공개 표면을 깨는 변경은 주 판에서만). 코드의 한 자리는 `ProjectFormat.SDKVersion.current` 이고 이 칸과 같은 글자다
 (SDK 시험 `SDKDocumentTests` 가 이 문서를 패키지 안 자리로 읽어 맞댄다 — 한쪽만 고치면 빨강). **저장소의 판 꼬리표가 이 값이다** — 게이트 `qa-sdk-build` 가 HEAD 의 꼬리표(있으면)와 맞댄다 ·
 한 번 찍은 꼬리표는 다시 찍지 않는다(소비자의 `Package.resolved` 가 그 revision 을 쥔다) — 고치면 판을 올린다.
 
@@ -217,8 +229,8 @@
 
 - **모르는 키는 보존한다** — 꼴마다 `extra`(이 SDK 가 모르는 칸 — 읽은 그대로 들고 되쓴다 · 아는 칸과 이름이 겹치면 아는 칸이 이긴다). 같은 판에 칸이 더해져도 옛 읽개가 열어 저장하면 그 칸이 사라지지 않는다. 모델 파일은 자리마다 한 줄로 알린다(`DataModelFile.unknownKeys` — 읽는 쪽이 읽기 전용으로 열지 정한다).
 - **파일에 칸을 더하는 것은 형식 판을 올리지 않는다**(빠진 칸 = 옛 뜻 · 모르는 칸 = 보존) — 칸의 뜻을 바꾸거나 빼는 것만 판을 올린다(와이어는 위의 판 규칙). 모델 파일은 칸 더하기(`idNamespace` · `revision` · 표지 `role` · `log` · 필드의 `fill`)를 판 안에서 든다. 데이터 형식은 한 판(`IsoDataFormat.version`)만 읽는다 — 더 옛 판은 지원하지 않는 판이다(`IsoDataError.unsupportedVersion`).
-- **열린 꼴**(`FormFactor` · `ScaleKind` · `DataStatus` · `DataOnDelete` · `DataTraitRole` · `DataLogKind` · `DataFill` · `CompositionField.Kind` · `SharedMemoryInfo.Kind` · `Hub.Kind` · `ScreenEntry.Kind` · `OutsideEntry.Kind` · `StyleEffect`) — 낱말 그대로 드는 `RawRepresentable` 구조체 + 아는 상수 + `known`. 아는 낱말을 더하는 것은 부 판이다(파일 · 와이어의 글자가 그대로라 소비자 소스가 깨지지 않는다 — 소비자는 이 꼴을 `switch` 로 전수하지 않는다 · `default` 를 둔다) — 단 와이어 지문에 드는 낱말 목록(`SharedMemoryInfo.Kind` · `CompositionField.Kind` · `StyleEffect` · `ScaleKind`)에 더하면 프로토콜 판이 올라 주 판이다.
-- **페이로드 열거의 모르는 갈래**(`DataType.unknown` · `DataRuleCheck.other`) — 이 SDK 가 모르는 형 · 규칙을 읽은 그대로 든다(재지 않는다 · 경고). 닫힌 열거(`Message` · `Hello.Role` · `ChangeConflict` · `FramePayload` · `ScreenComponent.Kind` · `FieldKind`)에 갈래를 더하거나 갈래의 연관값을 바꾸는 것은 주 판이다 — 소비자의 전수 `switch` 를 깬다(`ScreenComponent.Kind` 는 앱이 그리는 코드와 함께 오는 종류라 닫아 둔다 · 모르는 종류는 관대한 읽기가 건너뛴다). 한 주 판 안에서 새 말이 필요하면 닫힌 열거를 늘리지 않고 있는 갈래의 몸(구조체)에 기본값 있는 새 칸을 더한다 — **와이어를 건드리지 않는 꼴(파일 · 공개 API)에서만**이고 옛 상대가 그 칸을 몰라 무시해도 뜻이 틀리지 않을 때만이다. 메시지 꼴(와이어)에 칸을 더하는 것은 프로토콜 판을 올리므로 주 판이다(아래 표) — 그때도 갈래보다 기본값 있는 칸 · 목록이 낫다(예 — 문구는 `FieldKind` 의 갈래가 아니라 Style 서술의 기본값 있는 목록 `StyleSchema.texts` 다: 서술에 문구가 없는 호스트는 빈 목록과 같고 화면은 기본 글로 선다 · 이미지 자리 `StyleSchema.slots` 도 같은 길이다).
+- **열린 꼴**(`FormFactor` · `ScaleKind` · `DataStatus` · `DataOnDelete` · `DataTraitRole` · `DataLogKind` · `DataFill` · `CompositionField.Kind` · `SharedMemoryInfo.Kind` · `Hub.Kind` · `ScreenEntry.Kind` · `OutsideEntry.Kind` · `StyleEffect` · `SpokenReading.Ask.Reason`) — 낱말 그대로 드는 `RawRepresentable` 구조체 + 아는 상수 + `known`. 아는 낱말을 더하는 것은 부 판이다(파일 · 와이어의 글자가 그대로라 소비자 소스가 깨지지 않는다 — 소비자는 이 꼴을 `switch` 로 전수하지 않는다 · `default` 를 둔다) — 단 와이어 지문에 드는 낱말 목록(`SharedMemoryInfo.Kind` · `CompositionField.Kind` · `StyleEffect` · `ScaleKind`)에 더하면 프로토콜 판이 올라 주 판이다.
+- **페이로드 열거의 모르는 갈래**(`DataType.unknown` · `DataRuleCheck.other`) — 이 SDK 가 모르는 형 · 규칙을 읽은 그대로 든다(재지 않는다 · 경고). 닫힌 열거(`Message` · `Hello.Role` · `ChangeConflict` · `FramePayload` · `SpokenReading` · `SpokenReading.Precision` · `SpokenReading.Direction` · `ScreenComponent.Kind` · `FieldKind`)에 갈래를 더하거나 갈래의 연관값을 바꾸는 것은 주 판이다 — 소비자의 전수 `switch` 를 깬다(`ScreenComponent.Kind` 는 앱이 그리는 코드와 함께 오는 종류라 닫아 둔다 · 모르는 종류는 관대한 읽기가 건너뛴다). 한 주 판 안에서 새 말이 필요하면 닫힌 열거를 늘리지 않고 있는 갈래의 몸(구조체)에 기본값 있는 새 칸을 더한다 — **와이어를 건드리지 않는 꼴(파일 · 공개 API)에서만**이고 옛 상대가 그 칸을 몰라 무시해도 뜻이 틀리지 않을 때만이다. 메시지 꼴(와이어)에 칸을 더하는 것은 프로토콜 판을 올리므로 주 판이다(아래 표) — 그때도 갈래보다 기본값 있는 칸 · 목록이 낫다(예 — 문구는 `FieldKind` 의 갈래가 아니라 Style 서술의 기본값 있는 목록 `StyleSchema.texts` 다: 서술에 문구가 없는 호스트는 빈 목록과 같고 화면은 기본 글로 선다 · 이미지 자리 `StyleSchema.slots` 도 같은 길이다).
 - **공개 오류 열거도 닫힌 열거다**(`IsoDataError` · `ProtocolMismatch` · `StyleSchemaError` · …) — 갈래를 더하면 소비자의 전수 `switch` 가 깨진다(주 판 · 게이트 `qa-sdk-build` ⑦ 이 깨짐으로 센다). 한 주 판 안에서 새 오류는 **새 오류 타입**으로 더한다(부 판 — 예: 문구가 서지 않는 까닭은 `StyleSchemaError` 의 갈래가 아니라 새 타입 `StyleTextError` · 자리는 `StyleSlotError`). 오류 · 문제의 사람 말(`description` · `reason`)은 계약 밖이다(문구를 고치는 것은 수 판).
 
 SDK 판이 오르는 때:

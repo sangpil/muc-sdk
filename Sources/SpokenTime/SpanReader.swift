@@ -1,0 +1,440 @@
+import Foundation
+
+// 구간 읽기 — 절대 · 상대(날 하나 읽기 `DayReader` 위에 구간을 세운다) · 생년 · 기준 사건으로 읽는 때(나이 · 학년 · 학교급 · 시대 · 인생 사건).
+//   생년에서: 학년도 = 3월 1일 ~ 이듬해 2월 말일 · 「N살」 = 두 해(세는나이 해 … 만 나이 해) · 「만 N세」 = 생일부터 한 해 ·
+//   1~2월생이고 생년 ≤ 2002 이면 한 해 일찍 입학한 무리라 학교급 구간을 한 해 앞으로 넓히고 흐리게 둔다.
+//   기준 사건에서: 사건 낱말 바로 뒤 수식(직후 · 직전 · 첫해 · 그해 · 전 · 뒤 · 때)이 구간을 정한다 · 그 사건이 없으면 지어내지 않고 묻는다 ·
+//   사건 낱말 바로 앞이 다른 사람이면 내 사건이 아니다.
+//   겹치면 좁은 것이 이긴다 — 절대 · 상대가 생년으로 읽은 때와 겹치면 겹치는 구간만.
+
+struct SpanReader: Sendable {
+    let day: DayReader
+    /// 두 자리 해의 방향(지난 일 ⟂ 앞일).
+    let direction: SpokenReading.Direction
+    var words: Words { day.words }
+    private var p: Words.Patterns { day.words.patterns }
+
+    init(zone: TimeZone, words: Words, direction: SpokenReading.Direction) { day = DayReader(zone: zone, words: words); self.direction = direction }
+
+    /// 사건 뒤 수식의 갈래.
+    enum Mod: String, Decodable, Sendable { case after3m, before3m, firstYear, thatYear, before1y, after1y, at }
+
+    /// 날(연 · 월 · 일) — 셈은 시간대 없는 그레고리력 날로 한다(정오 앵커라 시간대가 날을 바꾸지 않는다).
+    struct D: Comparable, Hashable, Sendable {
+        var y: Int, m: Int, d: Int
+        init(_ y: Int, _ m: Int, _ d: Int) { self.y = y; self.m = m; self.d = d }
+        static let utc: Calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(secondsFromGMT: 0)!; return c }()
+        private var utcNoon: Date { D.utc.date(from: DateComponents(year: y, month: m, day: d, hour: 12))! }
+        private init(utc date: Date) { let c = D.utc.dateComponents([.year, .month, .day], from: date); self.init(c.year!, c.month!, c.day!) }
+        static func < (a: D, b: D) -> Bool { (a.y, a.m, a.d) < (b.y, b.m, b.d) }
+        func adding(_ c: Calendar.Component, _ n: Int) -> D { D(utc: D.utc.date(byAdding: c, value: n, to: utcNoon)!) }
+        static func last(_ y: Int, _ m: Int) -> D { D(y, m, utc.range(of: .day, in: .month, for: D(y, m, 1).utcNoon)!.count) }
+    }
+    struct S { var from: D; var to: D; var rule: String; var soft: Bool; var phrase: String }
+    enum Life { case span(S, Range<String.Index>); case ask(SpokenReading.Ask.Reason, String?, String, Range<String.Index>) }
+
+    func d(_ date: Date) -> D { let c = day.ymd(date); return D(c.0, c.1, c.2) }
+    func date(_ x: D) -> Date { day.noon(x.y, x.m, x.d) }
+
+    static func year(_ y: Int) -> (D, D) { (D(y, 1, 1), D(y, 12, 31)) }
+    static func month(_ y: Int, _ m: Int) -> (D, D) { (D(y, m, 1), D.last(y, m)) }
+    static func schoolYear(_ y: Int) -> (D, D) { (D(y, 3, 1), D.last(y + 1, 2)) }
+    /// 계절 구간 — 해(또는 학년도) y 안에서 · 겨울은 이듬해 2월까지.
+    func season(_ word: String, in y: Int) -> (D, D) {
+        guard let s = words.seasons.first(where: { $0.word == word }) else { return SpanReader.year(y) }
+        let end = D(y, s.first, 1).adding(.month, s.months - 1)
+        return (D(y, s.first, 1), D.last(end.y, end.m))
+    }
+    func nativeNumber(_ s: String) -> Int? {
+        if let n = Int(s) { return n }
+        var v = 0, rest = Substring(s)
+        if let t = words.nativeTens.keys.sorted(by: { $0.count > $1.count }).first(where: { rest.hasPrefix($0) }) { v += words.nativeTens[t]!; rest = rest.dropFirst(t.count) }
+        if !rest.isEmpty { guard let o = words.nativeOnes[String(rest)] else { return nil }; v += o }
+        return v == 0 ? nil : v
+    }
+    /// 구간 → 저장 값 — 앵커 = 구간 첫 날 · 정밀도 = 폭(하루 exact · 끝 < 첫 날 + 1달 month · 끝 < 첫 날 + 1해 year · 흐리면 둘 다 circa · 그 밖 period).
+    static func store(_ f: D, _ t: D, soft: Bool) -> (D, SpokenReading.Precision) {
+        if f == t { return (f, .exact) }
+        if t < f.adding(.month, 1) { return (f, soft ? .circa : .month) }
+        if t < f.adding(.year, 1) { return (f, soft ? .circa : .year) }
+        return (f, .period)
+    }
+    func finish(_ s: S) -> SpokenReading.Span {
+        let (a, precision) = SpanReader.store(s.from, s.to, soft: s.soft)
+        return SpokenReading.Span(from: date(s.from), to: date(s.to), anchor: date(a), precision: precision, rule: s.rule, soft: s.soft, phrase: s.phrase)
+    }
+    func ask(_ reason: SpokenReading.Ask.Reason, _ key: String?, _ rule: String) -> SpokenReading {
+        .ask(SpokenReading.Ask(reason: reason, anchorKey: key, rule: rule))
+    }
+
+    // ── 문장 하나 → 읽음 하나
+    func read(_ text: String, now: Date, context: SpokenReading.Context) -> SpokenReading {
+        // 빈칸은 대부분 지우고 읽는다 · 낱말 경계가 뜻을 가르는 토막만 빈칸 있는 원문(raw)에서 본다
+        let raw = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        let t = Rx.strip(raw)
+        // 되풀이는 시점이 아니다 — 둘레 구간이 서면 그 구간 · 생년 · 기준 사건이 없어 묻는 때도 되풀이보다 먼저
+        if Rx.has(t, p.recurringWhen) {
+            switch readOne(raw, now: now, context: context) {
+            case .span(let s): return .span(s)
+            case .ask(let a) where a.reason == .needsBirth || a.reason == .needsAnchor: return .ask(a)
+            default: return .recurring
+            }
+        }
+        // 「A부터 B까지」 = A 의 처음 … B 의 끝(끝에 해 · 달이 없으면 시작의 것을 물려받는다)
+        if let m = Rx.first(raw, p.range), case .span(let a) = readOne(m.g[0], now: now, context: context),
+           case .span(let b) = (inheritEnd(m.g[1], from: d(a.from)).map { SpokenReading.span(finish($0)) } ?? readOne(m.g[1], now: now, context: context)),
+           a.from <= b.to {
+            return .span(finish(S(from: d(a.from), to: d(b.to), rule: a.rule, soft: a.soft || b.soft, phrase: Rx.strip(String(raw[m.range])))))
+        }
+        return readOne(raw, now: now, context: context)
+    }
+
+    /// 끝 「M월 D일」 · 「D일」 · 「M월」(해 · 상대 낱말 없음) — 시작의 해 · 달을 잇고, 이은 끝이 시작보다 앞이면 한 칸 올린다.
+    func inheritEnd(_ bRaw: String, from a: D) -> S? {
+        let b = Rx.strip(bRaw)
+        if let v = Rx.ints(b, p.endMonthDay), v.count == 2 {
+            var e = D(a.y, v[0], v[1]); if e < a { e = D(a.y + 1, v[0], v[1]) }
+            return S(from: e, to: e, rule: "absolute", soft: false, phrase: b)
+        }
+        if let v = Rx.ints(b, p.endDay), v.count == 1 {
+            var e = D(a.y, a.m, v[0]); if e < a { e = D(a.y, a.m, 1).adding(.month, 1); e = D(e.y, e.m, v[0]) }
+            return S(from: e, to: e, rule: "absolute", soft: false, phrase: b)
+        }
+        if let v = Rx.ints(b, p.endMonth), v.count == 1, (1...12).contains(v[0]) {
+            let y = v[0] < a.m ? a.y + 1 : a.y
+            return S(from: D(y, v[0], 1), to: D.last(y, v[0]), rule: "absolute", soft: day.isFuzzy(bRaw), phrase: b)
+        }
+        return nil
+    }
+    /// 빈칸 뺀 글(t)의 범위 → 원문(raw)의 범위.
+    static func unstripped(_ raw: String, _ r: Range<String.Index>, in t: String) -> Range<String.Index> {
+        let lo = t.distance(from: t.startIndex, to: r.lowerBound), n = t.distance(from: r.lowerBound, to: r.upperBound)
+        var seen = 0, a = raw.endIndex, b = raw.endIndex, i = raw.startIndex
+        while i < raw.endIndex {
+            if raw[i] != " " {
+                if seen == lo { a = i }
+                seen += 1
+                if seen == lo + n { b = raw.index(after: i); break }
+            }
+            i = raw.index(after: i)
+        }
+        if n == 0 { b = a }
+        return a..<b
+    }
+    /// 원문(raw)의 범위 → 빈칸 뺀 글(t)의 범위.
+    static func stripped(_ raw: String, _ r: Range<String.Index>, in t: String) -> Range<String.Index> {
+        let lo = raw[..<r.lowerBound].filter { $0 != " " }.count, n = raw[r].filter { $0 != " " }.count
+        let a = t.index(t.startIndex, offsetBy: lo)
+        return a..<t.index(a, offsetBy: n)
+    }
+
+    func readOne(_ raw: String, now: Date, context: SpokenReading.Context) -> SpokenReading {
+        let raw = raw.trimmingCharacters(in: .whitespaces), t = Rx.strip(raw)
+        let lifeHit = lifeRead(t, raw: raw, context)
+        var rest = raw   // 빈칸 있는 나머지 — 흐림 표지는 붙은 자리로 가린다
+        switch lifeHit {
+        case .span(_, let r)?, .ask(_, _, _, let r)?:
+            // 맞은 토막 + 바로 뒤 「때」를 지운 나머지에서 절대 · 상대를 본다
+            var e = r.upperBound
+            if t[e...].hasPrefix(words.when) { e = t.index(e, offsetBy: words.when.count) }
+            rest.replaceSubrange(SpanReader.unstripped(raw, r.lowerBound..<e, in: t), with: " ")
+        case nil: break
+        }
+        // 겹칠 때: 절대 > 상대 > 생년 · 기준 사건으로 읽은 때 — 겹치면 겹치는 구간만
+        if var a = absRel(rest, now: now) {
+            if case .span(let l, _)? = lifeHit, a.from <= l.to, l.from <= a.to {
+                let f = max(a.from, l.from), e = min(a.to, l.to)
+                if (f, e) != (a.from, a.to) {
+                    a = S(from: f, to: e, rule: a.rule + "+" + (l.rule.split(separator: "+").first.map(String.init) ?? l.rule), soft: a.soft || l.soft, phrase: t)
+                }
+            }
+            return .span(finish(a))
+        }
+        switch lifeHit {
+        case .span(let s, _)?: return .span(finish(s))
+        case .ask(let w, let k, let b, _)?: return ask(w, k, b)
+        case nil: break
+        }
+        if let m = Rx.first(t, p.recent) {
+            let n = d(now)
+            return .span(finish(S(from: n.adding(.year, -1), to: n, rule: "relative", soft: true, phrase: String(t[m.range]))))
+        }
+        if Rx.has(t, p.vague) { return ask(.unbounded, nil, "vague") }
+        return ask(.noExpression, nil, "none")
+    }
+
+    // ── 절대 · 상대(날 하나 읽기 위에 구간)
+    func absRel(_ raw0: String, now: Date) -> S? {
+        let t0 = Rx.strip(raw0)
+        let n = d(now)
+        let century = n.y - n.y % 100
+        // 두 자리 해 · 두 자리 연대(「98년」 · 「90년대」) = 기준 해의 세기에 붙인다 — 지난 일(기본): 기준 해보다 뒤면 한 세기 앞 ·
+        // 앞일: 기준 해보다 앞이면 한 세기 뒤(기준 해 이상 가장 가까운 해)
+        let yy = { (v: Int) -> Int in
+            let y = century + v
+            switch direction {
+            case .past: return y > n.y ? y - 100 : y
+            case .future: return y < n.y ? y + 100 : y
+            }
+        }
+        // 연대 — 초반 0~3 · 중반 4~6 · 후반 · 말 7~9
+        if let m = Rx.first(t0, p.decade), let v = Int(m.g[0]) {
+            let base = m.g[0].count == 2 ? yy(v) : v
+            let (lo, hi) = range(words.parts[m.g[1]]) ?? (0, 9)
+            return S(from: D(base + lo, 1, 1), to: D(base + hi, 12, 31), rule: "absolute", soft: true, phrase: String(t0[m.range]))
+        }
+        // 두 자리 해 — 뒤에 때 표지가 올 때만 해로 읽는다(햇수와 가른다) · 세기는 방향을 따른다(위)
+        var raw = raw0
+        if let m = Rx.first(raw, p.twoDigitYear), let v = Int(m.g[0]) {
+            raw.replaceSubrange(m.range, with: "\(yy(v))" + words.yearSuffix)
+        }
+        let t = Rx.strip(raw)
+        guard let r = day.resolve(raw, now: now, future: direction == .future) else {
+            // 요일 없는 주 = 그 주 월 … 일
+            guard let g = Rx.first(t, p.plainWeek), let o = words.weekOffset[g.g[0]] else { return nil }
+            let mon = d(day.cal.date(from: day.cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!).adding(.day, 7 * o)
+            return S(from: mon, to: mon.adding(.day, 6), rule: "relative", soft: day.isFuzzy(raw), phrase: String(t[g.range]))
+        }
+        let x = d(r.date)
+        // 날 단위 상대가 때를 정했으면 relative — 같은 문장의 달 표현은 대상
+        let absolute = day.dayRelative(raw, now: now) == nil
+            && (Rx.has(t, p.anyYear) || (Rx.has(t, p.anyMonth) && !Rx.has(t, p.yearWords)))
+        var rule = absolute ? "absolute" : "relative"
+        var soft = day.isFuzzy(raw)
+        var span: (D, D)
+        switch r.precision {
+        case .exact, .period: span = (x, x)
+        case .month: span = SpanReader.month(x.y, x.m)
+        case .year: span = SpanReader.year(x.y)
+        case .circa:
+            soft = true
+            if let s = day.season(t), x.m == s.first {
+                span = season(s.word, in: x.y); rule += "+season"
+            } else if t.contains(words.thisTime) {
+                span = SpanReader.month(x.y, x.m)
+            } else if Rx.has(t, p.monthOrPart) {
+                // 달의 초 · 중순 · 말 — 붙은 자리만
+                let (f, e) = SpanReader.month(x.y, x.m)
+                if Rx.has(raw, p.monthEarlySpaced) { span = (f, D(x.y, x.m, 10)) }
+                else if Rx.has(raw, p.monthMidSpaced) { span = (D(x.y, x.m, 11), D(x.y, x.m, 20)) }
+                else if Rx.has(raw, p.monthLateSpaced) { span = (D(x.y, x.m, 21), e) }
+                else { span = (f, e) }
+            } else if Rx.has(raw, p.yearEarlySpaced) { span = (D(x.y, 1, 1), D.last(x.y, 3)) }
+            else if Rx.has(raw, p.yearEnd) { span = (D(x.y, 10, 1), D(x.y, 12, 31)) }
+            else { span = SpanReader.year(x.y) }
+        }
+        return S(from: span.0, to: span.1, rule: rule, soft: soft, phrase: t0)
+    }
+
+    private func range(_ v: [Int]?) -> (Int, Int)? { v.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil } }
+
+    // ── 생년 · 기준 사건에서(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)
+    func lifeRead(_ t: String, raw: String, _ c: SpokenReading.Context) -> Life? {
+        if let x = lifeEvent(t, c) { return x }
+        if let x = grade(t, raw: raw, c) { return x }
+        if let x = age(t, c) { return x }
+        if let x = ageBand(t, c) { return x }
+        if let x = stage(t, c) { return x }
+        return era(t, c)
+    }
+
+    struct Birth {
+        let day: D
+        var y: Int { day.y }
+        /// 1~2월생이고 생년 ≤ 2002 — 한 해 일찍 입학한 마지막 무리까지
+        var early: Bool { day.m <= 2 && day.y <= 2002 }
+        /// 학교급 구간을 일찍 든 해까지 넓힌다
+        func widen(_ s: (D, D)) -> (D, D) { early ? (s.0.adding(.year, -1), s.1) : s }
+    }
+    func birth(_ c: SpokenReading.Context) -> Birth? { c.birth.map { Birth(day: d($0)) } }
+
+    /// 학년 — 학년도 Y = 생년 + 6 + 학년(초) · + 12(중) · + 15(고) · 대학 n학년은 늦은 입학 · 쉼까지 넓힌다.
+    ///   줄임 학년은 빈칸 있는 원문에서 따로 선 낱말일 때만 · 띄운 줄임은 뒤에 학년 · 계절 같은 때 낱말이 올 때만.
+    func grade(_ t: String, raw: String, _ c: SpokenReading.Context) -> Life? {
+        for g in words.grades {
+            guard let m = Rx.first(raw, g.pattern), let n = m.g.lazy.compactMap({ Int($0) }).first, (1...g.last).contains(n) else { continue }
+            let r = SpanReader.stripped(raw, m.range, in: t)
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "grade", r) }
+            let y = b.y + g.offset + n
+            return withSeason(t, r, year: y, base: b.widen(SpanReader.schoolYear(y)), rule: "grade", soft: b.early, b: b)
+        }
+        if let m = Rx.first(t, p.universityGrade) {
+            let n = Int(m.g[0]) ?? 1
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "grade", m.range) }
+            let s: (D, D)
+            if let u = c.anchor(words.school.universityKey).map({ d($0.start) }) {
+                // 입학 사건이 있으면 그 해에서 센다 — 늦은 입학 없음 · 쉼 2 는 2학년부터
+                let y = u.y + n - 1
+                s = (D(y, 3, 1), D.last(y + 1 + (n == 1 ? 0 : 2), 2))
+            } else {
+                // 한 해 늦은 입학 · 두 해 쉼까지 — 1학년 1 · 2학년 이상 3
+                let w = n == 1 ? 1 : 3
+                s = b.widen((D(b.y + 18 + n, 3, 1), D.last(b.y + 18 + n + 1 + w, 2)))
+            }
+            return .span(S(from: s.0, to: s.1, rule: "grade", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        return nil
+    }
+
+    /// 학년 · 나이 뒤의 계절 — 그 해(학년도) 안으로 좁힌다.
+    func withSeason(_ t: String, _ r: Range<String.Index>, year y: Int, base: (D, D), rule: String, soft: Bool, b: Birth) -> Life {
+        let tail = String(t[r.upperBound...])
+        if let m = Rx.first(tail, p.seasonAfter) {
+            let end = t.index(r.upperBound, offsetBy: tail.distance(from: tail.startIndex, to: m.range.upperBound))
+            var s = season(m.g[0], in: y)
+            if rule == "grade" { s = b.widen(s) }
+            return .span(S(from: s.0, to: s.1, rule: rule + "+season", soft: true, phrase: String(t[r.lowerBound..<end])), r.lowerBound..<end)
+        }
+        return .span(S(from: base.0, to: base.1, rule: rule, soft: soft, phrase: String(t[r])), r)
+    }
+
+    /// 나이 — 「만 N세」 = 생일부터 한 해 · 「N살」 = 두 해(세는나이 해 … 만 나이 해) · 첫돌 · 환갑.
+    func age(_ t: String, _ c: SpokenReading.Context) -> Life? {
+        if let m = Rx.first(t, p.ageExact), let n = nativeNumber(m.g.first { !$0.isEmpty } ?? "") {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "age", m.range) }
+            let f = b.day.adding(.year, n)
+            return .span(S(from: f, to: f.adding(.year, 1).adding(.day, -1), rule: "age", soft: false, phrase: String(t[m.range])), m.range)
+        }
+        if let m = Rx.first(t, p.firstBirthday) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "age", m.range) }
+            let x = b.day.adding(.year, 1)
+            return .span(S(from: x, to: x, rule: "age", soft: false, phrase: String(t[m.range])), m.range)
+        }
+        if let m = Rx.first(t, p.sixtieth) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "age", m.range) }
+            let (f, e) = SpanReader.year(b.y + 60)
+            return .span(S(from: f, to: e, rule: "age", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        if let m = Rx.first(t, p.age), let n = nativeNumber(m.g.first { !$0.isEmpty } ?? "") {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "age", m.range) }
+            return withSeason(t, m.range, year: b.y + n - 1, base: (D(b.y + n - 1, 1, 1), D(b.y + n, 12, 31)), rule: "age", soft: true, b: b)
+        }
+        return nil
+    }
+
+    /// 나잇대 — 각 끝 나이에 「N살」 규칙.
+    func ageBand(_ t: String, _ c: SpokenReading.Context) -> Life? {
+        guard let m = Rx.first(t, p.ageBand), let k = Int(m.g[0]) else { return nil }
+        guard let b = birth(c) else { return .ask(.needsBirth, nil, "ageBand", m.range) }
+        let (lo, hi) = range(words.parts[m.g[1]]) ?? (0, 9)
+        let a = k * 10 + lo, z = k * 10 + hi
+        return .span(S(from: D(b.y + a - 1, 1, 1), to: D(b.y + z, 12, 31), rule: "ageBand", soft: true, phrase: String(t[m.range])), m.range)
+    }
+
+    /// 학교급 — 단계마다 생년에서 센 학년도 구간(자원의 표 · 표에 없는 단계는 대학).
+    func stage(_ t: String, _ c: SpokenReading.Context) -> Life? {
+        guard let m = Rx.first(t, p.stage) else { return nil }
+        guard let b = birth(c) else { return .ask(.needsBirth, nil, "schoolStage", m.range) }
+        let head = String(m.g[0].prefix(2))
+        let row = words.stages.first { $0.heads.contains(head) && ($0.band == nil || $0.band == m.g[1]) }
+        let (from, to) = row.map { ($0.from, $0.to) } ?? (words.stageRest.from, words.stageRest.to)
+        let s = b.widen((D(b.y + from, 3, 1), D.last(b.y + to, 2)))
+        return .span(S(from: s.0, to: s.1, rule: "schoolStage", soft: true, phrase: String(t[m.range])), m.range)
+    }
+
+    /// 시대 — 어릴 때 = 태어남 … 초등 마지막 학년도 끝 · 학창 시절 = 초1 … 고3.
+    func era(_ t: String, _ c: SpokenReading.Context) -> Life? {
+        if let m = Rx.first(t, p.childhood) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "era", m.range) }
+            return .span(S(from: b.day, to: D.last(b.y + 13, 2), rule: "era", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        if let m = Rx.first(t, p.schoolDays) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "era", m.range) }
+            let s = b.widen((D(b.y + 7, 3, 1), D.last(b.y + 19, 2)))
+            return .span(S(from: s.0, to: s.1, rule: "era", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        return nil
+    }
+
+    /// 사건 뒤 수식 — 사건 낱말 바로 뒤(빈칸 뺀 글 8자 안).
+    func modifier(_ t: String, after r: Range<String.Index>) -> (Mod, Range<String.Index>)? {
+        let tail = String(t[r.upperBound...].prefix(8))
+        for x in words.modifiers {
+            if let m = Rx.first(tail, x.pattern) {
+                let end = t.index(r.upperBound, offsetBy: tail.distance(from: tail.startIndex, to: m.range.upperBound))
+                return (x.kind, r.lowerBound..<end)
+            }
+        }
+        return nil
+    }
+    static func apply(_ k: Mod, _ e: (D, D)) -> (D, D, Bool) {
+        let f = e.0
+        switch k {
+        case .after3m: return (f, f.adding(.month, 3).adding(.day, -1), true)
+        case .before3m: return (f.adding(.month, -3), f.adding(.day, -1), true)
+        case .firstYear, .after1y: return (f, f.adding(.year, 1).adding(.day, -1), true)
+        case .before1y: return (f.adding(.year, -1), f.adding(.day, -1), true)
+        case .thatYear: return (D(f.y, 1, 1), D(f.y, 12, 31), true)
+        case .at: return (e.0, e.1, true)
+        }
+    }
+
+    /// 남의 사건 — 사건 낱말 바로 앞이 다른 사람이면 내 기준 사건이 아니다.
+    func othersEvent(_ t: String, _ r: Range<String.Index>) -> Bool { Rx.has(String(t[..<r.lowerBound]), p.others) }
+
+    /// 인생 사건 — 기준 사건(맥락의 사건) · 생년에서 셈하는 사건(태어남 · 학교의 처음과 끝 · 대입 시험 · 한 해 더 준비).
+    func lifeEvent(_ t: String, _ c: SpokenReading.Context) -> Life? {
+        // 기준 사건 — 없으면 지어내지 않고 묻는다
+        for x in words.anchored {
+            guard let m = Rx.first(t, x.pattern), case let (k, r)? = modifier(t, after: m.range), !othersEvent(t, m.range) else { continue }
+            guard let a = c.anchor(x.key) else { return .ask(.needsAnchor, x.key, "lifeEvent", r) }
+            let e = d(a.start)
+            if let years = x.years {
+                return .span(S(from: e, to: e.adding(.year, years).adding(.day, -1), rule: "lifeEvent", soft: true, phrase: String(t[r])), r)
+            }
+            if let endKey = x.endKey, k == .at {   // 기간 사건의 「그때」 = 시작 … 끝
+                guard let end = a.end.map({ d($0) }) ?? c.anchor(endKey).map({ d($0.start) }) else {
+                    return .ask(.needsAnchor, endKey, "lifeEvent", r)
+                }
+                return .span(S(from: e, to: end, rule: "lifeEvent", soft: true, phrase: String(t[r])), r)
+            }
+            let s = SpanReader.apply(k, (e, e))
+            return .span(S(from: s.0, to: s.1, rule: "lifeEvent", soft: s.2, phrase: String(t[r])), r)
+        }
+        // 생년에서 — 태어난 해(흐림) · 태어난 날(생년월일로 아는 날)
+        if let m = Rx.first(t, p.bornYear) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "lifeEvent", m.range) }
+            return .span(S(from: D(b.y, 1, 1), to: D(b.y, 12, 31), rule: "lifeEvent", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        if let m = Rx.first(t, p.bornDay) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "lifeEvent", m.range) }
+            return .span(S(from: b.day, to: b.day, rule: "lifeEvent", soft: false, phrase: String(t[m.range])), m.range)
+        }
+        // 학교의 처음 = 3월 · 끝 = 2월 — 대학의 처음 해 = 맥락의 대학 사건의 해 · 없으면 생년 + 19 · 대학의 끝 = 처음 해 + 4 의 2월
+        let school = words.school
+        if let m = Rx.first(t, p.school), case let (k, r)? = modifier(t, after: m.range) {
+            let lv = String(m.g[0].prefix(1)), isEntry = m.g[1] != school.graduationWord
+            guard let off = isEntry ? school.entry[lv] : school.graduation[lv] else { return nil }
+            let uni = lv == school.universityLevel ? c.anchor(school.universityKey).map { d($0.start).y } : nil
+            guard uni != nil || c.birth != nil, let b = birth(c) ?? uni.map({ Birth(day: D($0 - 19, 6, 1)) }) else {
+                return .ask(.needsBirth, nil, "lifeEvent", r)
+            }
+            let y = uni.map { $0 + (isEntry ? 0 : 4) } ?? (b.y + off)
+            var e = SpanReader.month(y, isEntry ? 3 : 2)
+            let early = uni == nil && b.early
+            if early { e = (e.0.adding(.year, -1), e.1) }
+            let s = SpanReader.apply(k, e)
+            return .span(S(from: s.0, to: s.1, rule: "lifeEvent", soft: s.2 || early, phrase: String(t[r])), r)
+        }
+        // 대입 시험 = 고3 학년도의 11월(「끝나고」 = 시험 … 고3 학년도 끝)
+        if let m = Rx.first(t, p.examDay), case let (k, r)? = modifier(t, after: m.range) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "lifeEvent", r) }
+            let y = b.y + 18
+            var s: (D, D)
+            switch k {
+            case .after1y: s = (D(y, 11, 1), D.last(y + 1, 2))
+            case .at: s = SpanReader.month(y, 11)
+            default: let a = SpanReader.apply(k, SpanReader.month(y, 11)); s = (a.0, a.1)
+            }
+            s = b.widen(s)
+            return .span(S(from: s.0, to: s.1, rule: "lifeEvent", soft: true, phrase: String(t[r])), r)
+        }
+        // 고3 다음 학년도
+        if let m = Rx.first(t, p.gapYear) {
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "lifeEvent", m.range) }
+            let s = b.widen(SpanReader.schoolYear(b.y + 19))
+            return .span(S(from: s.0, to: s.1, rule: "lifeEvent", soft: true, phrase: String(t[m.range])), m.range)
+        }
+        return nil
+    }
+}
