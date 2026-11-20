@@ -250,6 +250,9 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         ("3월에 2박 다녀왔다", "nil"),
         ("3월 3일에 귤 2 박스 샀다", "nil"),
         ("3월 3일부터 한동안 쉬었다", "nil"),
+        ("11월부터 1월까지 텃밭을 쉬었다", "2041-01-01 month"),     // 해 없는 달 끝 — 해는 시작에서 · 앞이면 한 해 올림
+        ("3월부터 5월까지 텃밭을 갈았다", "2040-05-01 month"),
+        ("8월 20일부터 9월 말까지 텃밭을 쉬었다", "2040-09-21 circa"),
     ])
     func endDay(_ s: String, _ expect: String) {
         let now = day("2040-10-10")
@@ -300,6 +303,29 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         #expect(said(s, now: now, direction: .future) == future, "\(s) · 앞일")
         let d = SpokenReading.day(s, now: day(now), zone: zone, direction: .future)
         #expect(d.map { text($0.date) } == (future.hasPrefix("ask") ? nil : String(future.prefix(10))), "\(s) · 날 하나 앞일")
+    }
+
+    /// 해 없는 달 끝은 시작에서 해를 잇는다 — 앞일에서 시작이 다음 해로 가면 끝도 따라간다(끝만 따로 앞일로 풀지 않는다) · 구간 읽기도 같은 끝.
+    @Test func endMonthFollowsStart() {
+        let now = day("2040-11-20")
+        let s = "9월부터 11월까지 도자기를 배우려 한다"
+        let start = SpokenReading.day(s, now: now, zone: zone, direction: .future)
+        #expect(start?.text == "2041-09-01")
+        let e = SpokenReading.end(s, start: start, now: now, zone: zone, direction: .future)
+        #expect(e.map { "\($0.text) \($0.precision.rawValue)" } == "2041-11-01 month")
+        #expect(said(s, now: "2040-11-20", direction: .future) == "2041-09-01..2041-11-30 year absolute none")
+        #expect(said("11월부터 1월까지 텃밭을 쉬었다") == "2040-11-01..2041-01-31 year absolute none")
+    }
+
+    /// 네 자리 해는 더 긴 수의 끝 네 자리가 아니다 — 앞이 숫자면 해로 읽지 않는다 · 네 자리 그 자체는 해.
+    @Test func yearNotInsideLongerNumber() {
+        let now = day("2040-10-10")
+        for s in ["34567년 전에 묻힌 화석", "560000년 전 빙하 이야기"] {
+            #expect(SpokenReading.day(s, now: now, zone: zone) == nil, "\(s)")
+            #expect(said(s) == "ask:noExpression", "\(s)")
+        }
+        #expect(SpokenReading.day("2345년에 떠날 배", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2345-01-01 year")
+        #expect(said("2345년에 떠날 배") == "2345-01-01..2345-12-31 year absolute none")
     }
 
     /// 수는 네 자리까지 — 넘치는 수는 때가 아니다(멈추지 않는다).

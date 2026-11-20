@@ -216,7 +216,7 @@ struct DayReader: Sendable {
         return nil
     }
 
-    /// 끝 날 — 말한 끝만: 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 잇고 이은 끝이 시작보다 앞이면 빠진 쪽의 윗 단위를 하나 올린다) ·
+    /// 끝 날 — 말한 끝만: 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 잇고 이은 끝이 시작보다 앞이면 빠진 쪽의 윗 단위를 하나 올린다 — 「D일」 · 「M월 D일」 · 「M월」) ·
     /// 「N박」 = 시작 + N일(시작이 exact 일 때만) · 그 밖은 nil.
     /// 시작은 그 연 · 월 · 일로 센다(다른 시간대에서 지은 날이어도 날이 어긋나지 않게).
     func resolveEnd(_ text: String, start: SpokenReading.Day?, now: Date, future: Bool = false) -> SpokenReading.Day? {
@@ -233,6 +233,12 @@ struct DayReader: Sendable {
                 var e = make(noon(s.year, v[0], v[1]), .exact)
                 if before(e, s) { e = make(noon(s.year + 1, v[0], v[1]), .exact) }
                 return e
+            }
+            // 해 없는 달만(「M월」 · 달 안의 때 표지는 붙어도 된다) — 해는 시작에서 잇고, 이은 끝의 달이 시작의 달보다 앞이면 한 해 올린다(방향과 상관없이)
+            if let s = start, let v = Rx.ints(b, p.endMonth), v.count == 1, (1...12).contains(v[0]),
+               let r = resolve(b, now: now, future: future), r.month == v[0] {
+                let y = v[0] < s.month ? s.year + 1 : s.year
+                return make(noon(y, r.month, r.day), r.precision)
             }
             return resolve(b, now: now, future: future)
         }
