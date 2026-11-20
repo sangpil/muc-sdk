@@ -8,9 +8,12 @@ import Foundation
 //                 날은 기준 시간대의 정오다(시간대가 날 경계를 흔들어도 날이 바뀌지 않게) · 앵커는 늘 구간의 첫 날 · 정밀도는 구간의 폭에서 · 못 읽으면 지어내지 않고 까닭을 낸다.
 //   시작점     : `SpokenReading`
 //
-// 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
+// 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 · 빈도 「N년에 한 번」(세 자리까지 · 뒤 풀이말이 지난 꼴이면 그 해) — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
 // 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)와 절대 · 상대 날짜 — 둘이 서면 겹치는 구간 → 최근 → 끝 없는 때(묻기).
 // 저장 꼴: 앵커 = 구간 첫 날 · 정밀도 = 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year`(흐리면 둘 다 `circa`) · 한 해 넘음 `period`(구간을 저장).
+// `day` 는 `read` 의 저장 꼴이다(같은 글 · 같은 방향 · 빈 맥락 — 셈은 `read` 한 벌) · 「A부터 B까지」만 `day` = A · `end` = B 의 제 꼴.
+// 연대(「90년대」)는 빈칸 있는 원문에서 때 표지와 함께일 때만 · 해가 선 다른 때 표현(날 단위 상대 · 해 · 해 낱말 · 수식 붙은 달)에 진다(해 없는 달 · 계절에는 아니다) ·
+// 최근에는 연대가 이름씨를 꾸밀 때만 진다 · 햇수(「N년 대장정 · N년도 넘었다 · 됐다 · 안 됐다 · N년에 걸쳐 · 가까운 · N년 동안」)는 해가 아니다.
 // 빈칸은 U+0020 만 빈칸으로 본다(문장의 다른 빈칸 글자는 부르는 쪽이 고른다). 수는 네 자리까지 읽는다(「N일 · N주 · N달 · N년 전 · 후」 · 「N박」) ·
 // 해가 아닌 긴 수의 덩이(「56789년 7월」 · 「12,345년도 여름」)는 가린다 — 수(다섯 자리 이상 · 쉼표 수)와 꼬리(년 · 년도 · 년의 · 년 전 + 달 · 날 · 계절 + 그것으로 여는 구간)를 가리고
 // 남은 문장을 평소대로 읽는다(가린 달 · 계절을 기준 해로 채우지 않는다 · 손 넷이 같은 글).
@@ -37,16 +40,17 @@ public enum SpokenReading: Sendable, Hashable {
         SpanReader(zone: zone, words: .shared, direction: direction).read(DayReader.masked(sentence, words: .shared), now: now, context: context)
     }
 
-    /// 문장 하나를 날 하나로 읽는다 — 말한 단위까지(날 · 주 = `exact` · 달 · 반년 = `month` · 해 = `year` · 흐리면 `circa` · `period` 는 내지 않는다).
-    /// 앵커는 그 단위의 첫 날(달 초 · 중순 · 말 = 1 · 11 · 21일 · 해 말 = 10월 1일 · 계절 = 첫 달 1일). 날 단위 상대 표현이 있으면 그것이 때다 ·
-    /// 되풀이 문장은 말한 시작(「A부터」의 A)만 · 못 읽으면 nil(나이 · 학년 · 기준 사건 같은 때는 이 손이 읽지 않는다 — `read`).
-    /// - Parameter direction: 방향(`Direction` — 앞일이면 수식 없는 달 · 날 · 계절을 오늘 이후로).
+    /// 문장 하나를 날 하나로 읽는다 — 같은 글 · 같은 방향 · 빈 맥락의 `read` 가 낸 저장 꼴(앵커 · 정밀도) 그대로다(셈은 `read` 한 벌):
+    /// 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year` · 흐리면 `circa` · 한 해 넘음 `period`(「최근」 · 연대 — 구간 첫 날).
+    /// `read` 가 묻기 · 되풀이면 nil(나이 · 학년 · 기준 사건 같은 때는 맥락이 있는 `read` 로). 예외 하나 — 「A부터 B까지」가 서면 A 의 제 꼴(끝은 `end` 가 B 를 읽는다).
+    /// - Parameter direction: 방향(`Direction` — `read` 와 같은 뜻).
     public static func day(_ sentence: String, now: Date, zone: TimeZone, direction: Direction = .past) -> Day? {
-        DayReader(zone: zone, words: .shared).resolve(DayReader.masked(sentence, words: .shared), now: now, future: direction == .future)
+        SpanReader(zone: zone, words: .shared, direction: direction).storedDay(DayReader.masked(sentence, words: .shared), now: now)
     }
 
     /// 문장이 말한 끝 날 — 말한 끝만(지어내지 않는다): 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 잇고, 이은 끝이 시작보다 앞이면 빠진 쪽의 윗 단위를
-    /// 하나 올린다 — 「10월 25일부터 3일까지」 = 다음 달 3일 · 「12월 28일부터 1월 3일까지」 = 다음 해) · 「N박」 = 시작 + N일(시작이 `exact` 일 때만 ·
+    /// 하나 올린다 — 「10월 25일부터 3일까지」 = 다음 달 3일 · 「12월 28일부터 1월 3일까지」 = 다음 해 · 그 밖의 B 는 B 만의 `day` 와 같은 읽음 —
+    /// 두 자리 해도 그 해 · 연대 끝은 그 연대 첫 날 `period` · 주 · 최근 같은 구간의 끝도 그 첫 날이다 — 끝 날로 쓰면 짧다) · 「N박」 = 시작 + N일(시작이 `exact` 일 때만 ·
     /// 「박」 뒤가 낱말 경계일 때만) · 그 밖(「동안」만 · 「부터」만)은 nil.
     /// - Parameters:
     ///   - start: 시작 날(보통 같은 문장의 `day`) — 그 연 · 월 · 일로 센다(다른 시간대에서 지은 날이어도 날이 어긋나지 않는다).
@@ -75,7 +79,7 @@ public enum SpokenReading: Sendable, Hashable {
         case future
     }
 
-    /// 날 하나 — 기준 시간대의 정오와 그 날의 연 · 월 · 일 · 정밀도(`exact` · `month` · `year` · `circa`).
+    /// 날 하나 — 기준 시간대의 정오와 그 날의 연 · 월 · 일 · 정밀도(`exact` · `month` · `year` · `circa` · `period`).
     public struct Day: Sendable, Hashable, Codable {
         /// 그 날 기준 시간대의 정오.
         public let date: Date

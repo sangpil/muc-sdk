@@ -6,6 +6,7 @@ import Foundation
 //   기준 사건에서: 사건 낱말 바로 뒤 수식(직후 · 직전 · 첫해 · 그해 · 전 · 뒤 · 때)이 구간을 정한다 · 그 사건이 없으면 지어내지 않고 묻는다 ·
 //   사건 낱말 바로 앞이 다른 사람이면 내 사건이 아니다.
 //   겹치면 좁은 것이 이긴다 — 절대 · 상대가 생년으로 읽은 때와 겹치면 겹치는 구간만.
+//   연대는 문장의 해가 선 다른 때 표현 · 최근에 진다(「어제 90년대 노래」 = 어제 · 해 없는 달 · 계절에는 지지 않는다) · 빈도(「N년에 한 번」)는 되풀이 · 날 하나(`storedDay`)는 이 읽음의 저장 꼴.
 
 struct SpanReader: Sendable {
     let day: DayReader
@@ -68,13 +69,19 @@ struct SpanReader: Sendable {
     }
 
     // ── 문장 하나 → 읽음 하나
-    func read(_ text: String, now: Date, context: SpokenReading.Context) -> SpokenReading {
+    /// `rangeStart` = 날 하나 읽기(`day`) — 「A부터 B까지」가 서면 구간 전체가 아니라 A 의 읽음(시작 쪽 제 꼴 · 끝은 `end` 가 B 를 읽는다). 그 밖은 같은 읽음.
+    func read(_ text: String, now: Date, context: SpokenReading.Context, rangeStart: Bool = false) -> SpokenReading {
         // 빈칸은 대부분 지우고 읽는다 · 낱말 경계가 뜻을 가르는 토막만 빈칸 있는 원문(raw)에서 본다
         let raw = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         let t = Rx.strip(raw)
-        // 되풀이는 시점이 아니다 — 둘레 구간이 서면 그 구간 · 생년 · 기준 사건이 없어 묻는 때도 되풀이보다 먼저
-        if Rx.has(t, p.recurringWhen) {
-            switch readOne(raw, now: now, context: context) {
+        // 되풀이는 시점이 아니다 — 둘레 구간이 서면 그 구간 · 생년 · 기준 사건이 없어 묻는 때도 되풀이보다 먼저.
+        // 빈도(「N년에 한 번」 · 세 자리까지 — 네 자리는 늘 해)도 되풀이다 — 그 토막은 해가 아니니 가리고 둘레를 읽는다.
+        // 단 뒤의 풀이말이 지난 꼴이면(「98년에 한 번 가 봤어」) 그 해에 한 번이다 — 빈도가 아니다(「마다」는 늘 빈도)
+        let frequency = Rx.first(raw, p.frequency).flatMap { m in Rx.has(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
+        if frequency != nil || Rx.has(t, p.recurringWhen) {
+            var body = raw
+            if let r = frequency { body.replaceSubrange(r, with: " ") }
+            switch readOne(body, now: now, context: context) {
             case .span(let s): return .span(s)
             case .ask(let a) where a.reason == .needsBirth || a.reason == .needsAnchor: return .ask(a)
             default: return .recurring
@@ -84,9 +91,16 @@ struct SpanReader: Sendable {
         if let m = Rx.first(raw, p.range), case .span(let a) = readOne(m.g[0], now: now, context: context),
            case .span(let b) = (inheritEnd(m.g[1], from: d(a.from)).map { SpokenReading.span(finish($0)) } ?? readOne(m.g[1], now: now, context: context)),
            a.from <= b.to {
+            if rangeStart { return .span(a) }
             return .span(finish(S(from: d(a.from), to: d(b.to), rule: a.rule, soft: a.soft || b.soft, phrase: Rx.strip(String(raw[m.range])))))
         }
         return readOne(raw, now: now, context: context)
+    }
+
+    /// 날 하나 — 같은 글 · 같은 방향 · 빈 맥락의 읽음이 낸 저장 꼴(앵커 · 정밀도) · 구간이 아니면(묻기 · 되풀이) nil · 「A부터 B까지」는 A 의 저장 꼴.
+    func storedDay(_ text: String, now: Date) -> SpokenReading.Day? {
+        guard case .span(let s) = read(text, now: now, context: .empty, rangeStart: true) else { return nil }
+        return day.make(s.anchor, s.precision)
     }
 
     /// 끝 「M월 D일」 · 「D일」 · 「M월」(해 · 상대 낱말 없음) — 시작의 해 · 달을 잇고, 이은 끝이 시작보다 앞이면 한 칸 올린다.
@@ -155,16 +169,32 @@ struct SpanReader: Sendable {
         case .ask(let w, let k, let b, _)?: return ask(w, k, b)
         case nil: break
         }
-        if let m = Rx.first(t, p.recent) {
-            let n = d(now)
-            return .span(finish(S(from: n.adding(.year, -1), to: n, rule: "relative", soft: true, phrase: String(t[m.range]))))
-        }
+        if let r = recent(t, now: now) { return .span(finish(r)) }
         if Rx.has(t, p.vague) { return ask(.unbounded, nil, "vague") }
         return ask(.noExpression, nil, "none")
     }
 
+    /// 최근(「최근 · 요즘 · 얼마 전 · 몇 달 전」) = 기준 날 한 해 전 … 기준 날(흐림).
+    func recent(_ t: String, now: Date) -> S? {
+        guard let m = Rx.first(t, p.recent) else { return nil }
+        let n = d(now)
+        return S(from: n.adding(.year, -1), to: n, rule: "relative", soft: true, phrase: String(t[m.range]))
+    }
+
+    /// 해가 선 때 표현이 있는가 — 날 단위 상대 · 요일 없는 주 · 네 자리 · 두 자리 해 · 해 낱말 · 수식 붙은 달 · 상대 달 · 상대 계절 · 「N달 · N년 전 · 후」 · 반년.
+    /// 해 없는 달 · 계절은 기준 해로 채운 해라 서지 않는다(연대가 그것에 지면 해를 지어낸다).
+    func yearIsSet(_ raw: String, now: Date) -> Bool {
+        let t = Rx.strip(raw)
+        if day.dayRelative(raw, now: now) != nil || Rx.has(t, p.plainWeek) { return true }
+        if Rx.has(t, p.anyYear) || Rx.has(raw, p.twoDigitYear) { return true }
+        if words.yearOffset.contains(where: { t.contains($0.word) }) || words.monthOffset.contains(where: { t.contains($0.word) }) { return true }
+        if let g = Rx.groups(t, p.shiftedMonth), g.count == 3, !g[0].isEmpty { return true }
+        return Rx.has(t, p.relativeSeason) || Rx.has(t, p.unitsAgo) || Rx.has(t, p.halfYear)
+    }
+
     // ── 절대 · 상대(날 하나 읽기 위에 구간)
-    func absRel(_ raw0: String, now: Date) -> S? {
+    /// `decades` = 연대 꼴을 볼까 — 연대는 문장의 다른 때 표현에 지므로, 연대를 가린 나머지를 연대 없이 먼저 읽는다.
+    func absRel(_ raw0: String, now: Date, decades: Bool = true) -> S? {
         let t0 = Rx.strip(raw0)
         let n = d(now)
         let century = n.y - n.y % 100
@@ -177,13 +207,21 @@ struct SpanReader: Sendable {
             case .future: return y < n.y ? y + 100 : y
             }
         }
-        // 연대 — 초반 0~3 · 중반 4~6 · 후반 · 말 7~9
-        if let m = Rx.first(t0, p.decade), let v = Int(m.g[0]) {
+        // 연대 — 초반 0~3 · 중반 4~6 · 후반 · 말 7~9. 문장의 해가 선 다른 때 표현 · 최근에 진다 — 「90년대 노래」는 노래를 꾸민다
+        // 연대 꼴은 빈칸 있는 원문에서 · 뒤가 때 표지 · 조사 · 낱말 경계일 때만(「30년 대장정」 · 「30년대장정」은 연대가 아니다)
+        if decades, let m = Rx.first(raw0, p.decade), let v = Int(m.g[0]) {
+            var rest = raw0
+            rest.replaceSubrange(m.range, with: " ")
+            // 해가 선 다른 때 표현에 진다 — 해 없는 달 · 계절에는 지지 않는다(「90년대 어느 5월」은 기준 해의 5월이 아니다).
+            // 최근에는 연대가 이름씨를 꾸밀 때만 진다(「요즘 90년대 노래」 = 요즘 ⟂ 「80년대에 살던 골목이 요즘 생각나」 = 연대 — 때 토씨가 붙은 연대는 사건의 때)
+            if yearIsSet(rest, now: now), var other = absRel(rest, now: now, decades: false) { other.phrase = t0; return other }
+            if !Rx.has(String(raw0[m.range.upperBound...]), p.decadeAsTime), let r = recent(Rx.strip(rest), now: now) { return r }
             let base = m.g[0].count == 2 ? yy(v) : v
             let (lo, hi) = range(words.parts[m.g[1]]) ?? (0, 9)
-            return S(from: D(base + lo, 1, 1), to: D(base + hi, 12, 31), rule: "absolute", soft: true, phrase: String(t0[m.range]))
+            return S(from: D(base + lo, 1, 1), to: D(base + hi, 12, 31), rule: "absolute", soft: true, phrase: Rx.strip(String(raw0[m.range])))
         }
-        // 두 자리 해 — 뒤에 때 표지가 올 때만 해로 읽는다(햇수와 가른다) · 세기는 방향을 따른다(위)
+        // 두 자리 해 — 뒤에 때 표지가 올 때만 해로 읽는다(햇수와 가른다 — 「N년도 넘 · 더」 · 「N년에 걸쳐」 · 「N년 동안」은 햇수) ·
+        // 해 뒤 「도 · 의 · 쉼표」를 건너 달을 잇는다(「98년도 3월」 · 「98년의 3월」) · 세기는 방향을 따른다(위)
         var raw = raw0
         if let m = Rx.first(raw, p.twoDigitYear), let v = Int(m.g[0]) {
             raw.replaceSubrange(m.range, with: "\(yy(v))" + words.yearSuffix)

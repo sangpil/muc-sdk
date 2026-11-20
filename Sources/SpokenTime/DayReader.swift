@@ -1,11 +1,13 @@
 import Foundation
 
-// 날 하나 읽기 — 절대 · 상대 날짜 표현 → 앵커 날 + 정밀도(exact · month · year · circa). 구간 읽기(`SpanReader`)가 그 위에 구간을 세운다.
+// 날 하나 셈 — 절대 · 상대 날짜 표현 → 앵커 날 + 정밀도(exact · month · year · circa). 구간 읽기(`SpanReader`)가 그 위에 구간을 세운다 ·
+//   공개 손 `day` 는 이 셈이 아니라 구간 읽기의 저장 꼴이다(`SpanReader.storedDay`) — 이 셈은 구간 읽기 안과 끝 날 읽기의 몫.
 //   상대 날짜는 말한 단위까지: 날 · 주 = exact · 달 · 반년 = month(그 달 1일) · 해 = year(그 해 1월 1일) · 흐림 표지(때 표현 바로 뒤에 붙은 것 · 따로 선 계절 · 이맘때) = circa.
 //   앵커는 늘 그 구간의 첫 날 — 달 초 · 중순 · 말 = 1 · 11 · 21일 · 해 말 = 10월 1일(해 초 = 1월 1일) · 계절 = 그 계절 첫 달 1일 · 이맘때 = 그 해의 이번 달 1일.
 //   날 단위 상대 표현(어제 · N일 전 · 지난주 + 요일 …)이 있으면 그것이 때다 — 같은 문장의 다른 달 표현은 대상이다(더 좁은 것이 이긴다).
 //   해 없는 달은 달 바로 앞 수식이 정한다(지난 · 저번 = 오늘 앞의 가장 가까운 그 달 · 다음 · 오는 = 뒤 · 이번 · 올 · 수식 없음 = 올해).
-//   되풀이 문장은 말한 시작(「A부터」의 A)만 · 흐린 수(「몇 달 전」)는 날을 정하지 않는다. 주는 월요일에 시작한다.
+//   되풀이 문장은 말한 시작(「A부터」의 A)만 · 흐린 수(「몇 달 전」)는 날을 정하지 않는다(구간 읽기가 「최근」으로 읽는다). 주는 월요일에 시작한다.
+//   해와 달 사이의 「도 · 의 · 쉼표」는 그 해의 달 · 「인가」는 흐림 표지(「1977년인가 3월」 = 그 해의 달 circa).
 //   해가 아닌 긴 수(다섯 자리 이상 · 쉼표 수)는 해 자리를 차지한다 — 그 수와 꼬리(년 · 년도 · 년의 · 년 전 + 뒤의 달 · 날 · 계절 + 그것으로 여는 구간)를
 //   덩이째 가린 글을 읽는다(`masked` — 세 손이 같은 글). 가린 달 · 계절을 기준 해로 채우면 해를 지어낸 것이다 · 덩이 밖 때 표현은 평소대로.
 //   날은 기준 시간대의 정오(12:00)다.
@@ -242,7 +244,8 @@ struct DayReader: Sendable {
                 let y = v[0] < s.month ? s.year + 1 : s.year
                 return make(noon(y, r.month, r.day), r.precision)
             }
-            return resolve(b, now: now, future: future)
+            // 그 밖의 끝은 끝 쪽 제 꼴 — 날 하나 읽기와 같은 읽음(두 자리 해 · 연대 포함 · 연대 끝은 그 연대 첫 날)
+            return SpanReader(zone: zone, words: words, direction: future ? .future : .past).storedDay(b, now: now)
         }
         if let s = start, s.precision == .exact, let v = Rx.ints(t, p.nights), v.count == 1 {
             return cal.date(byAdding: .day, value: v[0], to: noon(s.year, s.month, s.day)).map { make($0, .exact) }

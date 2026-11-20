@@ -222,22 +222,164 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
     ])
     func lifeEvents(_ s: String, _ c: String, _ expect: String) { #expect(said(s, c, now: later) == expect, "\(s) · \(c)") }
 
-    /// 날 하나 — 말한 단위까지 · 앵커는 단위의 첫 날 · 되풀이는 말한 시작만 · 생년으로 읽는 때 · 요일 없는 주 · 흐린 수는 nil.
+    /// 날 하나 = 같은 글 · 같은 방향 · 빈 맥락의 구간 읽기가 저장할 앵커 · 정밀도 — 구간이 아니면(묻기 · 되풀이) nil.
+    /// 「A부터 B까지」만 다르다 — 날 하나는 A 의 제 꼴(끝은 `end`). 기준 날 2040-10-10(수).
     @Test(arguments: [
         ("어제 만났다", "2040-10-09 exact"),
         ("3월 말에 옮겼다", "2040-03-21 circa"),
         ("작년 여름에 갔다", "2039-06-01 circa"),
         ("2030년에 시작했다", "2030-01-01 year"),
         ("다음 달부터 매달 5일 모은다", "2040-11-05 exact"),
-        ("지난주에 바빴다", "nil"),
+        ("지난주에 바빴다", "2040-10-01 month"),
+        ("이번 주 내내 연못을 손봤다", "2040-10-08 month"),
+        ("최근에 연못을 팠다", "2039-10-10 period"),
+        ("요새 연못에 물이 마른다", "2039-10-10 period"),
+        ("몇 달 전에 시작했다", "2039-10-10 period"),
+        ("열 해 전쯤 연못을 팠다", "2030-01-01 circa"),
+        ("5달 전쯤 연못을 팠다", "2040-05-01 circa"),
+        ("2031년 고2 때 연못을 팠다", "2031-01-01 year"),
         ("매달 5일에 모은다", "nil"),
-        ("몇 달 전에 시작했다", "nil"),
         ("고3 때 공부했다", "nil"),
+        ("예전에 연못을 팠다", "nil"),
     ])
     func oneDay(_ s: String, _ expect: String) {
         let d = SpokenReading.day(s, now: day("2040-10-10"), zone: zone)
         #expect((d.map { "\($0.text) \($0.precision.rawValue)" } ?? "nil") == expect, "\(s)")
+        #expect(d.map { "\($0.text) \($0.precision.rawValue)" } == stored(s, now: day("2040-10-10"), .past), "\(s) · 구간 읽기와 같은 답")
         if let d { #expect(calendar().component(.hour, from: d.date) == 12 && text(d.date) == d.text) }
+    }
+
+    /// 구간 읽기(빈 맥락)의 저장 꼴 「YYYY-MM-DD 정밀도」 · 구간이 아니면 nil.
+    func stored(_ s: String, now: Date, _ direction: SpokenReading.Direction) -> String? {
+        guard case .span(let r) = SpokenReading.read(s, now: now, zone: zone, direction: direction) else { return nil }
+        return "\(text(r.anchor)) \(r.precision.rawValue)"
+    }
+
+    /// 두 자리 해 · 연대가 해를 정하는 날 하나 — 해 = year · 쯤 · 계절 = circa · 달 = month · 날 = exact · 달의 때 = circa · 연대 = period(구간 첫 날).
+    /// 함께 말한 달 · 계절은 그 해 안이다(기준 해로 채우지 않는다). 앞일도 구간 읽기와 같은 셈.
+    @Test(arguments: [
+        ("87년에 도자기를 배웠다", SpokenReading.Direction.past, "1987-01-01 year"),
+        ("93년쯤 텃밭을 일궜다", .past, "1993-01-01 circa"),
+        ("88년 가을에 감나무를 심었다", .past, "1988-09-01 circa"),
+        ("91년 겨울에 연못이 얼었다", .past, "1991-12-01 circa"),
+        ("73년 6월에 울타리를 세웠다", .past, "1973-06-01 month"),
+        ("73년 6월 9일에 울타리를 세웠다", .past, "1973-06-09 exact"),
+        ("73년 6월 말에 울타리를 세웠다", .past, "1973-06-21 circa"),
+        ("45년에 정원을 넓혔다", .past, "1945-01-01 year"),                 // 기준 해보다 뒤면 앞 세기
+        ("80년대에 온실을 지었다", .past, "1980-01-01 period"),
+        ("80년대 말에 온실을 지었다", .past, "1987-01-01 period"),
+        ("2050년대 초반에 온실을 지었다", .past, "2050-01-01 period"),      // 네 자리 연대도 연대
+        ("45년에 정원을 넓히고 싶다", .future, "2045-01-01 year"),
+        ("45년 봄에 정원을 넓히고 싶다", .future, "2045-03-01 circa"),
+        ("52년 4월에 정원을 넓히고 싶다", .future, "2052-04-01 month"),
+        ("40년대에 정원을 넓히고 싶다", .future, "2040-01-01 period"),       // 끝나지 않은 가장 가까운 연대
+        ("30년대에 정원을 넓히고 싶다", .future, "2130-01-01 period"),
+    ])
+    func dayFromShortYear(_ s: String, _ direction: SpokenReading.Direction, _ expect: String) {
+        let now = day("2040-10-10")
+        let d = SpokenReading.day(s, now: now, zone: zone, direction: direction)
+        #expect((d.map { "\($0.text) \($0.precision.rawValue)" } ?? "nil") == expect, "\(s) · \(direction)")
+        #expect(d.map { "\($0.text) \($0.precision.rawValue)" } == stored(s, now: now, direction), "\(s) · 구간 읽기와 같은 답")
+    }
+
+    /// 두 자리 해의 달 · 날 · 계절을 기준 해로 채우지 않는다(지난 일 · 앞일) · 해와 달 사이의 「의 · 쉼표 · 도」는 그 해의 달 · 「인가」는 해를 흐리게 말한 것(circa).
+    @Test func shortYearIsNotThisYear() {
+        let now = day("2040-10-10")
+        for (s, dir) in [("73년 3월에 우물을 팠다", SpokenReading.Direction.past), ("73년 3월 2일에 우물을 팠다", .past), ("73년 여름에 우물을 팠다", .past),
+                         ("52년 여름에 우물을 파고 싶다", .future), ("52년 3월에 우물을 파고 싶다", .future)] {
+            let d = SpokenReading.day(s, now: now, zone: zone, direction: dir)
+            #expect(d != nil, "\(s)")
+            #expect(d.map { $0.year != 2040 && $0.year != 2041 } == true, "\(s) · \(dir) — 기준 해 · 다음 해로 채우지 않는다")
+        }
+        for s in ["73년의 3월에 우물을 팠다", "73년, 3월에 우물을 팠다", "73년도 3월에 우물을 팠다", "1973년도 3월에 우물을 팠다", "1973년의 3월에 우물을 팠다"] {
+            #expect(SpokenReading.day(s, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "1973-03-01 month", "\(s)")
+            #expect(said(s) == "1973-03-01..1973-03-31 month absolute none", "\(s)")
+        }
+        #expect(said("1973년, 3월 2일에 우물을 팠다") == "1973-03-02..1973-03-02 exact absolute none")
+        #expect(said("73년인가 3월에 우물을 팠다") == "1973-03-01..1973-03-31 circa absolute soft")
+        #expect(SpokenReading.day("73년인가 3월에 우물을 팠다", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "1973-03-01 circa")
+        #expect(said("73년도에 우물을 팠다") == "1973-01-01..1973-12-31 year absolute none")   // 「도」 뒤가 때 표지면 그 해
+        // 네 자리 해 · 해 없는 달은 그대로
+        #expect(SpokenReading.day("1973년 3월에 우물을 팠다", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "1973-03-01 month")
+        #expect(SpokenReading.day("3월에 우물을 팠다", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2040-03-01 month")
+        // 날 단위 상대 표현은 그대로 때다
+        #expect(SpokenReading.day("어제 73년 사진을 정리했다", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2040-10-09 exact")
+        // 되풀이는 말한 시작
+        #expect(SpokenReading.day("73년 3월부터 매달 5일에 우물을 살폈다", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "1973-03-05 exact")
+    }
+
+    /// 「A부터 B까지」 — 날 하나는 A 의 제 꼴 · 끝은 B 의 제 꼴(두 자리 · 네 자리 해가 같은 답 · 구간 전체 꼴로 끌어오지 않는다) · 연대 끝은 그 연대 첫 날.
+    @Test func rangeOwnEnds() {
+        let now = day("2040-10-10")
+        let f = { (d: SpokenReading.Day?) in d.map { "\($0.text) \($0.precision.rawValue)" } ?? "nil" }
+        for s in ["1973년 3월부터 6월까지 울타리를 고쳤다", "73년 3월부터 6월까지 울타리를 고쳤다"] {
+            let a = SpokenReading.day(s, now: now, zone: zone)
+            #expect(f(a) == "1973-03-01 month", "\(s)")
+            #expect(f(SpokenReading.end(s, start: a, now: now, zone: zone)) == "1973-06-01 month", "\(s)")
+            #expect(said(s) == "1973-03-01..1973-06-30 year absolute none", "\(s) · 구간은 구간 꼴")
+        }
+        let y = "73년부터 75년까지 울타리를 고쳤다"
+        let ys = SpokenReading.day(y, now: now, zone: zone)
+        #expect(f(ys) == "1973-01-01 year")
+        #expect(f(SpokenReading.end(y, start: ys, now: now, zone: zone)) == "1975-01-01 year")
+        let d = "80년대부터 2050년대까지 온실을 가꿨다"
+        let ds = SpokenReading.day(d, now: now, zone: zone)
+        #expect(f(ds) == "1980-01-01 period")
+        #expect(f(SpokenReading.end(d, start: ds, now: now, zone: zone)) == "2050-01-01 period")
+    }
+
+    /// 연대는 문장의 다른 때 표현(날 단위 상대 · 해 · 달)에 진다 — 「80년대 노래」는 노래를 꾸민다 · 홀로 선 연대는 그대로.
+    /// 「N년에 한 번 · 두 번」은 빈도(되풀이)지 해가 아니다. 두 손이 같은 답.
+    @Test func decadeYieldsAndFrequency() {
+        let now = day("2040-10-10")
+        let f = { (s: String) in SpokenReading.day(s, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } ?? "nil" }
+        #expect(said("어제 80년대 노래를 틀었다") == "2040-10-09..2040-10-09 exact relative none")
+        #expect(f("어제 80년대 노래를 틀었다") == "2040-10-09 exact")
+        #expect(said("2031년에 80년대 영화를 봤다") == "2031-01-01..2031-12-31 year absolute none")
+        #expect(f("2031년에 80년대 영화를 봤다") == "2031-01-01 year")
+        #expect(said("지난 5월에 80년대 음반을 샀다") == "2040-05-01..2040-05-31 month absolute none")
+        #expect(said("80년대에 온실을 지었다") == "1980-01-01..1989-12-31 period absolute soft")
+        #expect(said("80년대 노래를 좋아한다") == "1980-01-01..1989-12-31 period absolute soft")
+        for s in ["10년에 한 번 대나무 꽃이 핀다", "4년에 두 번 연못을 비운다", "100년에 한 번 오는 혜성", "76년에 한 번 오는 혜성을 봤다", "10년마다 연못을 비웠다"] {
+            #expect(said(s) == "recurring", "\(s)")
+            #expect(f(s) == "nil", "\(s)")
+        }
+        // 뒤의 풀이말이 지난 꼴이면 그 해에 한 번 — 빈도가 아니다(두 자리 · 네 자리 같은 셈)
+        for (s, y) in [("73년에 한 번 가 봤다", "1973"), ("40년에 한 번 온실에 갔었다", "2040"), ("73년에 두 번 연못을 비웠다", "1973")] {
+            #expect(said(s) == "\(y)-01-01..\(y)-12-31 year absolute none", "\(s)")
+            #expect(f(s) == "\(y)-01-01 year", "\(s)")
+        }
+        #expect(said("2031년에 10년에 한 번 피는 꽃을 봤다") == "2031-01-01..2031-12-31 year absolute none")   // 빈도 밖의 때는 그대로
+        // 네 자리 해는 빈도가 아니다 · 「번째」는 차례지 빈도가 아니다 — 그 해
+        for (s, y) in [("2031년에 한 번 온실에 갔다", "2031"), ("2031년에 두 번 연못을 비웠다", "2031"), ("2031년에 두 번째 온실을 지었다", "2031"),
+                       ("73년에 두 번째 온실을 지었다", "1973")] {
+            #expect(said(s) == "\(y)-01-01..\(y)-12-31 year absolute none", "\(s)")
+            #expect(f(s) == "\(y)-01-01 year", "\(s)")
+        }
+        // 지난 꼴이 아니어도 네 자리 해 · 「번째」는 해다(앞일)
+        for (s, y) in [("2045년에 한 번 온실에 가 보고 싶다", "2045"), ("45년에 두 번째 온실을 지을 거다", "2045")] {
+            #expect(said(s, direction: .future) == "\(y)-01-01..\(y)-12-31 year absolute none", "\(s)")
+        }
+        // 연대는 최근에 진다 · 해 없는 달 · 계절에는 지지 않는다(기준 해로 채우지 않는다)
+        #expect(said("요즘 80년대 노래를 자주 튼다") == "2039-10-10..2040-10-10 period relative soft")
+        #expect(f("요즘 80년대 노래를 자주 튼다") == "2039-10-10 period")
+        #expect(said("80년대 초반에 살던 골목이 요즘 자꾸 떠오른다") == "1980-01-01..1983-12-31 period absolute soft")   // 때 토씨가 붙은 연대는 사건의 때
+        #expect(said("80년대 어느 5월에 이사했다") == "1980-01-01..1989-12-31 period absolute soft")
+        #expect(f("80년대 어느 5월에 이사했다") == "1980-01-01 period")
+        #expect(SpokenReading.day("30년대 여름에 떠나고 싶다", now: now, zone: zone, direction: .future).map { "\($0.text) \($0.precision.rawValue)" } == "2130-01-01 period")
+    }
+
+    /// 햇수는 해 · 연대가 아니다 — 「N년 대장정」 · 「N년도 넘 · 더」 · 「N년에 걸쳐」 · 「N년 동안」 · 띄우지 않은 「N년대장정」. 연대 꼴은 빈칸 있는 원문에서 때 표지와 함께만.
+    @Test func yearCountsAreNotYears() {
+        let now = day("2040-10-10")
+        let none = "ask:noExpression"
+        for s in ["30년 대장정으로 온실을 지었다", "30년대장정으로 온실을 지었다", "온실을 지은 지 20년도 넘었다", "온실을 지은 지 20년도 더 됐다",
+                  "빚을 15년에 걸쳐 갚았다", "20년 동안 텃밭을 가꿨다", "온실을 지은 지 20년도 됐다", "온실을 지은 지 10년도 안 됐다",
+                  "온실을 지은 지 20년도 훨씬 넘었다", "30년에 가까운 세월을 보냈다", "20년에 이르는 세월을 보냈다"] {
+            #expect(said(s) == none, "\(s)")
+            #expect(SpokenReading.day(s, now: now, zone: zone) == nil, "\(s)")
+        }
+        #expect(said("작년에 30년 대장정을 시작했다") == "2039-01-01..2039-12-31 year relative none")
     }
 
     /// 끝 날 — 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 · 이은 끝이 시작보다 앞이면 윗 단위를 하나 올림) · 「N박」 = 시작 + N일(시작이 exact · 낱말 경계).
@@ -470,7 +612,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         let offsets: [Int] = [w.nativeDays.count, w.weekOffset.count, w.yearOffset.count, w.monthOffset.count, w.dayOffset.count]
         let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count]
         let shifts: [Int] = [w.monthShift.past.count, w.monthShift.future.count, w.school.entry.count, w.school.graduation.count]
-        #expect(patterns == 74)
+        #expect(patterns == 77)
         #expect(lists == [3, 10, 8, 6])
         #expect(numbers == [7, 10, 10, 10, 13])
         #expect(offsets == [11, 6, 6, 6, 8])
