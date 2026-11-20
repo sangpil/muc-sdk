@@ -328,6 +328,50 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         #expect(said("2345년에 떠날 배") == "2345-01-01..2345-12-31 year absolute none")
     }
 
+    /// 해가 아닌 긴 수(다섯 자리 이상 · 쉼표 수)는 해 자리를 차지한다 — 수와 꼬리(년 · 년도 · 년의 · 년 전 + 달 · 날 · 계절 + 그것으로 여는 구간)를
+    /// 덩이째 가리고 남은 문장을 평소대로 읽는다(가린 달 · 계절을 기준 해로 채우지 않는다 · 방향 상관없이) · 네 자리 그 자체는 그 해.
+    @Test func longNumberBlockIsMasked() {
+        let now = day("2040-10-10")
+        let none = "ask:noExpression"
+        // 덩이뿐인 문장 — 손 셋 모두 때 없음(지난 일 · 앞일)
+        for s in ["45678년 7월에 별이 진다는 소설", "230000년 11월 9일 우주선 일지", "45678년 7월부터 9월까지 연재한 소설",
+                  "56,789년 4월 별자리 기사", "45678년도 4월 별자리 기사", "45678년의 4월 별자리 기사", "45678년 전 4월 별자리 기사", "45678년 가을 별자리 기사"] {
+            for dir in [SpokenReading.Direction.past, .future] {
+                #expect(SpokenReading.day(s, now: now, zone: zone, direction: dir) == nil, "\(s) \(dir)")
+                #expect(SpokenReading.end(s, start: SpokenReading.day(s, now: now, zone: zone, direction: dir), now: now, zone: zone, direction: dir) == nil, "\(s) · 끝")
+                #expect(said(s, direction: dir) == none, "\(s) \(dir)")
+            }
+        }
+        #expect(!SpokenReading.hasSpanSignal("45678년 7월부터 9월까지 연재한 소설"))   // 가린 구간은 기간 신호도 아니다
+        // 네 자리 해는 그대로
+        let y = "2345년 7월부터 9월까지 연재한 소설"
+        let ys = SpokenReading.day(y, now: now, zone: zone)
+        #expect(ys.map { "\($0.text) \($0.precision.rawValue)" } == "2345-07-01 month")
+        #expect(SpokenReading.end(y, start: ys, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2345-09-01 month")
+        #expect(SpokenReading.day("2345년 11월 9일 우주선 일지", now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2345-11-09 exact")
+        #expect(said("2345년 7월에 별이 진다는 소설") == "2345-07-01..2345-07-31 month absolute none")
+        // 덩이 밖 때 표현은 평소대로 — 날 단위 상대 · 절대 날짜 · 되풀이 · 나이 · 기준 사건 · 덩이가 끝인 구간의 시작
+        for (s, d) in [("어제 45678년 7월 별자리 기사를 봤다", "2040-10-09"), ("5일 전에 230000년 11월 우주선 일지를 펼쳤다", "2040-10-05")] {
+            #expect(SpokenReading.day(s, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "\(d) exact", "\(s)")
+            #expect(said(s) == "\(d)..\(d) exact relative none", "\(s)")
+        }
+        let abs = "2035년 5월에 쓴 45678년 7월 별자리 기사"
+        #expect(SpokenReading.day(abs, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2035-05-01 month")
+        #expect(said(abs) == "2035-05-01..2035-05-31 month absolute none")
+        #expect(said("주말마다 45678년 7월 별자리 기사를 읽는다") == "recurring")
+        #expect(said("스무 살 때 45678년 7월 별자리 기사를 읽었다", "early") == said("스무 살 때 별자리 기사를 읽었다", "early"))
+        #expect(said("결혼하고 나서 45678년 7월 별자리 기사를 읽었다", "full", now: "2090-01-01") == said("결혼하고 나서 별자리 기사를 읽었다", "full", now: "2090-01-01"))
+        let tail = "1월부터 45678년 7월까지 연재한 소설"
+        #expect(SpokenReading.day(tail, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2040-01-01 month")
+        #expect(SpokenReading.end(tail, start: SpokenReading.day(tail, now: now, zone: zone), now: now, zone: zone) == nil)
+        // 「N박」은 남은 문장에서 — 날 단위 시작 뒤면 시작에서 세고 · 시작이 덩이뿐이면 시작 없음
+        let nights = "어제 떠나 2박, 45678년 7월 별자리 기사를 읽었다"
+        #expect(SpokenReading.end(nights, start: SpokenReading.day(nights, now: now, zone: zone), now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } == "2040-10-11 exact")
+        let alone = "45678년 7월 9일에 떠나 2박 했다는 소설"
+        #expect(SpokenReading.day(alone, now: now, zone: zone) == nil)
+        #expect(SpokenReading.end(alone, start: SpokenReading.day(alone, now: now, zone: zone), now: now, zone: zone) == nil)
+    }
+
     /// 수는 네 자리까지 — 넘치는 수는 때가 아니다(멈추지 않는다).
     @Test func hugeNumbersAreNotTimes() {
         let now = day("2040-10-10")
@@ -426,7 +470,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         let offsets: [Int] = [w.nativeDays.count, w.weekOffset.count, w.yearOffset.count, w.monthOffset.count, w.dayOffset.count]
         let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count]
         let shifts: [Int] = [w.monthShift.past.count, w.monthShift.future.count, w.school.entry.count, w.school.graduation.count]
-        #expect(patterns == 73)
+        #expect(patterns == 74)
         #expect(lists == [3, 10, 8, 6])
         #expect(numbers == [7, 10, 10, 10, 13])
         #expect(offsets == [11, 6, 6, 6, 8])

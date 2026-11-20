@@ -11,7 +11,9 @@ import Foundation
 // 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
 // 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)와 절대 · 상대 날짜 — 둘이 서면 겹치는 구간 → 최근 → 끝 없는 때(묻기).
 // 저장 꼴: 앵커 = 구간 첫 날 · 정밀도 = 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year`(흐리면 둘 다 `circa`) · 한 해 넘음 `period`(구간을 저장).
-// 빈칸은 U+0020 만 빈칸으로 본다(문장의 다른 빈칸 글자는 부르는 쪽이 고른다). 수는 네 자리까지 읽는다(「N일 · N주 · N달 · N년 전 · 후」 · 「N박」).
+// 빈칸은 U+0020 만 빈칸으로 본다(문장의 다른 빈칸 글자는 부르는 쪽이 고른다). 수는 네 자리까지 읽는다(「N일 · N주 · N달 · N년 전 · 후」 · 「N박」) ·
+// 해가 아닌 긴 수의 덩이(「56789년 7월」 · 「12,345년도 여름」)는 가린다 — 수(다섯 자리 이상 · 쉼표 수)와 꼬리(년 · 년도 · 년의 · 년 전 + 달 · 날 · 계절 + 그것으로 여는 구간)를 가리고
+// 남은 문장을 평소대로 읽는다(가린 달 · 계절을 기준 해로 채우지 않는다 · 손 넷이 같은 글).
 // 자원 번들(`muc-sdk_SpokenTime`)은 이 모듈과 함께 실려야 한다 — 빠지면 첫 읽기에서 멈춘다(낱말 없이 읽은 답은 조용히 틀린다).
 
 /// 문장 하나가 말한 때 — 구간 · 묻기 · 되풀이 셋 중 하나. 닫힌 열거다(갈래를 더하면 주 판).
@@ -32,7 +34,7 @@ public enum SpokenReading: Sendable, Hashable {
     ///   - context: 생년 · 기준 사건(나이 · 학년 · 「결혼하고 나서」 같은 때) — 없으면 그런 때는 `.ask` 로 묻는다.
     ///   - direction: 문장이 지난 일인가 앞일인가(기본 지난 일 — `Direction`).
     public static func read(_ sentence: String, now: Date, zone: TimeZone, context: Context = .empty, direction: Direction = .past) -> SpokenReading {
-        SpanReader(zone: zone, words: .shared, direction: direction).read(sentence, now: now, context: context)
+        SpanReader(zone: zone, words: .shared, direction: direction).read(DayReader.masked(sentence, words: .shared), now: now, context: context)
     }
 
     /// 문장 하나를 날 하나로 읽는다 — 말한 단위까지(날 · 주 = `exact` · 달 · 반년 = `month` · 해 = `year` · 흐리면 `circa` · `period` 는 내지 않는다).
@@ -40,7 +42,7 @@ public enum SpokenReading: Sendable, Hashable {
     /// 되풀이 문장은 말한 시작(「A부터」의 A)만 · 못 읽으면 nil(나이 · 학년 · 기준 사건 같은 때는 이 손이 읽지 않는다 — `read`).
     /// - Parameter direction: 방향(`Direction` — 앞일이면 수식 없는 달 · 날 · 계절을 오늘 이후로).
     public static func day(_ sentence: String, now: Date, zone: TimeZone, direction: Direction = .past) -> Day? {
-        DayReader(zone: zone, words: .shared).resolve(sentence, now: now, future: direction == .future)
+        DayReader(zone: zone, words: .shared).resolve(DayReader.masked(sentence, words: .shared), now: now, future: direction == .future)
     }
 
     /// 문장이 말한 끝 날 — 말한 끝만(지어내지 않는다): 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 잇고, 이은 끝이 시작보다 앞이면 빠진 쪽의 윗 단위를
@@ -50,12 +52,12 @@ public enum SpokenReading: Sendable, Hashable {
     ///   - start: 시작 날(보통 같은 문장의 `day`) — 그 연 · 월 · 일로 센다(다른 시간대에서 지은 날이어도 날이 어긋나지 않는다).
     ///   - direction: 방향 — 끝을 문장 그대로 읽을 때(시작이 없거나 끝에 해 · 달이 있을 때) `day` 와 같은 뜻.
     public static func end(_ sentence: String, start: Day?, now: Date, zone: TimeZone, direction: Direction = .past) -> Day? {
-        DayReader(zone: zone, words: .shared).resolveEnd(sentence, start: start, now: now, future: direction == .future)
+        DayReader(zone: zone, words: .shared).resolveEnd(DayReader.masked(sentence, words: .shared), start: start, now: now, future: direction == .future)
     }
 
     /// 문장에 기간 신호가 있는가 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 「동안」 · 「…부터 …까지」(빈칸이 있는 글에서 — 「운동 안 했다」는 아니다).
     public static func hasSpanSignal(_ sentence: String) -> Bool {
-        DayReader.spanSignal(sentence, words: .shared)
+        DayReader.spanSignal(DayReader.masked(sentence, words: .shared), words: .shared)
     }
 
     /// Whether the sentence speaks of something past or something ahead. The caller passes it from its own classification of the sentence;

@@ -16,7 +16,7 @@ struct Words: Decodable, Sendable {
         let fromUntil, nights, spanWords: String
         let native, nativeAge, nativeAgeEo, recent, vague, recurringWhen, childhood, schoolDays, stage, others: String
         let range, endMonthDay, endDay, endMonth: String
-        let decade, twoDigitYear, plainWeek, anyYear, anyMonth, yearWords, monthOrPart: String
+        let decade, twoDigitYear, plainWeek, anyYear, longNumberBlock, anyMonth, yearWords, monthOrPart: String
         let monthEarlySpaced, monthMidSpaced, monthLateSpaced, yearEarlySpaced: String
         let gradePre, gradePost, gradeSpaced, universityGrade, seasonAfter: String
         let ageExact, firstBirthday, sixtieth, age, ageBand: String

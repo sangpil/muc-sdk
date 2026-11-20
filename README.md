@@ -31,7 +31,7 @@ Pin an exact version — the engine and your project must resolve the same one.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "5.1.1"),
+    .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "5.1.2"),
 ],
 targets: [
     .target(name: "MyScreens", dependencies: [
@@ -63,7 +63,7 @@ let package = Package(
         .trait(name: "ToolBuild", description: "Element marks for the engine's tools"),   // off by default · 기본 꺼짐
     ],
     dependencies: [
-        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "5.1.1",
+        .package(url: "https://github.com/sangpil/muc-sdk.git", exact: "5.1.2",
                  traits: [.trait(name: "ActiveMarks", condition: .when(traits: ["ToolBuild"]))]),
     ],
     targets: [
@@ -149,6 +149,8 @@ Your app links contract products only. Your preview host (an executable in your 
   SDK 5.1 은 제품 `SpokenTime` 을 더한다 — 한국어 문장이 말한 때를 손 하나로 읽는다: `SpokenReading.read(_:now:zone:context:direction:)` 가 문장 · 기준 시각 · 날을 세는 시간대와 (선택) 생년 · 날 있는 인생 사건(`SpokenReading.Context`)을 받아 날의 구간(`from` · `to` · `anchor` = 첫 날 · `precision` `exact` · `month` · `year` · `circa` · `period` — 구간의 폭이 정한다 · `period` 는 구간째 저장)을 내거나 못 정하는 까닭(`ask` — 때 표현 없음 · 끝 없음 · 생년 필요 · 사건 필요) · 되풀이(`recurring`)를 낸다. 날은 그 시간대의 정오다. `SpokenReading.day(_:now:zone:direction:)` 는 날 하나를 말한 단위까지(`exact` · `month` · `year` · `circa` — 그 단위의 첫 날) · `SpokenReading.end(_:start:now:zone:direction:)` 는 말한 끝 날(「…부터 …까지」 · exact 시작 뒤의 「N박」 — 빠진 해 · 달은 시작에서 잇고 끝이 시작보다 앞이면 윗 단위를 올린다) · `SpokenReading.hasSpanSignal(_:)` 은 기간 신호를 읽는다. 때를 읽는 손 셋은 방향 `direction`(`SpokenReading.Direction` — 기본 `past` 지난 일 ⟂ `future` 앞일 · 부르는 쪽이 문장 분류로 넘긴다)을 받는다 — 문장의 수식어가 늘 이기고, 앞일이 바꾸는 것은 셋이다 — 두 자리 해 · 연대(「98년」 · 「90년대」 — 지난 일은 기준 해의 세기에 붙이고 기준 해보다 뒤면 한 세기 앞 · 앞일은 기준 해 이상 가장 가까운 해) · 수식 없는 달 · 달과 날(오늘 이후 가장 가까운 것) · 수식 없는 계절(아직 끝나지 않은 가장 가까운 것). 읽은 결과 안의 값 꼴은 `Codable` 이고(결과 열거 `SpokenReading` 자체는 아니다 — 담아 둘 것은 안의 값으로), 묻기의 까닭은 열린 꼴(`SpokenReading.Ask.Reason` — 모르는 낱말도 그대로)이며, 시작 날은 `SpokenReading.Day(year:month:day:precision:zone:)` 로 짓는다. 낱말은 모듈의 자원 파일에 산다(위) — 이 패키지의 첫 자원 번들이다. 그 밖은 그대로다 — 파일 · 와이어 · 프로토콜 변화 0 · 프로토콜 판 10 그대로. 덧붙임만이라 부 판이다.
   **5.1.1** fixes two readings: an end that names only a month (`11월부터 1월까지`) takes its year from the start and rolls over a year when it would fall before the start — in `end` as in `read`, whatever the direction — and a four-digit year is never the last four digits of a longer number (`56789년 전에` is no time). Nothing else changes — same public names, protocol stays at version 10.
   **5.1.1** 은 읽기 둘을 고친다 — 달만 말한 끝(「11월부터 1월까지」)은 해를 시작에서 잇고 시작보다 앞이면 한 해 올린다(`end` · `read` 같고 방향과 상관없이) · 네 자리 해는 더 긴 수의 끝 네 자리가 아니다(「56789년 전에」는 때가 아니다). 그 밖은 그대로다 — 공개 이름 그대로 · 프로토콜 판 10 그대로.
+  **5.1.2** fixes one reading: a number that is not a year — five digits or more, or written with commas (`12,345`) — takes the year's place, so it is masked together with what hangs on it (`년` · `년도` · `년의` · `년 전`, then a month, a month and day or a season, and a `…부터 …까지` span it opens) and the rest of the sentence reads as usual. The masked month or season is never filled in with the reference year, in either direction (`56789년 7월에` is no time · `2035년 5월에 쓴 56789년 7월 이야기` is May 2035). All four readers see the same masked sentence. A four-digit year with its month (`2345년 7월에`) reads as before. Nothing else changes — same public names, protocol stays at version 10.
+  **5.1.2** 는 읽기 하나를 고친다 — 해가 아닌 수(다섯 자리 이상 · 쉼표 수 「12,345」)는 해 자리를 차지해, 그 수와 꼬리(년 · 년도 · 년의 · 년 전 + 달 · 달과 날 · 계절 + 그것으로 여는 「…부터 …까지」)를 덩이째 가리고 남은 문장을 평소대로 읽는다. 가린 달 · 계절을 기준 해로 채우지 않는다(방향 상관없이 — 「56789년 7월에」는 때가 아니다 · 「2035년 5월에 쓴 56789년 7월 이야기」는 2035년 5월). 손 넷이 같은 가린 글을 읽는다. 네 자리 해와 달(「2345년 7월에」)은 그대로다. 그 밖은 그대로다 — 공개 이름 그대로 · 프로토콜 판 10 그대로.
 - **Formats grow by adding fields**: readers keep unknown keys and write them back (`extra`), open vocabularies (`FormFactor`, `ScaleKind`, …) carry unknown words as they are. No form factor is required — Mac-only, iPad-only and TV-only projects are valid as a format. A project tool may still refuse a combination it cannot build, such as a TV-only project.
   형식은 칸 더하기로 자란다 — 모르는 키는 보존해 되쓰고, 열린 낱말은 모르는 낱말도 그대로 든다 · 어느 폼팩터도 필수가 아니다(맥 전용 · iPad 전용 · TV 전용도 형식으로는 선다 — 짓지 못하는 조합(TV 전용 같은)은 프로젝트 도구가 거절할 수 있다).
 - **A major version freezes the contract**: the public surface a project uses keeps compiling across 5.x (source · file · wire compatibility — the gate diagnoses API breakage against the previous tag). Breaking changes only in the next major version; additions (new types · methods · fields with defaults that do not touch the wire) bump the minor — a new field in a message raises the protocol version, and raising a format version makes the reader refuse files the previous version wrote: both are major versions; fixes bump the patch.

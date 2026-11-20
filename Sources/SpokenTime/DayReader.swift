@@ -6,6 +6,8 @@ import Foundation
 //   날 단위 상대 표현(어제 · N일 전 · 지난주 + 요일 …)이 있으면 그것이 때다 — 같은 문장의 다른 달 표현은 대상이다(더 좁은 것이 이긴다).
 //   해 없는 달은 달 바로 앞 수식이 정한다(지난 · 저번 = 오늘 앞의 가장 가까운 그 달 · 다음 · 오는 = 뒤 · 이번 · 올 · 수식 없음 = 올해).
 //   되풀이 문장은 말한 시작(「A부터」의 A)만 · 흐린 수(「몇 달 전」)는 날을 정하지 않는다. 주는 월요일에 시작한다.
+//   해가 아닌 긴 수(다섯 자리 이상 · 쉼표 수)는 해 자리를 차지한다 — 그 수와 꼬리(년 · 년도 · 년의 · 년 전 + 뒤의 달 · 날 · 계절 + 그것으로 여는 구간)를
+//   덩이째 가린 글을 읽는다(`masked` — 세 손이 같은 글). 가린 달 · 계절을 기준 해로 채우면 해를 지어낸 것이다 · 덩이 밖 때 표현은 평소대로.
 //   날은 기준 시간대의 정오(12:00)다.
 
 /// 정규식 손 — 꼴이 서지 않으면 맞지 않은 것으로 친다(꼴은 자원 시험이 미리 짓는다). 지은 꼴은 한 번만 짓고 든다(꼴 글자가 열쇠 · 자물쇠 하나).
@@ -246,6 +248,12 @@ struct DayReader: Sendable {
             return cal.date(byAdding: .day, value: v[0], to: noon(s.year, s.month, s.day)).map { make($0, .exact) }
         }
         return nil
+    }
+
+    /// 해가 아닌 긴 수의 덩이를 빈칸으로 갈아 끼운 글 — 공개 손 넷이 읽기 전에 한 번(덩이 밖 글은 그대로).
+    static func masked(_ text: String, words: Words) -> String {
+        guard let r = Rx.regex(words.patterns.longNumberBlock) else { return text }
+        return r.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " ")
     }
 
     /// 기간 신호 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 기간 낱말(빈칸을 하나로 줄인 원문에서 — 낱말 사이 빈칸이 뜻을 가른다).
