@@ -7,7 +7,7 @@ import Foundation
 //   날 단위 상대 표현(어제 · N일 전 · 지난주 + 요일 …)이 있으면 그것이 때다 — 같은 문장의 다른 달 표현은 대상이다(더 좁은 것이 이긴다).
 //   해 없는 달은 달 바로 앞 수식이 정한다(지난 · 저번 = 오늘 앞의 가장 가까운 그 달 · 다음 · 오는 = 뒤 · 이번 · 올 · 수식 없음 = 올해).
 //   되풀이 문장은 말한 시작(「A부터」의 A)만 · 흐린 수(「몇 달 전」)는 날을 정하지 않는다(구간 읽기가 「최근」으로 읽는다). 주는 월요일에 시작한다.
-//   해와 달 사이의 「도 · 의 · 쉼표」는 그 해의 달 · 「인가」는 흐림 표지(「1977년인가 3월」 = 그 해의 달 circa).
+//   해와 달 사이의 「도 · 의 · 쉼표」는 그 해의 달 · 해 수 뒤 「인가」는 흐림 표지(「1977년인가 3월」 = 그 해의 달 circa) — 띄어 써도 뒤가 달 · 계절이면 흐림(「77년 인가 3월」) · 그 밖의 띄어 쓴 「인가」는 이름씨라 흐림이 아니다.
 //   해가 아닌 긴 수(다섯 자리 이상 · 쉼표 수)는 해 자리를 차지한다 — 그 수와 꼬리(년 · 년도 · 년의 · 년 전 + 뒤의 달 · 날 · 계절 + 그것으로 여는 구간)를
 //   덩이째 가린 글을 읽는다(`masked` — 세 손이 같은 글). 가린 달 · 계절을 기준 해로 채우면 해를 지어낸 것이다 · 덩이 밖 때 표현은 평소대로.
 //   날은 기준 시간대의 정오(12:00)다.
@@ -16,11 +16,13 @@ import Foundation
 enum Rx {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var built: [String: NSRegularExpression] = [:]
-    static func regex(_ p: String) -> NSRegularExpression? {
+    /// `key` = 든 꼴의 열쇠 — 푼 꼴(NFD)은 머리표를 단 열쇠로 든다(Swift 글자의 같음은 정준 같음이라 NFC · NFD 꼴이 한 열쇠로 겹친다).
+    static func regex(_ p: String, key: String? = nil) -> NSRegularExpression? {
+        let k = key ?? p
         lock.lock(); defer { lock.unlock() }
-        if let r = built[p] { return r }
+        if let r = built[k] { return r }
         guard let r = try? NSRegularExpression(pattern: p) else { return nil }
-        built[p] = r
+        built[k] = r
         return r
     }
     static func first(_ s: String, _ p: String) -> (range: Range<String.Index>, g: [String])? {
@@ -34,6 +36,12 @@ enum Rx {
         return (1..<m.numberOfRanges).compactMap { Range(m.range(at: $0), in: s).flatMap { Int(s[$0]) } }
     }
     static func has(_ s: String, _ p: String) -> Bool { regex(p)?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil }
+    /// 자모로 푼 글(NFD)에서 맞추기 — 꼴도 같이 푼다. 받침 하나를 꼴로 잡을 때 쓴다(꼴 안의 음절 묶음 `[…]` 은 풀리면 뜻이 바뀌니 쓰지 않는다).
+    /// 푼 글에서 꼴의 음절은 앞머리로도 맞는다(받침이 뒤 자모라 「하」는 「한 · 할」의 앞에도 맞는다) — 음절 하나를 통째로 잡으려면 받침 있는 꼴을 직접 적거나 뒤에 받침 없음을 적는다.
+    static func hasDecomposed(_ s: String, _ p: String) -> Bool {
+        let s = s.decomposedStringWithCanonicalMapping, d = p.decomposedStringWithCanonicalMapping
+        return regex(d, key: "nfd:" + d)?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
     /// 빈칸을 뺀 글.
     static func strip(_ s: String) -> String { s.replacingOccurrences(of: " ", with: "") }
 }

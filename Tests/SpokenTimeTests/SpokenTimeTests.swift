@@ -382,6 +382,54 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         #expect(said("작년에 30년 대장정을 시작했다") == "2039-01-01..2039-12-31 year relative none")
     }
 
+    /// 흐림 「인가」는 해 수에 붙은 「…년인가」만(두 자리 · 네 자리 · 빈칸 없이) — 띄어 쓴 「인가」는 이름씨(허가)라 흐림이 아니다 · 해 낱말 · 달에 붙어도 흐림이 아니다.
+    /// 띄어 써도 해 수와 달 · 계절 사이의 「인가」는 흐림 — 그 해의 달 · 계절(두 자리 · 네 자리 같은 답).
+    @Test func spacedIngaIsNotVague() {
+        let now = day("2040-10-10")
+        let f = { (s: String) in SpokenReading.day(s, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } ?? "nil" }
+        for (s, y) in [("지난해 인가 서류가 나왔다", "2039"), ("재작년 인가 심사를 마쳤다", "2038"), ("작년인가 온실을 지었다", "2039")] {
+            #expect(said(s) == "\(y)-01-01..\(y)-12-31 year relative none", "\(s)")
+            #expect(f(s) == "\(y)-01-01 year", "\(s)")
+        }
+        #expect(said("5월인가 온실을 지었다") == "2040-05-01..2040-05-31 month absolute none")
+        for s in ["61년인가 5월에 온실을 지었다", "1961년인가 5월에 온실을 지었다", "61년 인가 5월에 온실을 지었다", "1961년 인가 5월에 온실을 지었다"] {
+            #expect(said(s) == "1961-05-01..1961-05-31 circa absolute soft", "\(s)")
+            #expect(f(s) == "1961-05-01 circa", "\(s)")
+        }
+        #expect(said("61년 인가 가을에 온실을 지었다") == "1961-09-01..1961-11-30 circa absolute+season soft")
+    }
+
+    /// 「N년에 한 번」 뒤의 지난 꼴은 낱말 목록이 아니라 꼴 — 과거 선어말(받침 ㅆ — 있 · 겠 밖)이나 「-ㄴ 적」이면 그 해에 한 번.
+    /// 앞에 꾸밈 · 이음(는 · 는데 · 지만 · 면서) · 지난 버릇(어간에 붙은 「곤 하다」 · 「번씩」)이 서면 거기서 끊는다 — 빈도(되풀이). 지금 · 앞일 꼴도 빈도.
+    /// 빈도 바로 뒤가 「-던」 + 이름씨면 빈도는 이름씨를 꾸민 것 — 둘레에 때가 없으면 때 없음. 받침 ㄴ · ㄹ 관형 · 「는」은 이름씨 · 토씨와 꼴로 갈리지 않아 꾸밈으로 보지 않는다.
+    @Test func pastTenseByForm() {
+        let now = day("2040-10-10")
+        let f = { (s: String) in SpokenReading.day(s, now: now, zone: zone).map { "\($0.text) \($0.precision.rawValue)" } ?? "nil" }
+        for (s, y) in [("61년에 한 번 탈춤을 췄다", "1961"), ("67년에 한 번 등불을 껐다", "1967"), ("61년에 한 번 소원을 이뤘다", "1961"),
+                       ("67년에 한 번 은반지를 꼈다", "1967"), ("61년에 한 번 담요를 갰다", "1961"), ("67년에 한 번 헛간을 없앴다", "1967"),
+                       ("61년에 두 번 돛을 맸다", "1961"), ("67년에 한 번 그 섬에 가 본 적 있다", "1967"), ("61년에 한 번 등대에 들른 적이 있다", "1961"),
+                       // 거르는 쪽 이웃 — 문장 가운데 「씩」 · 「피곤」 · 런던의 「던」은 끊지 않는다
+                       ("67년에 한 번 다 같이 천 원씩 냈다", "1967"), ("67년에 한 번 조금씩 걸어 올라갔다", "1967"),
+                       ("67년에 한 번 너무 피곤해서 쓰러졌다", "1967"), ("67년에 한 번 런던 갔다", "1967"),
+                       // 받침 ㄴ · ㄹ 로 끝난 이름씨 · 대이름씨 토씨 「는」은 꾸밈도 끊음도 아니다
+                       ("67년에 한 번 큰 산 너머로 이사했다", "1967"), ("67년에 한 번 저녁 반찬 일로 다퉜다", "1967"),
+                       ("67년에 한 번 우리는 등대까지 걸었다", "1967"), ("67년에 한 번 런던 거리를 걸었다", "1967"), ("67년에 한 번 들른 찻집에 또 들렀다", "1967")] {
+            #expect(said(s) == "\(y)-01-01..\(y)-12-31 year absolute none", "\(s)")
+            #expect(f(s) == "\(y)-01-01 year", "\(s)")
+        }
+        for s in ["67년에 한 번 바닷가에 들르곤 했다", "67년에 한 번 바닷가에 들르곤했다", "67년에 한 번씩 바닷가에 들렀다", "67년에 한 번 바닷가를 걷는 편이다",
+                  "6년에 한 번 우물을 판다", "6년에 한 번 바닷가에 들르곤 한다", "6년에 한 번 바닷가를 걷겠다", "6년에 한 번 섬에 갈 수 있다",
+                  "60년에 한 번 인적이 드문 섬에 간다", "67년에 한 번 정말 재밌어"] {
+            #expect(said(s) == "recurring", "\(s)")
+            #expect(f(s) == "nil", "\(s)")
+        }
+        for s in ["67년에 한 번 서던 오일장에 들렀다", "50년에 한 번 피던 꽃을 봤다", "67년에 한 번 들렀던 찻집에 또 들렀다"] {
+            #expect(said(s) == "ask:noExpression", "\(s)")
+            #expect(f(s) == "nil", "\(s)")
+        }
+        #expect(said("2031년에 67년에 한 번 서던 오일장에 들렀다") == "2031-01-01..2031-12-31 year absolute none")   // 둘레의 때는 그대로
+    }
+
     /// 끝 날 — 「A부터 B까지」 = B(빠진 해 · 달은 시작에서 · 이은 끝이 시작보다 앞이면 윗 단위를 하나 올림) · 「N박」 = 시작 + N일(시작이 exact · 낱말 경계).
     @Test(arguments: [
         ("10월 25일부터 3일까지 쉬었다", "2040-11-03 exact"),
@@ -612,7 +660,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         let offsets: [Int] = [w.nativeDays.count, w.weekOffset.count, w.yearOffset.count, w.monthOffset.count, w.dayOffset.count]
         let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count]
         let shifts: [Int] = [w.monthShift.past.count, w.monthShift.future.count, w.school.entry.count, w.school.graduation.count]
-        #expect(patterns == 77)
+        #expect(patterns == 78)
         #expect(lists == [3, 10, 8, 6])
         #expect(numbers == [7, 10, 10, 10, 13])
         #expect(offsets == [11, 6, 6, 6, 8])

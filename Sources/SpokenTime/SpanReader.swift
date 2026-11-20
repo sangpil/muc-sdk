@@ -76,8 +76,16 @@ struct SpanReader: Sendable {
         let t = Rx.strip(raw)
         // 되풀이는 시점이 아니다 — 둘레 구간이 서면 그 구간 · 생년 · 기준 사건이 없어 묻는 때도 되풀이보다 먼저.
         // 빈도(「N년에 한 번」 · 세 자리까지 — 네 자리는 늘 해)도 되풀이다 — 그 토막은 해가 아니니 가리고 둘레를 읽는다.
-        // 단 뒤의 풀이말이 지난 꼴이면(「98년에 한 번 가 봤어」) 그 해에 한 번이다 — 빈도가 아니다(「마다」는 늘 빈도)
-        let frequency = Rx.first(raw, p.frequency).flatMap { m in Rx.has(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
+        // 단 뒤의 풀이말이 지난 꼴이면(「98년에 한 번 가 봤어」) 그 해에 한 번이다 — 빈도가 아니다(「마다」는 늘 빈도).
+        // 지난 꼴 = 한 번 일어난 일 — 과거 선어말(받침 ㅆ — 있 · 겠 밖) · 「-ㄴ 적」. 낱말 목록이 아니라 꼴로 잡으니 자모로 푼 글에서 본다 ·
+        // 앞에 꾸밈 · 이음(는 — 대이름씨에 붙은 토씨 「나는」 밖 · 는데 · 지만 · 면서) · 지난 버릇(어간에 붙은 곤 하다 · 번씩)이 서면 거기서 끊는다(빈도).
+        // 빈도 토막 바로 뒤가 「-던」 + 이름씨(「런던」 밖 · 받침 ㄴ · ㄹ 관형과 「는」은 이름씨 · 토씨와 꼴로 갈리지 않아 보지 않는다 · 「61년에 한 번 열리던 축제에 갔다」)면 빈도는 이름씨를 꾸민 것 — 사건의 때도 되풀이도 아니니 가리고 둘레를 읽는다
+        if let m = Rx.first(raw, p.frequency), Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.frequencyModifies) {
+            var body = raw
+            body.replaceSubrange(m.range, with: " ")
+            return read(body, now: now, context: context, rangeStart: rangeStart)
+        }
+        let frequency = Rx.first(raw, p.frequency).flatMap { m in Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
         if frequency != nil || Rx.has(t, p.recurringWhen) {
             var body = raw
             if let r = frequency { body.replaceSubrange(r, with: " ") }
