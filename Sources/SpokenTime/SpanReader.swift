@@ -6,7 +6,7 @@ import Foundation
 //   기준 사건에서: 사건 낱말 바로 뒤 수식(직후 · 직전 · 첫해 · 그해 · 전 · 뒤 · 때)이 구간을 정한다 · 그 사건이 없으면 지어내지 않고 묻는다 ·
 //   사건 낱말 바로 앞이 다른 사람이면 내 사건이 아니다.
 //   겹치면 좁은 것이 이긴다 — 절대 · 상대가 생년으로 읽은 때와 겹치면 겹치는 구간만.
-//   연대는 문장의 해가 선 다른 때 표현 · 최근에 진다(「어제 90년대 노래」 = 어제 · 해 없는 달 · 계절에는 지지 않는다) · 빈도(「N년에 한 번」)는 되풀이 · 날 하나(`storedDay`)는 이 읽음의 저장 꼴.
+//   연대는 문장의 해가 선 다른 때 표현 · 최근에 진다(「어제 90년대 노래」 = 어제 · 해 없는 달 · 계절에는 지지 않는다) · 빈도(「N년에 한 번」)는 되풀이 · 되풀이 낱말은 문장의 끝 풀이말 마디에 걸릴 때만 되풀이(꾸미는 마디 · 다른 문장의 되풀이는 나머지를 읽는다 — `clauseRead`) · 날 하나(`storedDay`)는 이 읽음의 저장 꼴.
 
 struct SpanReader: Sendable {
     let day: DayReader
@@ -86,6 +86,9 @@ struct SpanReader: Sendable {
             return read(body, now: now, context: context, rangeStart: rangeStart)
         }
         let frequency = Rx.first(raw, p.frequency).flatMap { m in Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
+        // 되풀이 낱말은 문장의 끝 풀이말 마디에 걸릴 때만 문장 때를 되풀이로 바꾼다(`clauseRead`) — 꾸미는 마디 · 다른 문장의 되풀이는 둘레를 읽는다 ·
+        // 빈도가 함께 서도 같다(가른 글을 다시 읽는 손이 빈도를 빈도로 읽는다)
+        if Rx.has(t, p.recurringWhen), let r = clauseRead(raw, now: now, context: context, rangeStart: rangeStart) { return r }
         if frequency != nil || Rx.has(t, p.recurringWhen) {
             var body = raw
             if let r = frequency { body.replaceSubrange(r, with: " ") }
@@ -103,6 +106,83 @@ struct SpanReader: Sendable {
             return .span(finish(S(from: d(a.from), to: d(b.to), rule: a.rule, soft: a.soft || b.soft, phrase: Rx.strip(String(raw[m.range])))))
         }
         return readOne(raw, now: now, context: context)
+    }
+
+    /// 되풀이 낱말의 마디 — 되풀이가 문장 때를 바꾸는 것은 그 낱말이 사건을 말하는 마디(문장의 끝 풀이말)에 걸릴 때뿐이다.
+    ///   낱말마다 제 문장(끝 표지 `sentenceEnd` 로 가른다 — 수 뒤 마침표는 아니다) 안에서 뒤를 본다 — 꾸밈 풀이말 + 이름씨가 서면 꾸미는 마디(관형절):
+    ///   「-던」(「런던」 밖 · 사이 낱말 둘까지 — 사이 낱말이 임자말 · 토씨 「은 · 는 · 도」 · 이음 · 맺음 꼴(`clauseLink`)이거나 때 표현이면 그 낱말은 마디 밖이라 꾸밈이 아니다) = 굳은 꾸밈 ·
+    ///   「-는」(되풀이 낱말 바로 뒤 낱말만 · 줄기가 풀이말 꼴일 때만 — 받침 있는 줄기 · 풀이말 줄기 끝 `verbStemEnd` · 이름씨 + 토씨 `topicStem` 밖) = 무른 꾸밈 ·
+    ///   뒤가 매인 이름씨(것 · 거 · 중 · 편 · 적 · 때 · 데 · 모양 …)면 끝 풀이말의 한 꼴이라 꾸밈이 아니다.
+    ///   받침 ㄴ · ㄹ 관형은 받침 ㄴ · ㄹ 이름씨(돈 · 서울)와 꼴로 갈리지 않아 보지 않는다(끝 풀이말 마디로 남는다).
+    ///   꾸미는 마디는 그 낱말(앞에 붙은 수 · 단위의 수 · 해 없는 달 · 날 · 계절 — 「4년마다」 · 「5월 3일마다」 · 「4월에 매년」 — 포함)부터 꾸밈 풀이말까지 가른다(가름 글자 —
+    ///   빈칸을 뺀 글에서도 둘레가 붙지 않는다) · 문장 때는 나머지에서 — 굳은 꾸밈뿐이면 그 읽음 그대로(때가 없으면 묻기) · 무른 꾸밈이 끼면 구간이 설 때만.
+    ///   끝 풀이말 마디의 되풀이가 있는 문장은 되풀이 문장 — 지금 손이 그 글에서 구간을 세우면(「1987년부터 매일 달렸다」) 그 답을 지키고, 아니면 다른 문장(여러 문장일 때)을 읽어 구간이 서면 그 구간.
+    ///   nil = 되풀이 갈래(둘레 구간 · 생년 · 기준 사건 묻기 · 되풀이 — 부르는 쪽의 지금 손).
+    func clauseRead(_ raw: String, now: Date, context: SpokenReading.Context, rangeStart: Bool) -> SpokenReading? {
+        let t = Rx.strip(raw)
+        let chars = Array(raw)
+        let solid = chars.indices.filter { chars[$0] != " " }   // 빈칸 뺀 글의 자리 → 원문 자리
+        let ends = Rx.all(raw, p.sentenceEnd).map { raw.distance(from: raw.startIndex, to: $0.upperBound) }
+        let sentence = { (i: Int) -> Range<Int> in (ends.last { $0 <= i } ?? 0)..<(ends.first { $0 > i } ?? chars.count) }
+        var hidden: [Range<Int>] = [], spoken: [Range<Int>] = [], loose = false
+        for r in Rx.all(t, p.recurringWhen) {
+            let lo = solid[t.distance(from: t.startIndex, to: r.lowerBound)], hi = solid[t.distance(from: t.startIndex, to: r.upperBound) - 1] + 1
+            let s = sentence(lo), after = String(chars[hi..<s.upperBound])
+            var end: Int?
+            if let m = Rx.first(after, p.recurringModifies), !isTime(m.g[0], now: now) {
+                end = hi + after.distance(from: after.startIndex, to: m.range.upperBound)
+            } else if let m = Rx.first(after, p.recurringModifiesWeak), verbStem(m.g[0]) {
+                end = hi + after.distance(from: after.startIndex, to: m.range.upperBound)
+                loose = true
+            }
+            guard let e = end else { spoken.append(s); continue }
+            hidden.append(lead(chars, lo, in: s)..<e)
+        }
+        if spoken.isEmpty {
+            return ungap(read(SpanReader.gapped(raw, hidden), now: now, context: context, rangeStart: rangeStart), loose: loose)
+        }
+        // 되풀이 문장의 제 구간(「…부터」 · 최근 · 생년으로 읽는 때)은 지금 손 그대로
+        if case .span = readOne(raw, now: now, context: context) { return nil }
+        // 되풀이 문장을 뺀 다른 문장 — 구간이 설 때만(남은 글이 없으면 묻기라 nil)
+        return ungap(read(SpanReader.gapped(raw, spoken), now: now, context: context, rangeStart: rangeStart), loose: true)   // 남은 문장의 꾸미는 마디는 다시 읽는 손이 가른다
+    }
+
+    /// 가름 글자 — 가린 토막의 자리(빈칸을 뺀 글에서도 둘레의 수 · 낱말이 붙지 않게 · 낸 `phrase` 에서는 뺀다).
+    static let gap = "|"
+    /// 자리 범위들을 가른 글 — 범위마다 첫 자리는 가름 글자 · 나머지는 빈칸(자리 수는 그대로).
+    static func gapped(_ raw: String, _ rs: [Range<Int>]) -> String {
+        var c = Array(raw)
+        for r in rs where !r.isEmpty {
+            for i in r { c[i] = " " }
+            c[r.lowerBound] = Character(gap)
+        }
+        return String(c)
+    }
+    /// 가른 글의 읽음 — 구간이면 `phrase` 에서 가름 글자를 빼고 · 구간이 아니면 `loose` 일 때 nil(지금 손으로).
+    func ungap(_ x: SpokenReading, loose: Bool) -> SpokenReading? {
+        guard case .span(let s) = x else { return loose ? nil : x }
+        return .span(SpokenReading.Span(from: s.from, to: s.to, anchor: s.anchor, precision: s.precision, rule: s.rule, soft: s.soft,
+                                        phrase: s.phrase.replacingOccurrences(of: SpanReader.gap, with: "")))
+    }
+    /// 꾸미는 마디의 왼쪽 끝 — 되풀이 낱말 앞에 붙은 수(「4년마다」의 4) · 그 앞의 해 없는 달 · 날 · 계절(「5월 3일마다」 · 「4월에 매년」)도 마디다.
+    func lead(_ chars: [Character], _ lo: Int, in s: Range<Int>) -> Int {
+        var lo = lo
+        for pattern in [p.numberLead, p.dateLead] {
+            let before = String(chars[s.lowerBound..<lo])
+            if let m = Rx.first(before, pattern) { lo = s.lowerBound + before.distance(from: before.startIndex, to: m.range.lowerBound) }
+        }
+        return lo
+    }
+    /// 사이 낱말에 해가 선 때 · 최근 · 끝 없는 때가 있는가(「매주 예전에 살던 동네에 간다」 — 그 되풀이는 마디 밖이다 · 해 없는 달 · 요일은 되풀이의 마디 안 낱말 「매년 4월에 열던」).
+    func isTime(_ s: String, now: Date) -> Bool {
+        let t = Rx.strip(s)
+        return !t.isEmpty && (yearIsSet(s, now: now) || recent(t, now: now) != nil || Rx.has(t, p.vague))
+    }
+    /// 「-는」 앞 줄기가 풀이말 꼴인가 — 받침 있는 줄기(이름씨 뒤 토씨는 「은」) · 풀이말 줄기 끝 · 이름씨 + 토씨 꼴 밖.
+    func verbStem(_ stem: String) -> Bool {
+        guard let last = stem.unicodeScalars.last, !Rx.has(stem, p.topicStem) else { return false }
+        let v = Int(last.value) - 0xAC00
+        return (0..<11172).contains(v) && (v % 28 != 0 || Rx.has(stem, p.verbStemEnd))
     }
 
     /// 날 하나 — 같은 글 · 같은 방향 · 빈 맥락의 읽음이 낸 저장 꼴(앵커 · 정밀도) · 구간이 아니면(묻기 · 되풀이) nil · 「A부터 B까지」는 A 의 저장 꼴.

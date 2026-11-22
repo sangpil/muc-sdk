@@ -8,7 +8,7 @@ import Foundation
 //                 날은 기준 시간대의 정오다(시간대가 날 경계를 흔들어도 날이 바뀌지 않게) · 앵커는 늘 구간의 첫 날 · 정밀도는 구간의 폭에서 · 못 읽으면 지어내지 않고 까닭을 낸다.
 //   시작점     : `SpokenReading`
 //
-// 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 · 빈도 「N년에 한 번」(세 자리까지 · 뒤 풀이말이 지난 꼴이면 그 해) — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
+// 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 — 문장의 끝 풀이말 마디에 걸린 것만 · 꾸미는 마디 · 다른 문장의 되풀이는 나머지를 읽는다 · 빈도 「N년에 한 번」(세 자리까지 · 뒤 풀이말이 지난 꼴이면 그 해) — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
 // 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)와 절대 · 상대 날짜 — 둘이 서면 겹치는 구간 → 최근 → 끝 없는 때(묻기).
 // 저장 꼴: 앵커 = 구간 첫 날 · 정밀도 = 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year`(흐리면 둘 다 `circa`) · 한 해 넘음 `period`(구간을 저장).
 // `day` 는 `read` 의 저장 꼴이다(같은 글 · 같은 방향 · 빈 맥락 — 셈은 `read` 한 벌) · 「A부터 B까지」만 `day` = A · `end` = B 의 제 꼴.
@@ -120,7 +120,8 @@ public enum SpokenReading: Sendable, Hashable {
         public let rule: String
         /// 흐린 때인가(「쯤 · 무렵 · 초 · 말 · 계절 · 나이」 — 사람이 확인할 값).
         public let soft: Bool
-        /// 맞은 토막(빈칸을 뺀 글).
+        /// 맞은 토막(빈칸을 뺀 글) — 가린 토막(꾸미는 마디 · 빈도 · 긴 수)은 빠진다 · 입력의 이어진 토막이 아닐 수 있다.
+        /// The matched text without spaces — set-aside parts (a describing clause, a frequency, a long number) are left out, so it may not be one contiguous piece of the input.
         public let phrase: String
     }
 

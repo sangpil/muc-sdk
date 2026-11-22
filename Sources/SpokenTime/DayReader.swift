@@ -36,6 +36,11 @@ enum Rx {
         return (1..<m.numberOfRanges).compactMap { Range(m.range(at: $0), in: s).flatMap { Int(s[$0]) } }
     }
     static func has(_ s: String, _ p: String) -> Bool { regex(p)?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil }
+    /// 맞은 자리 모두(앞에서부터 · 겹치지 않게).
+    static func all(_ s: String, _ p: String) -> [Range<String.Index>] {
+        guard let r = regex(p) else { return [] }
+        return r.matches(in: s, range: NSRange(s.startIndex..., in: s)).compactMap { Range($0.range, in: s) }
+    }
     /// 자모로 푼 글(NFD)에서 맞추기 — 꼴도 같이 푼다. 받침 하나를 꼴로 잡을 때 쓴다(꼴 안의 음절 묶음 `[…]` 은 풀리면 뜻이 바뀌니 쓰지 않는다).
     /// 푼 글에서 꼴의 음절은 앞머리로도 맞는다(받침이 뒤 자모라 「하」는 「한 · 할」의 앞에도 맞는다) — 음절 하나를 통째로 잡으려면 받침 있는 꼴을 직접 적거나 뒤에 받침 없음을 적는다.
     static func hasDecomposed(_ s: String, _ p: String) -> Bool {
