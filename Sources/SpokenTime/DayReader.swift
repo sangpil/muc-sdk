@@ -15,10 +15,19 @@ import Foundation
 /// 정규식 손 — 꼴이 서지 않으면 맞지 않은 것으로 친다(꼴은 자원 시험이 미리 짓는다). 지은 꼴은 한 번만 짓고 든다(꼴 글자가 열쇠 · 자물쇠 하나).
 enum Rx {
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var built: [String: NSRegularExpression] = [:]
+    nonisolated(unsafe) private static var built: [Key: NSRegularExpression] = [:]
+    /// 꼴 글자의 열쇠 — 흩는 값은 길이와 끝 글자들만으로(꼴이 길어 글자를 다 훑으면 맞추는 것보다 오래 걸린다 · 같음은 글자 그대로).
+    private struct Key: Hashable {
+        let pattern: String
+        static func == (a: Key, b: Key) -> Bool { a.pattern.utf8.count == b.pattern.utf8.count && a.pattern == b.pattern }
+        func hash(into h: inout Hasher) {
+            h.combine(pattern.utf8.count)
+            for b in pattern.utf8.suffix(12) { h.combine(b) }
+        }
+    }
     /// `key` = 든 꼴의 열쇠 — 푼 꼴(NFD)은 머리표를 단 열쇠로 든다(Swift 글자의 같음은 정준 같음이라 NFC · NFD 꼴이 한 열쇠로 겹친다).
     static func regex(_ p: String, key: String? = nil) -> NSRegularExpression? {
-        let k = key ?? p
+        let k = Key(pattern: key ?? p)
         lock.lock(); defer { lock.unlock() }
         if let r = built[k] { return r }
         guard let r = try? NSRegularExpression(pattern: p) else { return nil }
@@ -49,6 +58,22 @@ enum Rx {
     }
     static func replacing(_ s: String, _ p: String, with template: String) -> String {
         regex(p)?.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: template) ?? s
+    }
+    /// 낱말이 글자 그대로 든 글인가(꼴을 맞추기 전에 거르는 손 — 바이트로 본다).
+    static func holds(_ s: String, _ word: String) -> Bool {
+        var s = s, word = word
+        return s.withUTF8 { a in word.withUTF8 { b in memmem(a.baseAddress, a.count, b.baseAddress, b.count) != nil } }
+    }
+    /// 빈칸 글자들을 하나로 줄인 글 — 이미 하나씩이면 그대로(빈칸일 수 있는 바이트가 없으면 꼴을 돌리지 않는다).
+    static func oneSpace(_ s: String) -> String {
+        var s = s, last: UInt8 = 0
+        let plain = s.withUTF8 { a in
+            a.allSatisfy { b in
+                defer { last = b }
+                return !((9...13).contains(b) || (b == 32 && last == 32) || b == 0xC2 || (0xE1...0xE3).contains(b))
+            }
+        }
+        return plain ? s : s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     }
     /// 빈칸을 뺀 글.
     static func strip(_ s: String) -> String { s.replacingOccurrences(of: " ", with: "") }
@@ -84,7 +109,7 @@ struct DayReader: Sendable {
 
     /// 흐림 표지 — 때 표현 바로 뒤에 붙은 것만(빈칸 있는 원문에서) · 따로 선 「때」 · 이맘때 · 따로 선 계절 낱말.
     func isFuzzy(_ raw: String) -> Bool {
-        let s = raw.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let s = Rx.oneSpace(raw)
         return Rx.has(s, p.fuzzyAttached) || Rx.has(s, p.fuzzyWhen) || s.contains(words.thisTime) || season(Rx.strip(s)) != nil
     }
     /// 달 안의 앵커 날 — 달 초 = 1 · 중순 = 11 · 말 = 21일(흐림 표지로 붙은 때만).
@@ -122,6 +147,37 @@ struct DayReader: Sendable {
         var parts: [Range<Int>]
         var soft = false
         var bare = false
+        /// 달의 해가 바로 앞의 「N년 전 · 뒤 · 후」에서 왔는가.
+        var ago = false
+        /// 글에 날 단위 상대 표현이 있는가.
+        var dayWord = false
+        /// 앞에 선 해 낱말과 잇지 않고 읽은 달부터의 글 — 흐림은 이 글에서 본다(「작년 말에 심어서 올 4월에」의 말은 4월의 것이 아니다).
+        var tail: String?
+    }
+    /// 해 낱말의 작은 단위(계절 · 이맘때 · 초 · 말)에 맞닿은 달이 그 단위 안에 드는가 — 사이 글 · 수식 붙은 달 · 해 낱말의 해 · 오늘의 해 · 달.
+    ///   해를 넘는 계절의 1 · 2월은 이듬해 달이다 — 제 해가 해 낱말의 해보다 뒤면 제 해의 달이고(「작년 겨울 올 1월」), 아니면 잇는다.
+    func linked(_ between: Substring, _ said: Substring, year: Int, now: (year: Int, month: Int)) -> Bool {
+        guard let g = Rx.groups(String(between), p.yearPart), g.count == 4, let x = Rx.groups(String(said), p.shiftedMonth), x.count == 3, let m = Int(x[1]) else { return false }
+        let (first, count) = words.seasons.first { $0.word == g[0] }.map { ($0.first, $0.months) } ?? (!g[1].isEmpty ? (now.month, 1) : !g[2].isEmpty ? (1, 3) : (10, 3))
+        if (first..<(first + count)).contains(m) { return true }
+        guard (first..<(first + count)).contains(m + 12) else { return false }
+        let past = words.monthShift.past.contains(x[0]), next = words.monthShift.future.contains(x[0])
+        let own = past && m >= now.month ? now.year - 1 : next && m <= now.month ? now.year + 1 : now.year
+        return own <= year
+    }
+    /// 자리 범위들을 가름 글자로 덮은 글(글자 수는 그대로 — 앞 범위부터 이어 센다).
+    static func covered(_ s: String, _ rs: [Range<String.Index>]) -> String {
+        var out = "", from = s.startIndex
+        for r in rs.sorted(by: { $0.lowerBound < $1.lowerBound }) where r.upperBound > from {
+            let lo = max(from, r.lowerBound)
+            out += s[from..<lo] + String(repeating: SpanReader.gap, count: s.distance(from: lo, to: r.upperBound))
+            from = r.upperBound
+        }
+        return out + s[from...]
+    }
+    /// 빈칸을 뺀 글과 그 원문 — 원문에 붙어 있어야 하는 날 낱말(`joinedDays`)이 빈칸을 빼며 생겼으면 원문을 쓴다.
+    func joined(_ stripped: String, _ spaced: String) -> String {
+        words.joinedDays.contains { stripped.contains($0) && !spaced.contains($0) } ? spaced : stripped
     }
     static func at(_ r: Range<String.Index>, in t: String) -> Range<Int> {
         let lo = t.distance(from: t.startIndex, to: r.lowerBound)
@@ -161,19 +217,21 @@ struct DayReader: Sendable {
         // 되풀이 문장 — 말한 시작(「A부터」의 A)만 푼다 · 시작이 달이고 되풀이 날을 말했으면 그 달의 그 날
         if Rx.has(t, p.recurring) {
             guard let r = t.range(of: words.from) else { return nil }
-            let head = String(t[..<r.lowerBound])
+            let head = joined(String(t[..<r.lowerBound]), String(text[..<SpanReader.unstripped(text, r, in: t).lowerBound]))
             guard !Rx.has(head, p.recurring), var s = hit(head, now: now, future: future) else { return nil }
             if s.day.precision == .month, let m = Rx.first(String(t[r.upperBound...]), p.repeatDay), let d = Int(m.g[0]) {
                 let (y, mm, _) = ymd(s.day.date); s.day = make(noon(y, mm, d), .exact)
             }
+            s.dayWord = dayRelative(text, now: now) != nil
             return s
         }
-        let fuzzy = isFuzzy(text)
+        var fuzzy = isFuzzy(text)
         // 해 말 = 10월 — 「말」 뒤가 낱말 경계일 때만(빈칸 있는 원문에서 · 「말하다」는 아니다)
         let yearEnd = Rx.has(text, p.yearEnd)
         let (ny, nm, _) = ymd(now)
         let add: (Calendar.Component, Int) -> Date? = { cal.date(byAdding: $0, value: $1, to: now) }
-        if let d = dayRelative(t, now: now) { return d }
+        let sign: (String) -> Int = { $0 == words.before ? -1 : 1 }
+        if var d = dayRelative(text, now: now) { d.dayWord = true; return d }
 
         // 완전한 날짜 · 해 · 달
         if let v = ints(p.fullDate), v.count == 3 { return done(noon(v[0], v[1], v[2]), .exact) }
@@ -184,17 +242,47 @@ struct DayReader: Sendable {
             return done(noon(v[0], 1, 1), fuzzy ? .circa : .year)
         }
         // 상대 — 해(달 · 날보다 먼저 — 해는 접두가 정한다)
-        for o in words.yearOffset where word(o.word) {
+        //   남의 해를 가진 달은 잇지 않는다 — 「N년 전 3월」의 달과 해 낱말에서 떨어져 선 「지난 · 오는 · 이번 · 올 + 달」(`ownYearMonth`) ·
+        //   제 해를 가진 달이 서면 해 낱말의 계절 · 이맘때 · 말보다 먼저다(좁은 것) — 해 낱말의 작은 단위에 맞닿아 그 안에 드는 달은 잇는다(「작년 여름 지난 7월」)
+        var months = t, tail: String?
+        if let o = words.yearOffset.first(where: { word($0.word) }) {
+            let u = Rx.strip(Rx.replacing(text, p.olInside, with: SpanReader.gap))   // 낱말 안의 「올」(「돌아올 5월」)은 수식이 아니다
+            let end = u.range(of: o.word)?.upperBound ?? u.startIndex
+            let close = u.index(end, offsetBy: 12, limitedBy: u.endIndex) ?? u.endIndex   // 작은 단위는 해 낱말 바로 뒤의 짧은 글이다
+            let shifted = Rx.all(u, p.ownYearMonth).filter { $0.lowerBound > end && !($0.lowerBound <= close && linked(u[end..<$0.lowerBound], u[$0], year: ny + o.value, now: (ny, nm))) }
+            let open = DayReader.covered(u, Rx.all(u, p.yearsAgoMonth) + shifted)
+            let opened = { (pattern: String) -> [Int]? in
+                guard let m = Rx.first(open, pattern) else { return nil }
+                parts.append(DayReader.at(m.range, in: open))
+                return m.g.compactMap { Int($0) }
+            }
             if let f = words.fixedDays.first(where: { word($0.word) }) { return done(noon(ny + o.value, f.month, f.day), .exact) }
-            if let v = ints(p.monthDay), v.count == 2 { return done(noon(ny + o.value, v[0], v[1]), .exact) }
-            if let v = ints(p.month), v.count == 1 { return done(noon(ny + o.value, v[0], part(t, fuzzy)), fuzzy ? .circa : .month) }
-            if word(words.thisTime) { return done(noon(ny + o.value, nm, 1), .circa) }
-            if let s = seasonHit() { return done(noon(ny + o.value, s.first, 1), .circa) }
-            if yearEnd { return done(noon(ny + o.value, 10, 1), .circa) }
-            return done(noon(ny + o.value, 1, 1), fuzzy ? .circa : .year)
+            if let v = opened(p.monthDay), v.count == 2 { return done(noon(ny + o.value, v[0], v[1]), .exact) }
+            if let v = opened(p.month), v.count == 1 { return done(noon(ny + o.value, v[0], part(t, fuzzy)), fuzzy ? .circa : .month) }
+            guard let own = shifted.first else {
+                if word(words.thisTime) { return done(noon(ny + o.value, nm, 1), .circa) }
+                if let s = seasonHit() { return done(noon(ny + o.value, s.first, 1), .circa) }
+                if yearEnd { return done(noon(ny + o.value, 10, 1), .circa) }
+                return done(noon(ny + o.value, 1, 1), fuzzy ? .circa : .year)
+            }
+            parts = []   // 제 해를 가진 달이 따로 섰다 — 좁은 것(그 달)을 읽는다
+            months = DayReader.covered(u, [u.startIndex..<own.lowerBound])
+            tail = String(text[SpanReader.unstripped(text, own, in: u).lowerBound...])
         }
+        if let tail { fuzzy = isFuzzy(tail) }
         // 해 없는 달 · 날 — 달 바로 앞 수식이 정한다 · 날까지 말하면 같은 셈으로 exact
-        if let g = groups(p.shiftedMonth), g.count == 3, let m = Int(g[1]), (1...12).contains(m) {
+        if let x = Rx.first(months, p.shiftedMonth), case let g = x.g, g.count == 3, let m = Int(g[1]), (1...12).contains(m) {
+            let spot = DayReader.at(x.range, in: months)
+            // 바로 앞에 맞닿은 「N년 전 · 뒤 · 후」(쯤)의 달은 그 해의 달
+            if g[0].isEmpty, case let lead = String(months[..<x.range.lowerBound].suffix(14)), let a = Rx.first(lead, p.yearsAgoBefore),
+               let n = count(a.g[0]), let y = add(.year, n * sign(a.g[1])).map({ ymd($0).0 }) {
+                let lo = spot.lowerBound - lead.distance(from: a.range.lowerBound, to: a.range.upperBound)
+                parts = [lo..<spot.upperBound]
+                var h = Int(g[2]).map { done(noon(y, m, $0), .exact) } ?? done(noon(y, m, part(t, fuzzy)), fuzzy ? .circa : .month)
+                h.ago = true
+                return h
+            }
+            parts.append(spot)
             let past = words.monthShift.past.contains(g[0]), next = words.monthShift.future.contains(g[0])
             let twoBack = g[0] == words.monthShift.twoBack
             // 앞일 + 수식 없음 = 오늘 이후(오늘 · 이번 달 포함) 가장 가까운 그 날 · 그 달
@@ -213,9 +301,10 @@ struct DayReader: Sendable {
                 if next, m <= nm { y += 1 }
                 if ahead, m < nm { y += 1 }
                 if twoBack { y -= 1 }
-                h = done(noon(y, m, part(t, fuzzy)), fuzzy ? .circa : .month)
+                h = done(noon(y, m, part(tail.map(Rx.strip) ?? t, fuzzy)), fuzzy ? .circa : .month)
             }
             h.bare = g[0].isEmpty
+            h.tail = tail
             return h
         }
         parts = []   // 열두 달 밖의 수(「13월」)는 맞은 자리가 아니다
@@ -237,7 +326,6 @@ struct DayReader: Sendable {
             return h
         }
         // 상대 — 달 수 · 해 수
-        let sign: (String) -> Int = { $0 == words.before ? -1 : 1 }
         if let g = groups(p.halfYear), g.count == 1, let at = add(.month, 6 * sign(g[0])) { let (y, m, _) = ymd(at); return done(noon(y, m, 1), .month) }
         if let g = groups(p.unitsAgo), g.count == 3, let n = count(g[0]) {
             let k = sign(g[2])
@@ -298,14 +386,20 @@ struct DayReader: Sendable {
         }
         let sign: (String) -> Int = { $0 == words.before ? -1 : 1 }
         if let g = groups(p.weekAgo), g.count == 1 { return add(.day, 7 * sign(g[0])).map(exact) }
-        for d in words.nativeDays {
+        for d in words.nativeDays where Rx.holds(t, d.word) {
             if let g = groups(d.word + p.agoAfterWord), g.count == 1 { return add(.day, d.value * sign(g[0])).map(exact) }
         }
         if let g = groups(p.daysAgo), g.count == 3, let n = count(g[0]) {
             let (days, over) = ((g[1] == words.dayUnit ? 1 : 7) * sign(g[2])).multipliedReportingOverflow(by: n)
             return over ? nil : add(.day, days).map(exact)
         }
-        for o in words.dayOffset where groups(o.word + p.dayWordGuard) != nil { return add(.day, o.value).map(exact) }
+        for o in words.dayOffset where Rx.holds(t, o.word) {
+            if words.joinedDays.contains(o.word) {
+                guard let m = Rx.first(text, o.word + p.joinedWordGuard) else { continue }
+                part = DayReader.at(SpanReader.stripped(text, m.range, in: t), in: t)
+            } else if groups(o.word + p.dayWordGuard) == nil { continue }
+            return add(.day, o.value).map(exact)
+        }
         return nil
     }
 
@@ -314,10 +408,11 @@ struct DayReader: Sendable {
     /// 시작은 그 연 · 월 · 일로 센다(다른 시간대에서 지은 날이어도 날이 어긋나지 않게).
     func resolveEnd(_ text: String, start: SpokenReading.Day?, now: Date, future: Bool = false) -> SpokenReading.Day? {
         let reader = SpanReader(zone: zone, words: words, direction: future ? .future : .past)
-        let t = Rx.strip(reader.settled(text, now: now))
+        let spaced = reader.settled(text, now: now), t = Rx.strip(spaced)
         let before = { (e: SpokenReading.Day, s: SpokenReading.Day) in (e.year, e.month, e.day) < (s.year, s.month, s.day) }
-        if let g = Rx.groups(t, p.fromUntil), g.count == 1 {
-            let b = g[0].replacingOccurrences(of: SpanReader.gap, with: "")
+        let until = Rx.groups(t, p.fromUntil)?.first.map { joined($0, Rx.groups(spaced, p.fromUntil)?.first ?? $0) }
+        if let end = until ?? reader.tilde(SpanReader.plainSpaces(reader.compared(spaced, now: now)), now: now)?.until {
+            let b = end.replacingOccurrences(of: SpanReader.gap, with: "")
             if let s = start, let v = Rx.ints(b, p.endDay), v.count == 1 {
                 var e = make(noon(s.year, s.month, v[0]), .exact)
                 if before(e, s) { e = make(noon(s.year, s.month + 1, v[0]), .exact) }
@@ -345,18 +440,52 @@ struct DayReader: Sendable {
 
     /// 때가 아닌 것을 가린 글 — 공개 손 넷이 읽기 전에 한 번(가린 토막 밖 글은 그대로).
     ///   해가 아닌 긴 수의 덩이는 빈칸으로 · 이름 · 인용(낫표 · 따옴표 안 · 「X(이)라는 · (이)란 · (이)라고」 앞의 때 낱말)과
-    ///   뒤에 낱말이 이은 「전」 앞의 햇수(「20년 전통」)는 가름 글자로. 문장 전체가 따옴표로 싸였으면 벗기고 읽는다.
+    ///   뒤에 낱말이 이은 「전」 앞의 햇수(「20년 전통」) · 붙여 쓴 「어제오늘」 · 해 없는 「N월생」 · 나이 차(「두 살 어린 · 두 살 터울 · 두 살짜리」)는 가름 글자로 ·
+    ///   「N일 · 주 · 달 · 년」과 「후」로 시작하는 낱말(「후배 · 후기 · 후회」 — 닫힌 목록) 사이는 가른다. 문장 전체가 따옴표로 싸였으면 벗기고 읽는다.
     static func masked(_ text: String, words: Words) -> String {
         let p = words.patterns
         var s = text
         if let m = Rx.first(s, p.quotedWhole), let inner = m.g.first(where: { !$0.isEmpty }) { s = inner }
-        for pattern in [p.quoted, p.namedTime, p.yearsCount] { s = Rx.replacing(s, pattern, with: " " + SpanReader.gap + " ") }
-        return Rx.replacing(s, p.longNumberBlock, with: " ")
+        for (name, pattern) in [("quoted", p.quoted), ("namedTime", p.namedTime), ("yearsCount", p.yearsCount), ("daysTogether", p.daysTogether), ("bornInMonth", p.bornInMonth), ("ageApart", p.ageApart)]
+        where words.may(name, s) { s = Rx.replacing(s, pattern, with: " " + SpanReader.gap + " ") }
+        if words.may("ageEach", s) { s = eachAge(s, p) }
+        if words.may("afterWord", s) { s = Rx.replacing(s, p.afterWord, with: "$1 " + SpanReader.gap + " ") }
+        return words.may("longNumberBlock", s) ? Rx.replacing(s, p.longNumberBlock, with: " ") : s
     }
 
-    /// 기간 신호 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 기간 낱말(빈칸을 하나로 줄인 원문에서 — 낱말 사이 빈칸이 뜻을 가른다).
+    /// 「N살짜리」를 가린 글 — 뒤의 같은 문장에 때 말(때 · 적 · 시절 · 무렵 · 즈음)이 서거나 바로 뒤가 나이면 그 나이의 때라 두고(「세 살짜리 아이였을 때」),
+    ///   바로 뒤가 남을 일컫는 이름씨(닫힌 목록) + 토씨면 때 말이 있어도 가린다(「세 살짜리 조카가 왔을 때」). 문장 끝 · 때 말을 뒤에서 한 번만 훑는다.
+    static func eachAge(_ s: String, _ p: Words.Patterns) -> String {
+        let found = Rx.all(s, p.ageEach)
+        guard !found.isEmpty else { return s }
+        var ends = Rx.all(s, p.sentenceEnd).map(\.lowerBound), whens = Rx.all(s, p.ageWhen).map(\.lowerBound)
+        var end = s.endIndex, when: String.Index?   // 이 자리 뒤의 첫 문장 끝 · 첫 때 말
+        var hidden: [Range<String.Index>] = []
+        for r in found.reversed() {
+            while let x = ends.last, x >= r.upperBound { end = x; ends.removeLast() }
+            while let x = whens.last, x >= r.upperBound { when = x; whens.removeLast() }
+            let near = String(s[r.upperBound...].prefix(16))
+            let still = Rx.has(near, p.ageEachAge) || (when.map { $0 < end } ?? false && !Rx.has(near, p.ageEachKin))
+            if !still { hidden.append(r) }
+        }
+        var out = "", from = s.startIndex
+        for r in hidden.reversed() { out += s[from..<r.lowerBound] + " " + SpanReader.gap + " "; from = r.upperBound }
+        return out + s[from...]
+    }
+
+    /// 기간 신호 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 기간 낱말(빈칸을 하나로 줄인 원문에서 — 낱말 사이 빈칸이 뜻을 가른다) ·
+    /// 문장의 때를 여는 달력 물결(「3월 2일~9일」).
     static func spanSignal(_ text: String, words: Words) -> Bool {
-        let spaced = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-        return Rx.has(Rx.strip(text), words.patterns.nights) || Rx.has(spaced, words.patterns.spanWords)
+        let spaced = Rx.oneSpace(text)
+        if Rx.has(Rx.strip(text), words.patterns.nights) || Rx.has(spaced, words.patterns.spanWords) { return true }
+        // 달력 물결 — 물결이 문장의 때를 구간으로 여는지는 어느 해 · 어느 달에 없는 날(2월 29일 · 다음 달 31일)에서만 기준 날을 탄다.
+        // 29 · 30 · 31일이 선 글만 여러 기준 날로 본다(윤년이 저마다 올해 · 작년 · N년 뒤 …에 들게 네 해씩 둘 — 한쪽이 윤년이 아닌 백 년에 닿아도 다른 쪽이 든다) — 하나에서라도 서면 신호다
+        guard Rx.has(spaced, words.patterns.tilde), Rx.has(spaced, words.patterns.calendarTilde) else { return false }
+        let utc = TimeZone(secondsFromGMT: 0)!, reader = SpanReader(zone: utc, words: words, direction: .past), plain = SpanReader.plainSpaces(text)
+        let years = [(2081, 1), (2079, 12), (2080, 12), (2082, 12), (2087, 12), (2088, 12), (2089, 12), (2090, 12)]
+        return years.prefix(Rx.has(spaced, words.patterns.lateDay) ? years.count : 1).contains { y, m in
+            let now = reader.day.noon(y, m, 1)
+            return reader.tilde(reader.compared(reader.settled(plain, now: now), now: now), now: now) != nil
+        }
     }
 }

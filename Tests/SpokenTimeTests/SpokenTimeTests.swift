@@ -715,7 +715,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         var all = Mirror(reflecting: w.patterns).children.compactMap { $0.value as? String }
         all += w.grades.map(\.pattern) + w.anchored.map(\.pattern) + w.modifiers.map(\.pattern)
         all += w.monthOffset.map { $0.word + w.patterns.dayAfterWord } + w.nativeDays.map { $0.word + w.patterns.agoAfterWord }
-        all += w.dayOffset.map { $0.word + w.patterns.dayWordGuard }
+        all += w.dayOffset.map { $0.word + w.patterns.dayWordGuard } + w.joinedDays.map { $0 + w.patterns.joinedWordGuard } + ["^\\s*" + w.patterns.choiceCount, "^\\s*" + w.patterns.seasonWord]
         for p in all { #expect((try? NSRegularExpression(pattern: p)) != nil, "\(p)") }
         #expect(!all.contains { $0.contains("{") && $0.range(of: #"\{[A-Za-z]+\}"#, options: .regularExpression) != nil }, "풀리지 않은 끼움")
     }
@@ -735,7 +735,8 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         let offsets: [Int] = [w.nativeDays.count, w.weekOffset.count, w.yearOffset.count, w.monthOffset.count, w.dayOffset.count]
         let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count, w.weekUnits.count]
         let shifts: [Int] = [w.monthShift.past.count, w.monthShift.future.count, w.school.entry.count, w.school.graduation.count]
-        #expect(patterns == 141)
+        #expect(patterns == 178)
+        #expect(w.joinedDays.count == 1 && w.gates.count == 12)
         #expect(lists == [3, 10, 9, 6])
         #expect(numbers == [7, 10, 10, 10, 13])
         #expect(offsets == [11, 6, 6, 6, 8])

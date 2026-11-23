@@ -22,8 +22,11 @@ struct Words: Decodable, Sendable {
         let gradePre, gradePost, gradeSpaced, universityGrade, seasonAfter: String
         let ageExact, firstBirthday, sixtieth, age, bandMark, bandTime, bandPart, counted, ageBand: String
         let bornYear, bornDay, school, examDay, gapYear: String
+        let ageUnit, ageStill, ageStillAfter, ageSaid, ageApart, ageEach, ageEachAge, ageEachKin, ageWhen, yearBefore, olInside, yearPart, gradeMonth, bornInMonth, daysTogether, joinedWordGuard, afterWord, thenNext: String
+        let comparedWith, comparedTail, comparedVague, decadeNoun, yearsAgoBefore, yearsAgoMonth, ownYearMonth: String
+        let rangeEnd, rangeEndCorrected, calendarDay, lateDay, tilde, calendarTilde, choiceYear, yearHead, choiceCount, dayCount: String
         let ageRange, within, quotedWhole, quoted, timeWord, namedTime, agoTail, yearsCount: String
-        let correction, correctionBound, correctionNoun, correctionAfter, afterTime, inheritMonth, inheritDay: String
+        let correctionFiller, correctionWord, correction, correctionBound, correctionNoun, correctionAfter, afterTime, inheritMonth, inheritDay: String
         let dayPart, choiceBetween, choiceAhead, rangeTilde, rangeBetween, rangeAfter, comparing, timeEnd, ageTime, nounLink: String
         let joinsTimes, joinedOnly, joinMark, openEnd, afterEvent, bareTime, notDescribed, withParticle, toward, plainAdverb, vagueHead, markedTime, adnominal, doer, reported, eventTime, commaTime, correctionClause, notModifying, plainTime, modifiesObject: String
     }
@@ -64,8 +67,13 @@ struct Words: Decodable, Sendable {
     let seasons: [Season]
     let parts: [String: [Int]]
     let fixedDays: [FixedDay]
-    let thisTime, from, until, before, dayUnit, weekend, when, yearSuffix: String
+    let thisTime, from, until, before, dayUnit, monthUnit, weekend, when, yearSuffix: String
     let monthUnits, weekUnits: [String]
+    /// 원문에 붙어 있을 때만 날인 낱말(「내 일」은 「내일」이 아니다).
+    let joinedDays: [String]
+    /// 꼴마다 반드시 드는 낱말 — 하나도 없는 글에는 그 꼴을 맞추지 않는다(답은 같다).
+    let gates: [String: [String]]
+    func may(_ name: String, _ s: String) -> Bool { gates[name].map { words in words.contains { Rx.holds(s, $0) } } ?? true }
 
     /// 이 모듈의 자원 자리(번들 `muc-sdk_SpokenTime` 안).
     static var resourceURL: URL? { Bundle.module.url(forResource: "words", withExtension: "json") }

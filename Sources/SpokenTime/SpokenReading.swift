@@ -10,6 +10,7 @@ import Foundation
 //
 // 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 — 문장의 끝 풀이말 마디에 걸린 것만 · 꾸미는 마디 · 다른 문장의 되풀이는 나머지를 읽는다 · 빈도 「N년에 한 번」(세 자리까지 · 뒤 풀이말이 지난 꼴이면 그 해) — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
 // 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)와 절대 · 상대 날짜 — 둘이 서면 겹치는 구간 → 최근 → 끝 없는 때(묻기).
+// 해 없는 달은 바로 앞에 맞닿은 「N년 전 · 뒤 · 후」 · 한 해짜리 학년에 붙는다 · 견주는 때(「작년보다」)는 가리고 읽는다 · 달력 물결(「5월 3일~8일」)은 「부터 … 까지」다.
 // 때가 아닌 것(세는 이름씨가 맞닿은 「차 30대」 · 뒤에 낱말이 이은 「40년 전통」 · 낫표 · 따옴표 안 · 「X라는」 앞)은 읽기 전에 거르고 · 말 고침(「4년 전 아니 6년 전」)은 나중 것 ·
 // 때가 둘이면 가른다(`SaidTimes` — 고름은 맞닿으면 합침 · 이름씨를 꾸미는 때는 짐 · 잇는 꼴 없이 한 마디에 선 겹치지 않는 둘은 고르지 않고 묻기 `conflict` + 후보).
 // 저장 꼴: 앵커 = 구간 첫 날 · 정밀도 = 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year`(흐리면 둘 다 `circa`) · 한 해 넘음 `period`(구간을 저장).
@@ -61,7 +62,8 @@ public enum SpokenReading: Sendable, Hashable {
         DayReader(zone: zone, words: .shared).resolveEnd(DayReader.masked(sentence, words: .shared), start: start, now: now, future: direction == .future)
     }
 
-    /// 문장에 기간 신호가 있는가 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 「동안」 · 「…부터 …까지」(빈칸이 있는 글에서 — 「운동 안 했다」는 아니다).
+    /// 문장에 기간 신호가 있는가 — 「N박」(낱말 경계 · 빈칸을 뺀 글에서) · 「동안」 · 「…부터 …까지」(빈칸이 있는 글에서 — 「운동 안 했다」는 아니다) ·
+    /// 문장의 때를 구간으로 여는 달력 물결(「5월 3일~8일」).
     public static func hasSpanSignal(_ sentence: String) -> Bool {
         DayReader.spanSignal(DayReader.masked(sentence, words: .shared), words: .shared)
     }

@@ -20,6 +20,19 @@ func spent() -> Double {
     return Double(t.tv_sec) + Double(t.tv_nsec) / 1e9
 }
 
+/// 문장 하나와 기대 — 맥락 · 기준 날 · 방향 · 묻기의 후보.
+struct Said: Sendable, CustomTestStringConvertible {
+    let s: String, expect: String, candidates: [String], context: String, now: String, direction: SpokenReading.Direction
+    init(_ s: String, _ expect: String, _ candidates: [String] = [], in context: String = "none", now: String = "2040-10-10", direction: SpokenReading.Direction = .past) {
+        self.s = s; self.expect = expect; self.candidates = candidates; self.context = context; self.now = now; self.direction = direction
+    }
+    var testDescription: String { s }
+    func check() {
+        #expect(said(s, context, now: now, direction: direction) == expect, "\(s)")
+        #expect(rivals(s, context, now: now, direction: direction) == candidates, "\(s)")
+    }
+}
+
 @Suite struct SaidTimesTests {
     /// 「N0대」는 나잇대다 — 대로 세는 이름씨가 토씨 없이 맞닿고 때 표지가 없을 때만 셈이다.
     @Test(arguments: [
@@ -211,7 +224,7 @@ func spent() -> Double {
         ("작년에 아니나 다를까 시들었다", "2039-01-01..2039-12-31 year relative none"),
         ("그저께 감나무가 아니라 밤나무를 심었다", "2040-10-08..2040-10-08 exact relative none"),
         ("그저께 감나무가 아니라 밤나무를 심고 어제 물을 줬다", "2040-10-08..2040-10-08 exact relative none"),
-        ("2033년 3월 2일부터 5일 아니 7일 까지 쉬었다", "2033-03-02..2033-03-05 month absolute none"),
+        ("2033년 3월 2일부터 5일 아니 7일 까지 쉬었다", "2033-03-02..2033-03-07 month absolute none"),
         ("작년 일은 내 잘못이 아니다. 그저께 들었다.", "2040-10-08..2040-10-08 exact relative none"),
     ])
     func correctionTakesLater(_ s: String, _ expect: String) { #expect(said(s) == expect, "\(s)") }
@@ -236,7 +249,7 @@ func spent() -> Double {
         ("작년 3월이나 4월에 심었다", "2039-03-01..2039-04-30 circa relative soft"),
         ("작년 여름이나 가을에 심었다", "2039-06-01..2039-11-30 circa relative+season soft"),
         ("3월 2일이나 3일에 심었다", "2040-03-02..2040-03-03 circa absolute soft"),
-        ("3월 2일이나 9일에 심었다", "2040-03-02..2040-03-02 exact absolute none"),
+        ("3월 2일이나 9일에 심었다", "ask:conflict"),
         ("올해 아니면 7년 전에 심었다", "ask:conflict"),
         ("그저께 아니면 모레 심는다", "ask:conflict"),
         ("4년 전 아니면 6년 전에 심었다", "ask:conflict"),
@@ -296,10 +309,10 @@ func spent() -> Double {
         ("내년 달력이 그저께 왔다", "none", "2090-10-08..2090-10-08 exact relative none"),
         ("4년 전 그저께 옮겼다", "none", "2090-10-08..2090-10-08 exact relative none"),
         ("두 살이나 다섯 살 어린 사촌이 왔다", "born", "2051-01-01..2052-12-31 period age soft"),
-        ("5년 전 3월에 옮겼다", "none", "2090-03-01..2090-03-31 month absolute none"),
-        ("고3 때 5월 잔치에 갔다", "born", "2090-05-01..2090-05-31 month absolute none"),
-        ("80년대 노래를 고3 때 들었다", "born", "2080-01-01..2089-12-31 period absolute soft"),
-        ("내 어릴 때 일이 떠오른다", "born", "2090-10-11..2090-10-11 exact relative none"),
+        ("5년 전 3월에 옮겼다", "none", "2085-03-01..2085-03-31 month relative none"),
+        ("고3 때 5월 잔치에 갔다", "born", "2068-05-01..2068-05-31 month grade none"),
+        ("80년대 노래를 고3 때 들었다", "born", "2068-03-01..2069-02-28 year grade none"),
+        ("내 어릴 때 일이 떠오른다", "born", "2050-05-10..2063-02-28 period era soft"),
         ("그저께에. 작년에도 심었다.", "none", "2090-10-08..2090-10-08 exact relative none"),
         ("그저께에 푸른어제는 들렸다", "none", "2090-10-08..2090-10-08 exact relative none"),
         ("지난주 금요일에 산 책을 3일 후배에게 줬다", "none", "2090-10-06..2090-10-06 exact relative none"),
@@ -361,7 +374,7 @@ func spent() -> Double {
         ("33살에서 36살 사이에 공방을 열었다", "none", "ask:needsBirth"),
         ("20대에서 30대 사이에 공방을 열었다", "born", "2069-01-01..2089-12-31 period ageBand soft"),
         ("2081년에서 2084년 사이에 공방을 열었다", "none", "2081-01-01..2081-12-31 year absolute none"),
-        ("2081년~2084년에 공방을 열었다", "none", "2081-01-01..2081-12-31 year absolute none"),
+        ("2081년~2084년에 공방을 열었다", "none", "2081-01-01..2084-12-31 period absolute none"),
         ("2081년 3월에서 5월 사이에 공방을 열었다", "none", "2081-03-01..2081-03-31 month absolute none"),
     ])
     func rangesKeepTheEnd(_ s: String, _ c: String, _ expect: String) { #expect(said(s, c, now: later) == expect, "\(s)") }
@@ -514,7 +527,8 @@ func spent() -> Double {
     }
     /// 긴 글 — 되풀이 뒤에 다른 때가 와도 길이만큼만(400 번에 0.5 초 안 · 4,000 번에 멈추지 않는다).
     @Test func longTextIsBounded() {
-        for (unit, end) in [("작년에 산 배를 ", "그저께 팔았다"), ("아니 6년 전 ", "팠다"), ("어제 아니면 ", "그저께 심었다"), ("20대 ", "에 팠다")] {
+        for (unit, end) in [("작년에 산 배를 ", "그저께 팔았다"), ("아니 6년 전 ", "팠다"), ("어제 아니면 ", "그저께 심었다"), ("20대 ", "에 팠다"), ("작년보다 ", "올해가 낫다"), ("4년 전 5월에 산 배를 ", "그저께 팔았다"), ("5월 3일~8일 ", "쉬었다"),
+                            ("고3 때 6월 ", "팠다"), ("작년 봄이었나 재작년 봄이었나 ", "심었다"), ("내 일 ", "내일 마친다"), ("두 살 어린 ", "동무")] {
             let start = spent()
             _ = said(String(repeating: unit, count: 400) + end)
             #expect(spent() - start < 0.5, "\(unit)")
@@ -621,6 +635,550 @@ func spent() -> Double {
         #expect(r.phrase == "2068년고3")
     }
 
+    /// 토박이 수 뒤의 「세」는 바로 뒤가 「살」일 때만 나이다 — 세우다 · 세다 · 세트 · 세차 · 「세 명」은 아니다(「세」로 세는 나이는 아라비아 수만).
+    @Test(arguments: [
+        Said("등대 하나 세우자", "ask:noExpression", in: "born", now: later),
+        Said("기둥 둘 세워 둬", "ask:noExpression", in: "born", now: later),
+        Said("말뚝 셋 세어 보자", "ask:noExpression", in: "born", now: later),
+        Said("울타리 여덟 세웠다", "ask:noExpression", in: "born", now: later),
+        Said("그릇 열 세트를 샀다", "ask:noExpression", in: "born", now: later),
+        Said("수레 하나 세차했다", "ask:noExpression", in: "born", now: later),
+        Said("마흔세 개를 옮겼다", "ask:noExpression", in: "born", now: later),
+        Said("열세에 몰렸다", "ask:noExpression", in: "born", now: later),
+        Said("떡 하나 세 조각", "ask:noExpression", in: "born", now: later),
+        Said("두세 번 갔다", "ask:noExpression", in: "born", now: later),
+        Said("30대 길목에 등대 하나 세워 줘", "2079-01-01..2089-12-31 period ageBand soft", in: "born", now: later),
+        Said("그저께 등대 하나 세웠다", "2090-10-08..2090-10-08 exact relative none", in: "born", now: later),
+        Said("열세 살에 배를 탔다", "2062-01-01..2063-12-31 period age soft", in: "born", now: later),
+        Said("열 세 살에 배를 탔다", "2062-01-01..2063-12-31 period age soft", in: "born", now: later),
+        Said("서른세 살 때 배를 탔다", "2082-01-01..2083-12-31 period age soft", in: "born", now: later),
+        Said("두세 살 때 배를 탔다", "2051-01-01..2052-12-31 period age soft", in: "born", now: later),
+        Said("만 열세 살에 배를 탔다", "2063-05-10..2064-05-09 year age none", in: "born", now: later),
+        Said("만두 세 개", "ask:noExpression", in: "born", now: later),
+        Said("30세에 배를 탔다", "2079-01-01..2080-12-31 period age soft", in: "born", now: later),
+        Said("3세에서 5세 사이에 섬에 살았다", "2052-01-01..2055-12-31 period age soft", in: "born", now: later),
+        Said("열셋에 배를 탔다", "2062-01-01..2063-12-31 period age soft", in: "born", now: later),
+        Said("만 서른세에 배를 탔다", "ask:noExpression", in: "born", now: later),
+        Said("서른세쯤 모였다", "ask:noExpression", in: "born", now: later),
+        Said("열세에서 스물 사이", "ask:noExpression", in: "born", now: later),
+    ])
+    func nativeSeIsAgeOnlyBeforeSal(_ r: Said) { r.check() }
+
+    /// 정정 표지 앞에 군말(아 · 어 · 음 · 에)이 끼고 쉼표가 있어도 말 고침이다 — 표지 없는 군말은 아니다.
+    @Test(arguments: [
+        Said("4년 전, 아 아니다, 6년 전에 우물을 팠다", "2034-01-01..2034-12-31 year relative none"),
+        Said("4년 전, 음 아니, 6년 전에 우물을 팠다", "2034-01-01..2034-12-31 year relative none"),
+        Said("4년 전에, 에 아니라 6년 전에 우물을 팠다", "2034-01-01..2034-12-31 year relative none"),
+        Said("모레, 어 아니 글피 간다", "2040-10-13..2040-10-13 exact relative none"),
+        Said("3월 2일, 아 아니, 3월 5일에 심었다", "2040-03-05..2040-03-05 exact absolute none"),
+        Said("30대, 아 아니다, 40대 때 우물을 팠다", "2089-01-01..2099-12-31 period ageBand soft", in: "born", now: later),
+        Said("4년 전에 팠다. 아 아니다, 6년 전이다.", "2034-01-01..2034-12-31 year relative none"),
+        Said("작년에 아 참 힘들었다", "2039-01-01..2039-12-31 year relative none"),
+        Said("그저께 아 아니나 다를까 비가 왔다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께 동무가, 아 아니 형이 왔다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께 동무가 어, 아니라 형이 왔다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께 동무를 봤다, 어 아니라 모레 본다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("아 아니다 그저께 갔다", "2040-10-08..2040-10-08 exact relative none"),
+    ])
+    func correctionWithFiller(_ r: Said) { r.check() }
+
+    /// 붙여 쓴 「어제오늘」은 요즘이라 때가 아니다(띄어 쓴 「어제 오늘」 · 「오늘내일」은 그대로).
+    @Test(arguments: [
+        Said("어제오늘 생긴 일이 아니다", "ask:noExpression"),
+        Said("어제오늘 사이에 꽃이 졌다", "ask:noExpression"),
+        Said("어제오늘이 아니라 작년부터 그랬다", "2039-01-01..2039-12-31 year relative none"),
+        Said("어제 오늘 내내 바람이 불었다", "2040-10-09..2040-10-09 exact relative none"),
+        Said("오늘내일 중으로 심는다", "2040-10-10..2040-10-10 exact relative none"),
+        Said("어제오늘내일 바쁘다", "2040-10-09..2040-10-09 exact relative none"),
+        Said("그어제오늘 바쁘다", "2040-10-09..2040-10-09 exact relative none"),
+    ])
+    func daysTogether(_ r: Said) { r.check() }
+
+    /// 해 없는 달 · 날은 바로 앞에 맞닿은 「N년 전 · 뒤 · 후」의 것이다 — 토씨 · 쉼표 · 꾸미는 마디 너머는 아니다.
+    @Test(arguments: [
+        Said("4년 전 5월에 우물을 팠다", "2036-05-01..2036-05-31 month relative none"),
+        Said("4년 전 5월 3일에 우물을 팠다", "2036-05-03..2036-05-03 exact relative none"),
+        Said("4년 전 12월 24일에 우물을 팠다", "2036-12-24..2036-12-24 exact relative none"),
+        Said("4년 전쯤 5월에 우물을 팠다", "2036-05-01..2036-05-31 circa relative soft"),
+        Said("4년 전 5월쯤 우물을 팠다", "2036-05-01..2036-05-31 circa relative soft"),
+        Said("4년 전 5월 말에 우물을 팠다", "2036-05-21..2036-05-31 circa relative soft"),
+        Said("4년 뒤 5월에 우물을 판다", "2044-05-01..2044-05-31 month relative none", direction: .future),
+        Said("4년 후 5월에 우물을 판다", "2044-05-01..2044-05-31 month relative none"),
+        Said("사 년 전 5월에 우물을 팠다", "2036-05-01..2036-05-31 month relative none"),
+        Said("4년 전 5월부터 7월까지 섬에 살았다", "2036-05-01..2036-07-31 year relative none"),
+        Said("4년 전 5월이나 6월에 우물을 팠다", "2036-05-01..2036-06-30 circa relative soft"),
+        Said("4년 전 5월에 산 배를 그저께 팔았다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("4년 전 5월에 산 배를 작년에 팔았다", "2039-01-01..2039-12-31 year relative none"),
+        Said("작년에 4년 전 5월 그림을 봤다", "2039-01-01..2039-12-31 year relative none"),
+        Said("5월에 4년 전 7월 그림을 봤다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전 5월에 만난 동무를 7월에 또 만났다", "2040-07-01..2040-07-31 month absolute none"),
+        Said("4년 전에 만난 동무를 5월에 또 만났다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전에 팠고 5월에 또 팠다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전에 5월에 우물을 팠다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전, 5월에 우물을 팠다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("세 해 전 5월에 우물을 팠다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전 지난 5월에 우물을 팠다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전 13월에 우물을 팠다", "2036-01-01..2036-12-31 year absolute none"),
+        Said("몇 년 전 5월에 우물을 팠다", "ask:unbounded"),
+        Said("4년 전 5월에 파서 작년에 메웠다", "2039-01-01..2039-12-31 year relative none"),
+    ])
+    func monthBelongsToYearsAgo(_ r: Said) { r.check() }
+
+    /// 해 없는 달 · 날은 바로 앞에 맞닿은 한 해짜리 학년의 것이다(1 · 2월은 이듬해) — 여러 해 구간 · 「고3 1월」은 그대로.
+    @Test(arguments: [
+        Said("고3 때 6월 잔치에 갔다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("고3 6월에", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("고3 때 6월 3일에 배를 탔다", "2068-06-03..2068-06-03 exact grade none", in: "born", now: later),
+        Said("고3 때 6월 말에 배를 탔다", "2068-06-21..2068-06-30 circa grade soft", in: "born", now: later),
+        Said("고3 때 6월쯤 배를 탔다", "2068-06-01..2068-06-30 circa grade soft", in: "born", now: later),
+        Said("중1 때 11월에 배를 탔다", "2063-11-01..2063-11-30 month grade none", in: "born", now: later),
+        Said("고3 때 2월에 배를 탔다", "2069-02-01..2069-02-28 month grade none", in: "born", now: later),
+        Said("고3 때 1월에 배를 탔다", "2069-01-01..2069-01-31 month grade none", in: "born", now: later),
+        Said("고등학교 2학년 때 6월에 배를 탔다", "2067-06-01..2067-06-30 month grade none", in: "born", now: later),
+        Said("고3 시절 6월에 배를 탔다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("고3 때 6월부터 8월까지 섬에 살았다", "2068-06-01..2068-08-31 year grade none", in: "born", now: later),
+        Said("고3 때 6월이나 7월에 배를 탔다", "2068-06-01..2068-07-31 circa grade soft", in: "born", now: later),
+        Said("고3 때 6월이었나 고2 때 6월이었나", "ask:conflict", ["2068-06-01..2068-06-30", "2067-06-01..2067-06-30"], in: "born", now: later),
+        Said("고3 때 6월에 탄 배를 그저께 봤다", "2090-10-08..2090-10-08 exact relative none", in: "born", now: later),
+        Said("고3 때 6월 그림을 8월에 봤다", "2090-08-01..2090-08-31 month absolute none", in: "born", now: later),
+        Said("고3 때 6월에 탔다. 8월에 또 탔다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("2068년 고3 때 6월에 배를 탔다", "2068-06-01..2068-06-30 month absolute none", in: "born", now: later),
+        Said("고3 1월에 배를 탔다", "2090-01-01..2090-01-31 month absolute none", in: "born", now: later),
+        Said("고3 때 동무를 6월에 만났다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("고3 때, 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("대학교 3학년 때 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("중학교 때 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("스무 살 때 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("30대 때 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "born", now: later),
+        Said("고3 때 6월에 배를 탔다", "2090-06-01..2090-06-30 month absolute none", in: "early", now: later),
+        Said("고3 때 6월에 배를 탔다", "ask:needsBirth", now: later),
+        Said("고3 때 6월부터 8월까지 섬에 살았다", "ask:needsBirth", now: later),
+        Said("고3 때 6월 그림을 8월에 봤다", "2090-08-01..2090-08-31 month absolute none", now: later),
+    ])
+    func monthBelongsToGrade(_ r: Said) { r.check() }
+
+    /// 해 없는 「N월생」은 때가 아니다(생일 · 생활 · 해가 선 「2033년 3월생」은 그대로).
+    @Test(arguments: [
+        Said("5월생 아이를 만났다", "ask:noExpression"),
+        Said("나는 5월생이라 빠르다", "ask:noExpression"),
+        Said("12월생은 어리다", "ask:noExpression"),
+        Said("4년 전에 5월생 아이를 만났다", "2036-01-01..2036-12-31 year relative none"),
+        Said("5월생 동무를 작년에 만났다", "2039-01-01..2039-12-31 year relative none"),
+        Said("5월 생일에 만났다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("5월생일에 만났다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("5월 생활비를 셌다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("2033년 5월생 아이를 만났다", "2033-05-01..2033-05-31 month absolute none"),
+        Said("작년 5월생 아이를 만났다", "2039-05-01..2039-05-31 month relative none"),
+        Said("5월 3일생 아이를 만났다", "2040-05-03..2040-05-03 exact absolute none"),
+    ])
+    func bornInMonth(_ r: Said) { r.check() }
+
+    /// 「내일」은 원문에 붙어 있을 때만 날이다(다른 때 낱말은 띄어 써도 그대로).
+    @Test(arguments: [
+        Said("내 일을 마쳤다", "ask:noExpression"),
+        Said("내 일이 쌓였다", "ask:noExpression"),
+        Said("내 일요일은 길다", "ask:noExpression"),
+        Said("내 일을 작년에 마쳤다", "2039-01-01..2039-12-31 year relative none"),
+        Said("내 일은 내일 마친다", "2040-10-11..2040-10-11 exact relative none"),
+        Said("내 어릴 때 일이 떠오른다", "2050-05-10..2063-02-28 period era soft", in: "born", now: later),
+        Said("그저께 내 일을 도왔다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("내 일부터 매일 한다", "recurring", direction: .future),
+        Said("오늘부터 내 일 마칠 때까지 쉰다", "2040-10-10..2040-10-10 exact relative soft"),
+        Said("내일까지 마친다", "2040-10-11..2040-10-11 exact relative none"),
+        Said("내일모레 간다", "2040-10-11..2040-10-11 exact relative none"),
+        Said("올 해 심었다", "2040-01-01..2040-12-31 year relative none"),
+        Said("지난 주에 심었다", "2040-10-01..2040-10-07 month relative none"),
+    ])
+    func tomorrowIsOneWord(_ r: Said) { r.check() }
+
+    /// 「N일 · 주 · 달 · 년」 뒤가 「후」로 시작하는 낱말이면 때가 아니다(낱말은 자원의 닫힌 목록 — 토씨 · 빈칸은 때).
+    @Test(arguments: [
+        Said("4일 후배를 그저께 만났다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("4년 후배를 만났다", "ask:noExpression"),
+        Said("두 달 후기를 적었다", "ask:noExpression"),
+        Said("일주일 후회했다", "ask:noExpression"),
+        Said("4년 후원금을 냈다", "ask:noExpression"),
+        Said("지난달 4일 후배를 만났다", "2040-09-04..2040-09-04 exact relative none"),
+        Said("5월 4일 후배를 만났다", "2040-05-04..2040-05-04 exact absolute none"),
+        Said("4일 후에 만난다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4일 후면 끝난다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4일 후 배를 탄다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4일 후보다 길다", "ask:noExpression"),
+        Said("4일 후배송된다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4일 후기차를 탄다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4일후출발한다", "2040-10-14..2040-10-14 exact relative none"),
+        Said("4년 후부터 짓는다", "2044-01-01..2044-12-31 year relative none"),
+        Said("4년 전 후배를 만났다", "2036-01-01..2036-12-31 year relative none"),
+        Said("이틀 후배를 만났다", "2040-10-12..2040-10-12 exact relative none"),
+    ])
+    func afterIsNotAWord(_ r: Said) { r.check() }
+
+    /// 나이 차는 나이가 아니다 — 「N살」 뒤의 온 낱말 「어린 · 많은 · 위 · 아래 · 차이 · 터울 · 더 · 연상 · 연하」와 붙은 「-짜리」만.
+    @Test(arguments: [
+        Said("세 살 어린 동무", "ask:noExpression", in: "born", now: later),
+        Said("세 살 많은 동무를 만났다", "ask:noExpression", in: "born", now: later),
+        Said("네 살 위 동무", "ask:noExpression", in: "born", now: later),
+        Said("네 살 위인 동무다", "ask:noExpression", in: "born", now: later),
+        Said("네 살 아래였다", "ask:noExpression", in: "born", now: later),
+        Said("세 살 터울이다", "ask:noExpression", in: "born", now: later),
+        Said("일곱 살 차이가 난다", "ask:noExpression", in: "born", now: later),
+        Said("일곱 살 차이나는 동무", "ask:noExpression", in: "born", now: later),
+        Said("한 살 더 먹었다", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 조카", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세살짜리때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 때는 섬에 살았다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 때부터 섬에 살았다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리였을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리였을때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리일 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리이던 시절에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("나 세 살짜리 적에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 적부터 섬에 살았다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 시절에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 무렵 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 나이에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 어린 적에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 많은 적에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 위였을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 아래 적에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 연상일 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 연하였던 시절 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 터울이었을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 차이였을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 더 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 아이였을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 꼬마였을 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 애 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 꼬맹이 시절에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 어린애였던 시절", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 작은 아이 적에 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 철부지 무렵", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 아가 즈음", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 내가 배를 타던 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 동생이었을 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 아이였을 때", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 조카가 왔을 때", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 딸아이를 업던 시절", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 남동생이 태어났을 무렵", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이를 봤다. 때마침 비가 왔다", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이를 봤다! 어느 시절 노래였다", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이를 업었다", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이의 감정적 말", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이를 봤다. 그때 비가 왔다", "ask:unbounded", in: "born", now: later),
+        Said("세 살짜리 조카를 업었다. 세 살짜리 아이였을 때 배를 탔다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 아이였을 때 배를 탔다. 세 살짜리 조카를 업었다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 위 때문에 울었다", "ask:noExpression", in: "born", now: later),
+        Said("세 살 위 때린 동무", "ask:noExpression", in: "born", now: later),
+        Said("세 살 위 때 묻은 옷", "ask:noExpression", in: "born", now: later),
+        Said("세 살 위 적군", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 아이를 때마침 봤다", "ask:noExpression", in: "born", now: later),
+        Said("세 살 위 무렵", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 위 즈음", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("그때 세 살짜리 아이를 업었다", "ask:unbounded", in: "born", now: later),
+        Said("세 살짜리 적을 떠올린다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 적만 떠오른다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 아이였던 적을 떠올린다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살 위 적을 떠올린다", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+        Said("세 살짜리 조카랑 놀던 때", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 때문에 울었다", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 때린 동무", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 때 묻은 옷", "ask:noExpression", in: "born", now: later),
+        Said("세 살짜리 적군", "ask:noExpression", in: "born", now: later),
+        Said("세 살 위 동무와 놀던 때", "ask:noExpression", in: "born", now: later),
+        Said("한 살 더 먹었을 때", "ask:noExpression", in: "born", now: later),
+        Said("네 살 연상의 동무", "ask:noExpression", in: "born", now: later),
+        Said("네 살 연하다", "ask:noExpression", in: "born", now: later),
+        Said("두세 살 어린 동무", "ask:noExpression", in: "born", now: later),
+        Said("2~3살 어린 동무", "ask:noExpression", in: "born", now: later),
+        Said("세 살 어린 동무를 작년에 만났다", "2089-01-01..2089-12-31 year relative none", in: "born", now: later),
+        Said("세 살 어린 동무가 서른 살 때 왔다", "2079-01-01..2080-12-31 period age soft", in: "born", now: later),
+        Said("여섯 살 어린이집에 다녔다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("여섯 살 더운 여름에 배를 탔다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("나 여섯 살 많이 아팠다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("열다섯 살 어린 나이에 배를 탔다", "2064-01-01..2065-12-31 period age soft", in: "born", now: later),
+        Said("열 살 어린 눈에 비쳤다", "2059-01-01..2060-12-31 period age soft", in: "born", now: later),
+        Said("스무 살 많은 것을 배웠다", "2069-01-01..2070-12-31 period age soft", in: "born", now: later),
+        Said("여섯 살 위가 아팠다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("여섯 살 아래층에 살았다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("스무 살 차이나타운에 갔다", "2069-01-01..2070-12-31 period age soft", in: "born", now: later),
+        Said("여섯 살 때 배를 탔다", "2055-01-01..2056-12-31 period age soft", in: "born", now: later),
+        Said("네 살 차이다", "ask:noExpression", in: "born", now: later),
+        Said("3세 연하 동무", "2052-01-01..2053-12-31 period age soft", in: "born", now: later),
+    ])
+    func ageApart(_ r: Said) { r.check() }
+
+    /// 견주는 때(때에 붙은 「보다 · 보다는 · 보다도 · 보단」)는 사건의 때가 아니다 — 남은 때가 있으면 그 때.
+    @Test(arguments: [
+        Said("작년보다 올해가 시원했다", "2040-01-01..2040-12-31 year relative none"),
+        Said("올해는 작년보다 시원했다", "2040-01-01..2040-12-31 year relative none"),
+        Said("그저께보다 나아졌다", "ask:noExpression"),
+        Said("작년보다는 낫다", "ask:noExpression"),
+        Said("작년보다도 낫다", "ask:noExpression"),
+        Said("작년보단 낫다", "ask:noExpression"),
+        Said("4년 전보다 키가 컸다", "ask:noExpression"),
+        Said("5월보다 7월에 바빴다", "2040-07-01..2040-07-31 month absolute none"),
+        Said("2033년보다 2034년이 바빴다", "2034-01-01..2034-12-31 year absolute none"),
+        Said("2033년 5월보다 7월이 바빴다", "2033-07-01..2033-07-31 month absolute none"),
+        Said("작년 여름보다 가을이 좋았다", "2039-09-01..2039-11-30 circa relative+season soft"),
+        Said("작년 여름보다 올여름이 덥다", "2040-06-01..2040-08-31 circa relative+season soft"),
+        Said("5월 3일보다 8일에 바빴다", "2040-05-08..2040-05-08 exact absolute none"),
+        Said("5월 3일보다 8일 더 걸렸다", "ask:noExpression"),
+        Said("5월 3일보다 8일이나 늦었다", "ask:noExpression"),
+        Said("5월 3일보다 8일쯤 일찍 끝났다", "ask:noExpression"),
+        Said("작년은 5월보다 나았다", "2039-01-01..2039-12-31 year relative none"),
+        Said("작년은 5월보다 7월이 더웠다", "2039-07-01..2039-07-31 month relative none"),
+        Said("어릴 때보다 키가 컸다", "ask:noExpression", in: "born", now: later),
+        Said("30대 때보다 힘이 빠졌다", "ask:noExpression", in: "born", now: later),
+        Said("고등학교 때보다 대학교 때가 좋았다", "2069-03-01..2076-02-29 period schoolStage soft", in: "born", now: later),
+        Said("어릴 때보다 키가 컸다", "ask:noExpression", now: later),
+        Said("예전보다 좋아졌다", "ask:noExpression"),
+        Said("그때보다 낫다", "ask:noExpression"),
+        Said("요즘보다 예전이 좋았다", "ask:unbounded"),
+        Said("몇 년 전보다 낫다", "ask:noExpression"),
+        Said("매일 작년보다 더 걷는다", "recurring"),
+        Said("5월보다 6월부터 8월까지 바빴다", "2040-06-01..2040-08-31 year absolute none"),
+        Said("그저께 보다 만 그림을 오늘 봤다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께 그림을 보다가 잤다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께보다가 잤다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("작년에 산 배보다 그저께 산 배가 낫다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("작년보다야 낫다", "2039-01-01..2039-12-31 year relative none"),
+    ])
+    func comparedIsNotTheTime(_ r: Said) { r.check() }
+
+    /// 토씨 없이 이름씨를 꾸미는 연대는 학년에도 진다(둘 사이에 풀이말이 없고 학년에 때 표지가 설 때).
+    @Test(arguments: [
+        Said("70년대 노래를 고3 때 들었다", "2068-03-01..2069-02-28 year grade none", in: "born", now: later),
+        Said("70년대 말 노래를 동무랑 고3 때 들었다", "2068-03-01..2069-02-28 year grade none", in: "born", now: later),
+        Said("2060년대 노래를 고3 때 들었다", "2068-03-01..2069-02-28 year grade none", in: "born", now: later),
+        Said("70년대 노래를 고3 때 들었다", "ask:needsBirth", now: later),
+        Said("70년대에 나온 노래를 고3 때 들었다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대 노래를 고3 때 6월에 들었다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("60년대 노래를 고3 때 6월에 들었다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("70년대 노래를 고3 때 6월 그대로 들었다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("고3 때 6월에 70년대 노래를 들었다", "2068-06-01..2068-06-30 month grade none", in: "born", now: later),
+        Said("70년대 노래를 고3 때 6월에 들었다", "ask:needsBirth", now: later),
+        Said("70년대에 나온 노래를 고3 때 6월에 들었다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대에 고3 때 6월에 들었다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대에 고3 때 놀았다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대 고3 때 놀았다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대 섬에 살았고 고3 때 옮겼다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대 노래를 고3 형이 불렀다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+        Said("70년대 노래를 고등학교 때 들었다", "2070-01-01..2079-12-31 period absolute soft", in: "born", now: later),
+    ])
+    func decadeYieldsToGrade(_ r: Said) { r.check() }
+
+    /// 달력 물결은 「부터 … 까지」다 — 양쪽이 년 · 월 · 일 꼴이고 뒤가 「전 · 후 · 뒤 · 동안 · 걸리-」가 아니고 문장의 때가 그 시작일 때만.
+    @Test(arguments: [
+        Said("5월 3일~8일에 섬에 갔다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3~8일에 섬에 갔다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일 ~ 6월 8일에 섬에 갔다", "2040-05-03..2040-06-08 year absolute none"),
+        Said("5월 3일～8일에 섬에 갔다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일〜8일에 섬에 갔다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일∼8일에 섬에 갔다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월~7월에 섬에 살았다", "2040-05-01..2040-07-31 year absolute none"),
+        Said("3~5월에 섬에 살았다", "2040-03-01..2040-05-31 year absolute none"),
+        Said("11월~2월에 섬에 살았다", "2040-11-01..2041-02-28 year absolute none"),
+        Said("작년 5월~7월에 섬에 살았다", "2039-05-01..2039-07-31 year relative none"),
+        Said("2081~2084년에 섬에 살았다", "2081-01-01..2084-12-31 period absolute none"),
+        Said("2031년~2034년에 섬에 살았다", "2031-01-01..2034-12-31 period absolute none"),
+        Said("2031년 5월~2034년 7월에 섬에 살았다", "2031-05-01..2034-07-31 period absolute none"),
+        Said("지난달 3일~8일에 섬에 갔다", "2040-09-03..2040-09-08 month relative none"),
+        Said("5월 3일~8일쯤 섬에 갔다", "2040-05-03..2040-05-08 circa absolute soft"),
+        Said("3~5월에 섬에 간다", "2041-03-01..2041-05-31 year absolute none", direction: .future),
+        Said("고3 때 5월~7월에 섬에 살았다", "2068-05-01..2068-07-31 year grade none", in: "born", now: later),
+        Said("5월 3일~8일 전시를 봤다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일~8일 전에 봤다", "2040-10-02..2040-10-02 exact relative none"),
+        Said("5월 3일~8일 동안 쉬었다", "2040-05-03..2040-05-03 exact absolute none"),
+        Said("5월 2~3일 걸렸다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("5월 2~3일 정도 쉬었다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("2~3년 전에 심었다", "2037-01-01..2037-12-31 year relative none"),
+        Said("3~4일 걸렸다", "ask:noExpression"),
+        Said("5월 3일-8일에 섬에 갔다", "2040-05-03..2040-05-03 exact absolute none"),
+        Said("그저께 5월~7월 뱃길을 잡았다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("5월~8일에 쉬었다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("2031년~5월에 쉬었다", "2031-01-01..2031-12-31 year absolute none"),
+        Said("그저께 5월 3일~8일 뱃길을 잡았다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("그저께~ 쉬었다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("5월~그저께", "2040-10-08..2040-10-08 exact relative none"),
+        Said("2034년~2031년에 섬에 살았다", "2034-01-01..2034-12-31 year absolute none"),
+    ])
+    func calendarTilde(_ r: Said) { r.check() }
+
+    /// 맞닿지 않은 고름은 말한 차례 · 방향과 상관없이 묻는다 — 맞닿은 고름은 합친 구간 그대로.
+    @Test(arguments: [
+        Said("5월 3일이나 8일에 심었다", "ask:conflict", ["2040-05-03..2040-05-03", "2040-05-08..2040-05-08"]),
+        Said("5월 3일 또는 8일에 심었다", "ask:conflict", ["2040-05-03..2040-05-03", "2040-05-08..2040-05-08"]),
+        Said("작년 5월 3일이나 8일에 심었다", "ask:conflict", ["2039-05-03..2039-05-03", "2039-05-08..2039-05-08"]),
+        Said("작년 봄이나 가을에 심었다", "ask:conflict", ["2039-03-01..2039-05-31", "2039-09-01..2039-11-30"]),
+        Said("작년 봄이었나 재작년 봄이었나 심었다", "ask:conflict", ["2039-03-01..2039-05-31", "2038-03-01..2038-05-31"]),
+        Said("작년 봄이었나 재작년 봄이었나 심었다", "ask:conflict", ["2039-03-01..2039-05-31", "2038-03-01..2038-05-31"], direction: .future),
+        Said("재작년 봄이었나 작년 봄이었나 심었다", "ask:conflict", ["2038-03-01..2038-05-31", "2039-03-01..2039-05-31"]),
+        Said("올봄이었나 재작년 봄이었나 심었다", "ask:conflict", ["2040-03-01..2040-05-31", "2038-03-01..2038-05-31"]),
+        Said("작년 5월이었나 재작년 5월이었나 심었다", "ask:conflict", ["2039-05-01..2039-05-31", "2038-05-01..2038-05-31"]),
+        Said("4년 전 봄이었나 6년 전 봄이었나 심었다", "ask:conflict", ["2036-01-01..2036-12-31", "2034-01-01..2034-12-31"]),
+        Said("작년 봄이었나 재작년 봄이었나 4년 전이었나 심었다", "ask:conflict", ["2039-03-01..2039-05-31", "2038-03-01..2038-05-31", "2036-01-01..2036-12-31"]),
+        Said("작년 1월이었나 재작년 12월이었나 심었다", "2038-12-01..2039-01-31 circa relative soft"),
+        Said("작년 봄이었나 재작년 봄에 4년 전 그림을 봤다", "2038-03-01..2038-05-31 circa relative+season soft"),   // 다른 때가 더 있으면 읽는 차례 그대로
+        Said("3월이었나 작년 5월이었나 4년 전 7월이었나 심었다", "2039-03-01..2039-03-31 month relative none"),
+        Said("작년이었나 재작년이었나 심었다", "2038-01-01..2039-12-31 period relative soft"),
+        Said("5월 3일이나 4일에 심었다", "2040-05-03..2040-05-04 circa absolute soft"),
+        Said("5월 3일이나 8일 동안 쉬었다", "2040-05-03..2040-05-03 exact absolute none"),
+        Said("5월 3일이나 8일 걸렸다", "2040-05-03..2040-05-03 exact absolute none"),
+        Said("5월 3일이나 8일 먼저 마쳤다", "2040-05-03..2040-05-03 exact absolute none"),
+        Said("5월 3일이나 8일에 심었고 그저께 또 심었다", "2040-10-08..2040-10-08 exact relative none"),
+        Said("내년에 나올 5월 달력을 골랐다", "2041-05-01..2041-05-31 month relative none"),   // 「나올」의 나는 고름 말이 아니다
+        Said("작년에 나올 5월에 심었다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년 봄 나 재작년 봄에 간 섬에 또 갔다", "2038-03-01..2038-05-31 circa relative+season soft"),   // 대이름씨 「나」
+        Said("언제나 작년 봄이 그립다", "2039-03-01..2039-05-31 circa relative+season soft"),
+        Said("작년 봄이었나 재작년 봄이었나 그저께 떠올렸다", "2040-10-08..2040-10-08 exact relative soft"),
+        Said("3월이나 2031년에 심었다", "2031-01-01..2031-12-31 year absolute none"),
+    ])
+    func choiceApartAsks(_ r: Said) { r.check() }
+
+    /// 「A부터 B까지」의 끝만 고치면 시작은 그대로다.
+    @Test(arguments: [
+        Said("2033년 5월 3일부터 6일 아니 8일까지 쉬었다", "2033-05-03..2033-05-08 month absolute none"),
+        Said("5월 3일부터 6일, 아 아니다, 8일까지 쉬었다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일부터 6일이 아니라 8일까지 쉬었다", "2040-05-03..2040-05-08 month absolute none"),
+        Said("5월 3일부터 6월 6일 아니 8일까지 쉬었다", "2040-05-03..2040-06-08 year absolute none"),
+        Said("5월 3일부터 6일 아니 6월 8일까지 쉬었다", "2040-05-03..2040-06-08 year absolute none"),
+        Said("5월 3일부터 6일 아니면 8일까지 쉬었다", "2040-05-03..2040-05-06 month absolute none"),
+        Said("5월 3일부터 6일까지 쉬었다", "2040-05-03..2040-05-06 month absolute none"),
+        Said("5월 3일 아니 6일까지 쉬었다", "2040-05-03..2040-05-03 exact absolute none"),
+    ])
+    func rangeEndCorrected(_ r: Said) { r.check() }
+
+    /// 「그 다음에 · 그다음에」는 이음 낱말이다(「다음에 · 이 다음에」는 그대로).
+    @Test(arguments: [
+        Said("그 다음에 밥을 지었다", "ask:noExpression"),
+        Said("그다음에 밥을 지었다", "ask:noExpression"),
+        Said("그다음에 예전에 살던 섬에 갔다", "ask:unbounded"),
+        Said("다음에 또 간다", "ask:unbounded"),
+        Said("이 다음에 크면 간다", "ask:unbounded"),
+        Said("블로그 다음에 적었다", "ask:unbounded"),
+        Said("그 다음에 다음에 간다", "ask:unbounded"),
+    ])
+    func thenIsNotAhead(_ r: Said) { r.check() }
+
+    /// 「지난 · 오는 · 이번 · 올 + 달」은 제 해를 가진다 — 앞에 떨어져 선 해 낱말과 잇지 않는다.
+    @Test(arguments: [
+        Said("작년에 타던 배를 지난 5월에 팔았다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("작년에 심어서 올 5월에 거뒀다", "2040-05-01..2040-05-31 month relative none"),
+        Said("재작년에 심은 나무를 이번 4월에 옮겼다", "2040-04-01..2040-04-30 month relative none"),
+        Said("작년에 만난 동무를 오는 12월에 만난다", "2040-12-01..2040-12-31 month absolute none"),
+        Said("작년 3월에 산 배를 지난 5월 5일에 팔았다", "2040-05-05..2040-05-05 exact absolute none"),
+        Said("작년 여름에 산 배를 지난 5월에 팔았다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("4년 전 3월에 산 배를 작년에 고쳐서 지난 5월에 팔았다", "2040-05-01..2040-05-31 month relative none"),
+        Said("4년 전 3월에 팠고 작년에 메워서 지난 5월에 덮었다", "2040-05-01..2040-05-31 month relative none"),
+        Said("작년 이맘때 지난 3월에 만났다", "2040-03-01..2040-03-31 month relative none"),
+        Said("작년 겨울에 다쳐서 지난 3월에 나았다", "2040-03-01..2040-03-31 month relative none"),
+        Said("작년 봄에 심어서 올 3월에 거뒀다", "2040-03-01..2040-03-31 month relative none"),
+        Said("작년 말에 심어서 올 4월에 거뒀다", "2040-04-01..2040-04-30 month relative none"),
+        Said("작년 말에 심어서 올 4월 말에 거뒀다", "2040-04-21..2040-04-30 circa relative soft"),
+        Said("작년 겨울에 지난 5월 그림을 봤다", "2039-12-01..2040-02-29 circa relative+season soft"),
+        Said("작년 여름 지난 7월에 심었다", "2039-07-01..2039-07-31 circa relative soft"),
+        Said("작년 말 올 4월에 심었다", "2040-04-01..2040-04-30 month relative none"),
+        Said("작년 겨울 올 1월에 심었다", "2040-01-01..2040-01-31 month relative none"),
+        Said("작년 초 지난 3월에 심었다", "2039-03-01..2039-03-31 circa relative soft"),
+        Said("올해 말에 오는 12월에 심는다", "2040-12-01..2040-12-31 month relative none"),
+        Said("올해 말 오는 12월에 심는다", "2040-12-01..2040-12-31 circa relative soft"),
+        Said("작년 이맘때 지난 10월에 심었다", "2039-10-01..2039-10-31 circa relative soft"),
+        Said("작년에 심어 돌아올 5월에 거둔다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년에 쓴 글이 나올 5월을 기다린다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년에 만난 동무가 올 5월에 왔다", "2040-05-01..2040-05-31 month absolute none"),
+        Said("지난 5월에 산 배를 작년에 고쳤다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년 봄에 심어서 올 3월쯤 거뒀다", "2040-03-01..2040-03-31 circa relative soft"),
+        Said("작년 겨울 지난 2월에 심었다", "2039-02-01..2039-02-28 circa relative soft", now: "2040-01-15"),
+        Said("작년 겨울 올 1월에 심었다", "2040-01-01..2040-01-31 month relative none", now: "2040-01-15"),
+        Said("작년 겨울 지난 1월에 심었다", "2040-01-01..2040-01-31 month relative none", now: "2040-02-20"),
+        Said("작년 겨울 지난 2월에 심었다", "2040-02-01..2040-02-29 month relative none", now: "2040-12-05"),
+        Said("올해 겨울 지난 1월에 심었다", "2040-01-01..2040-01-31 circa relative soft", now: "2040-01-15"),
+        Said("올해 겨울 지난 2월에 심었다", "2040-02-01..2040-02-29 circa relative soft", now: "2040-02-20"),
+        Said("작년 겨울 오는 2월에 심는다", "2041-02-01..2041-02-28 month relative none", now: "2040-12-05"),
+        Said("올해 겨울 오는 2월에 심는다", "2041-02-01..2041-02-28 month relative none", now: "2040-12-05"),
+        Said("작년에 지난 5월 그림을 봤다", "2039-01-01..2039-12-31 year relative none"),
+        Said("올해는 지난 5월에 심었다", "2040-05-01..2040-05-31 month relative none"),
+        Said("올해 지난 5월에 심었다", "2040-05-01..2040-05-31 month relative none"),
+        Said("내년에는 오는 3월에 심는다", "2041-03-01..2041-03-31 month relative none"),
+        Said("작년 지난 5월에 심었다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년에 저번 5월에 심었다", "2039-05-01..2039-05-31 month relative none"),
+        Said("작년에 우리는 5월에 심었다", "2039-05-01..2039-05-31 month relative none"),
+    ])
+    func shiftedMonthKeepsItsYear(_ r: Said) { r.check() }
+
+    /// 달력 물결은 손 넷이 같다 — `day` = 시작 · `end` = 끝 · 기간 신호 · 구간을 열지 않는 물결은 아무 손도 아니다.
+    @Test func calendarTildeForEveryHand() {
+        let now = day("2040-10-10")
+        for (s, a, b) in [("5월 3일~8일에 섬에 갔다", "2040-05-03", "2040-05-08"), ("5월 3~8일에 섬에 갔다", "2040-05-03", "2040-05-08"), ("11월~2월에 섬에 살았다", "2040-11-01", "2041-02-01"),
+                          ("2081~2084년에 섬에 살았다", "2081-01-01", "2084-01-01"), ("지난달 29일~3일에 섬에 갔다", "2040-09-29", "2040-10-03"), ("2월 29일~3월 1일에 섬에 갔다", "2040-02-29", "2040-03-01"), ("다음 달 30일~2일에 섬에 간다", "2040-11-30", "2040-12-02")] {
+            let x = SpokenReading.day(s, now: now, zone: zone)
+            #expect(x?.text == a && (x?.precision == .exact) == s.contains("일"), "\(s)")
+            #expect(SpokenReading.end(s, start: x, now: now, zone: zone)?.text == b, "\(s)")
+            #expect(SpokenReading.hasSpanSignal(s), "\(s)")
+        }
+        for s in ["그저께 5월 3일~8일 뱃길을 잡았다", "3~4일 걸렸다", "5월 3일~8일 전에 봤다", "그저께~ 쉬었다", "3일~8일에 쉬었다", "10~20년 동안 살았다"] {
+            let x = SpokenReading.day(s, now: now, zone: zone)
+            #expect(SpokenReading.end(s, start: x, now: now, zone: zone) == nil, "\(s)")
+            #expect(SpokenReading.hasSpanSignal(s) == s.contains("동안"), "\(s)")
+        }
+        // 기준 날에 없는 날(윤년 · 달의 길이)이어도 신호는 같다
+        for s in ["작년 2월 29일~3월 1일에 갔다", "재작년 2월 29일~3월 1일에 갔다", "내년 2월 29일~3월 1일에 간다", "3년 전 2월 29일~3월 1일에 갔다", "20년 뒤 2월 29일~3월 1일에 간다", "180년 전 2월 29일~3월 1일에 갔다", "28년 뒤 2월 29일~3월 1일에 간다"] { #expect(SpokenReading.hasSpanSignal(s), "\(s)") }
+        guard case .span(let q) = spoken("5월 3~8일에 섬에 갔다") else { Issue.record("구간이 아니다"); return }
+        #expect(q.phrase == "5월3~8일")
+    }
+    /// 끝만 고친 말 · 원문에 붙은 「내일」은 끝 날도 같다.
+    @Test func correctedRangeEnd() {
+        let now = day("2040-10-10")
+        for (s, e) in [("5월 3일부터 6일 아니 8일까지 쉬었다", "2040-05-08"), ("5월 3일부터 6월 6일 아니 8일까지 쉬었다", "2040-06-08")] {
+            #expect(SpokenReading.end(s, start: SpokenReading.day(s, now: now, zone: zone), now: now, zone: zone)?.text == e, "\(s)")
+        }
+        let own = "오늘부터 내 일 마칠 때까지 쉰다", tomorrow = "오늘부터 내일까지 쉰다"
+        #expect(SpokenReading.end(own, start: SpokenReading.day(own, now: now, zone: zone), now: now, zone: zone) == nil)
+        #expect(SpokenReading.end(tomorrow, start: SpokenReading.day(tomorrow, now: now, zone: zone), now: now, zone: zone)?.text == "2040-10-11")
+    }
+    /// 「그다음에 예전에」의 방향은 남은 낱말의 것이다.
+    @Test func thenLeavesDirection() {
+        guard case .ask(let a) = spoken("그다음에 예전에 살던 섬에 갔다") else { Issue.record("묻기가 아니다"); return }
+        #expect(a.reason == .unbounded && a.direction == .past)
+    }
+    /// 견줌 · 고름이 여섯 넘게 선 글은 가리지도 가르지도 않는다(길이만큼만 일한다).
+    @Test func manyMarksAreLeft() {
+        #expect(said(String(repeating: "작년보다 ", count: 7) + "낫다") == "2039-01-01..2039-12-31 year relative none")
+        #expect(said(String(repeating: "작년보다 ", count: 6) + "낫다") == "ask:noExpression")
+    }
+    /// 거르는 낱말(`gates`)은 그 꼴에 반드시 든다 — 맞는 글은 모두 거름을 지난다.
+    @Test func gatesNeverHideAMatch() {
+        let w = Words.shared, p = w.patterns
+        let samples: [(String, String, [String])] = [
+            ("namedTime", p.namedTime, ["모레라는 배", "모레란 배", "작년이라는 배"]), ("yearsCount", p.yearsCount, ["40년 전통", "사 년 전부 맡겼다"]),
+            ("daysTogether", p.daysTogether, ["어제오늘 일"]), ("bornInMonth", p.bornInMonth, ["5월생", "12 월생이다"]), ("ageApart", p.ageApart, ["두 살 어린", "세 살 위"]),
+            ("ageEach", p.ageEach, ["세 살짜리", "3살짜리"]), ("afterWord", p.afterWord, ["4일 후배", "일주일 후기를"]), ("longNumberBlock", p.longNumberBlock, ["45678년", "12,345년도"]),
+            ("correction", p.correction, ["4년 전 아니 6년 전", "작년 아냐 올해", "작년, 정정할게, 올해", "작년, 다시 말하면 올해", "작년, 아 아니다, 올해"]),
+            ("comparedWith", p.comparedWith, ["작년보다", "작년보단", "작년보다도"]), ("thenNext", p.thenNext, ["그 다음에", "그다음에"]), ("frequency", p.frequency, ["4년에 한 번"]),
+        ]
+        #expect(Set(samples.map(\.0)) == Set(w.gates.keys))
+        for (name, pattern, texts) in samples { for s in texts { #expect(Rx.has(s, pattern) && w.may(name, s), "\(name) — \(s)") } }
+        // 거르는 낱말을 뺀 글은 그 꼴에 맞지 않는다
+        for (name, pattern, texts) in samples {
+            for s in texts {
+                var bare = s
+                for g in w.gates[name]! { bare = bare.replacingOccurrences(of: g, with: "") }
+                #expect(!Rx.has(bare, pattern), "\(name) — \(bare)")
+            }
+        }
+    }
+    /// 빈칸을 줄이는 손 — 바이트로 거른 것과 꼴로 줄인 것이 같다.
+    @Test func oneSpace() {
+        // 기대는 글자로 적는다 — 꼴로 다시 지으면 바이트 거름이 틀려도 같은 답이 된다
+        for (s, e) in [("가 나", "가 나"), ("가  나", "가 나"), ("가   나  다", "가 나 다"), ("가\t나", "가 나"), ("가\n 나", "가 나"), ("가\u{B}나", "가 나"), ("가\r\n나", "가 나"), ("가\u{00A0}나", "가 나"),
+                       ("가\u{3000}나", "가 나"), ("가\u{2009}나", "가 나"), ("가\u{2028}나", "가 나"), ("가\u{1680}나", "가 나"), (" 가 ", " 가 "), ("  가", " 가"), ("가  ", "가 "), ("", ""),
+                       ("…가", "…가"), ("\u{1100}\u{1161} 나", "\u{1100}\u{1161} 나"), ("가~나", "가~나"), ("é 가", "é 가")] {
+            #expect(Array(Rx.oneSpace(s).unicodeScalars) == Array(e.unicodeScalars), "\(s.debugDescription)")
+        }
+        #expect(Rx.holds("가나다", "나") && !Rx.holds("가나다", "라") && Rx.holds("가", "가") && !Rx.holds("", "가"))
+    }
+
     /// 되풀이 입력에 폭주하지 않는다 — 꼴마다 제 글자의 낱말을 되풀이한 글(× 8 · 16 · 32 · 64)을 맞추는 시간이 길이에 비례하는 만큼만 는다
     /// (길이 두 배에 시간 열 배까지 — 다항식의 여유 · 겹친 갈래의 되풀이는 256 배로 뛴다 · 절대 시간은 재지 않는다 · 짧은 것은 바닥 0.2 ms 로 본다).
     @Test func patternsDoNotBlowUp() throws {
@@ -657,7 +1215,8 @@ func spent() -> Double {
     /// 공개 손도 되풀이 입력에 길이만큼만 는다.
     @Test func readingDoesNotBlowUp() {
         let now = day("2040-10-10")
-        for w in ["한 살 ", "한살", "지난주말 ", "이번 주말 ", "20대 ", "3월 2일 ", "그저께 ", "4년 전 ", "작년에 산 배를 ", "아니 6년 전 ", "서른 살에서 ", "『가", "\"가 ", "사흘 안에 "] {
+        for w in ["한 살 ", "한살", "지난주말 ", "이번 주말 ", "20대 ", "3월 2일 ", "그저께 ", "4년 전 ", "작년에 산 배를 ", "아니 6년 전 ", "서른 살에서 ", "『가", "\"가 ", "사흘 안에 ", "4년 전 5월 ", "고3 때 6월 ", "5월생 ", "내 일 ", "내일 ", "4일 후배 ", "두 살 어린 ", "작년보다 ", "어릴 때보다 ",
+                  "70년대 노래를 고3 때 ", "5월 3일~8일 ", "2081~2084년 ", "5월 3일이나 8일 ", "5월 3일부터 6일 아니 8일까지 ", "그 다음에 ", "작년에 타던 배를 지난 5월에 ", "작년 봄이었나 재작년 봄이었나 ", "어제오늘 ", "하나 세워 ", "아 아니다, ", "~", "아, "] {
             var last = 0.005
             for n in [5, 10, 20, 40, 80] {
                 let s = String(repeating: w, count: n) + "갔다"

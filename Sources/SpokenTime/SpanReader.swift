@@ -83,20 +83,20 @@ struct SpanReader: Sendable {
     /// `rangeStart` = 날 하나 읽기(`day`) — 「A부터 B까지」가 서면 구간 전체가 아니라 A 의 읽음(시작 쪽 제 꼴 · 끝은 `end` 가 B 를 읽는다). 그 밖은 같은 읽음.
     func read(_ text: String, now: Date, context: SpokenReading.Context, rangeStart: Bool = false) -> SpokenReading {
         // 말 고침을 걷고(정정 표지 앞의 때를 가린다 — `settled`) 빈칸은 대부분 지우고 읽는다 · 낱말 경계가 뜻을 가르는 토막만 빈칸 있는 원문(raw)에서 본다
-        let raw = settled(text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces), now: now, context: context)
-        let t = Rx.strip(raw)
+        let clear = { (s: String) -> String in self.compared(self.settled(SpanReader.plainSpaces(s), now: now, context: context), now: now, context: context) }
+        var raw = clear(text)
         // 되풀이는 시점이 아니다 — 둘레 구간이 서면 그 구간 · 생년 · 기준 사건이 없어 묻는 때도 되풀이보다 먼저.
         // 빈도(「N년에 한 번」 · 세 자리까지 — 네 자리는 늘 해)도 되풀이다 — 그 토막은 해가 아니니 가리고 둘레를 읽는다.
         // 단 뒤의 풀이말이 지난 꼴이면(「98년에 한 번 가 봤어」) 그 해에 한 번이다 — 빈도가 아니다(「마다」는 늘 빈도).
         // 지난 꼴 = 한 번 일어난 일 — 과거 선어말(받침 ㅆ — 있 · 겠 밖) · 「-ㄴ 적」. 낱말 목록이 아니라 꼴로 잡으니 자모로 푼 글에서 본다 ·
         // 앞에 꾸밈 · 이음(는 — 대이름씨에 붙은 토씨 「나는」 밖 · 는데 · 지만 · 면서) · 지난 버릇(어간에 붙은 곤 하다 · 번씩)이 서면 거기서 끊는다(빈도).
         // 빈도 토막 바로 뒤가 「-던」 + 이름씨(「런던」 밖 · 받침 ㄴ · ㄹ 관형과 「는」은 이름씨 · 토씨와 꼴로 갈리지 않아 보지 않는다 · 「61년에 한 번 열리던 축제에 갔다」)면 빈도는 이름씨를 꾸민 것 — 사건의 때도 되풀이도 아니니 가리고 둘레를 읽는다
-        if let m = Rx.first(raw, p.frequency), Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.frequencyModifies) {
-            var body = raw
-            body.replaceSubrange(m.range, with: " ")
-            return read(body, now: now, context: context, rangeStart: rangeStart)
+        while words.may("frequency", raw), let m = Rx.first(raw, p.frequency), Rx.hasDecomposed(SpanReader.lead(raw[m.range.upperBound...]), p.frequencyModifies) {
+            raw.replaceSubrange(m.range, with: " ")
+            raw = clear(raw)
         }
-        let frequency = Rx.first(raw, p.frequency).flatMap { m in Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
+        let t = Rx.strip(raw)
+        let frequency = (words.may("frequency", raw) ? Rx.first(raw, p.frequency) : nil).flatMap { m in Rx.hasDecomposed(String(raw[m.range.upperBound...]), p.pastAfter) ? nil : m.range }
         // 되풀이 낱말은 문장의 끝 풀이말 마디에 걸릴 때만 문장 때를 되풀이로 바꾼다(`clauseRead`) — 꾸미는 마디 · 다른 문장의 되풀이는 둘레를 읽는다 ·
         // 빈도가 함께 서도 같다(가른 글을 다시 읽는 손이 빈도를 빈도로 읽는다)
         if Rx.has(t, p.recurringWhen), let r = clauseRead(raw, now: now, context: context, rangeStart: rangeStart) { return r }
@@ -116,8 +116,19 @@ struct SpanReader: Sendable {
             if rangeStart { return .span(a) }
             return .span(finish(S(from: d(a.from), to: d(b.to), rule: a.rule, soft: a.soft || b.soft, phrase: a.phrase + words.from + b.phrase + words.until)))
         }
+        // 달력 물결(「3월 2일~9일」) = 「A부터 B까지」
+        if let x = tilde(raw, now: now, context: context) {
+            return .span(rangeStart ? x.from : finish(S(from: d(x.from.from), to: d(x.to.to), rule: x.from.rule, soft: x.from.soft || x.to.soft, phrase: x.from.phrase + "~" + x.to.phrase)))
+        }
         return readOne(raw, now: now, context: context)
     }
+    /// 글의 첫 낱말과 그 뒤 낱말의 첫 글자까지.
+    static func lead(_ s: Substring) -> String {
+        guard let word = s.firstIndex(where: { $0 != " " }), let gap = s[word...].firstIndex(of: " "), let next = s[gap...].firstIndex(where: { $0 != " " }) else { return String(s) }
+        return String(s[...next])
+    }
+    /// 빈칸을 하나로 줄이고 다듬은 글.
+    static func plainSpaces(_ s: String) -> String { Rx.oneSpace(s).trimmingCharacters(in: .whitespaces) }
 
     /// 되풀이 낱말의 마디 — 되풀이가 문장 때를 바꾸는 것은 그 낱말이 사건을 말하는 마디(문장의 끝 풀이말)에 걸릴 때뿐이다.
     ///   낱말마다 제 문장(끝 표지 `sentenceEnd` 로 가른다 — 수 뒤 마침표는 아니다) 안에서 뒤를 본다 — 꾸밈 풀이말 + 이름씨가 서면 꾸미는 마디(관형절):
@@ -136,8 +147,11 @@ struct SpanReader: Sendable {
         let ends = Rx.all(raw, p.sentenceEnd).map { raw.distance(from: raw.startIndex, to: $0.upperBound) }
         let sentence = { (i: Int) -> Range<Int> in (ends.last { $0 <= i } ?? 0)..<(ends.first { $0 > i } ?? chars.count) }
         var hidden: [Range<Int>] = [], spoken: [Range<Int>] = [], loose = false
+        var at = t.startIndex, seen = 0   // 앞 낱말부터 이어 센다
         for r in Rx.all(t, p.recurringWhen) {
-            let lo = solid[t.distance(from: t.startIndex, to: r.lowerBound)], hi = solid[t.distance(from: t.startIndex, to: r.upperBound) - 1] + 1
+            let first = seen + t.distance(from: at, to: r.lowerBound), past = first + t.distance(from: r.lowerBound, to: r.upperBound)
+            (at, seen) = (r.upperBound, past)
+            let lo = solid[first], hi = solid[past - 1] + 1
             let s = sentence(lo)
             guard hi <= s.upperBound else { continue }   // 빈칸을 빼며 자모가 앞 글자에 붙으면 자리가 어긋난다 — 그 낱말은 건넌다
             let after = String(chars[hi..<s.upperBound])
@@ -254,16 +268,16 @@ struct SpanReader: Sendable {
     /// 마디 하나의 읽음 — 때가 둘이면 먼저 가르고(`SaidTimes` — 고름 · 꾸미는 때 · 겹치지 않는 둘) 남은 하나를 읽는다.
     func readOne(_ raw: String, now: Date, context: SpokenReading.Context) -> SpokenReading {
         let raw = raw.trimmingCharacters(in: .whitespaces)
-        return twoTimes(raw, now: now, context: context) ?? pick(raw, now: now, context: context)
+        let drawn = draw(raw, now: now, context: context)
+        return twoTimes(raw, drawn, now: now, context: context) ?? pick(raw, drawn, now: now, context: context)
     }
 
-    func pick(_ raw: String, now: Date, context: SpokenReading.Context) -> SpokenReading {
+    /// 읽는 차례가 하나를 고른다 — 첫 뽑음(`draw` — 생년 · 기준 사건으로 읽은 토막 + 바로 뒤 「때」를 지운 나머지의 절대 · 상대)에서.
+    func pick(_ raw: String, _ drawn: Drawn, now: Date, context: SpokenReading.Context) -> SpokenReading {
         let t = Rx.strip(raw)
-        let lifeHit = lifeRead(t, raw: raw, context)
-        // 맞은 토막 + 바로 뒤 「때」를 지운 나머지에서 절대 · 상대를 본다(빈칸 있는 나머지 — 흐림 표지는 붙은 자리로 가린다 · 자리 수는 그대로)
-        let rest = lifeHit.map { SpanReader.blank(raw, [lifeReach($0, raw: raw, t: t)]) } ?? raw
+        let lifeHit = drawn.life
         // 겹칠 때: 절대 > 상대 > 생년 · 기준 사건으로 읽은 때 — 겹치면 겹치는 구간만(겹치지 않는 둘은 `twoTimes` 가 먼저 묻는다)
-        if var a = absRel(rest, now: now) {
+        if var a = drawn.rest {
             // 상한 안에 생년 · 기준 사건으로 읽은 때가 있으면 그 때다(「10년 안에 서른두 살 때」) — 상한은 다른 때가 없을 때의 점이다
             // 앞에 선 때도 그대로(「결혼하고 5년 안에」는 그 사건부터 센 것이다)
             if a.bound, let x = lifeHit {
@@ -271,6 +285,14 @@ struct SpanReader: Sendable {
                 switch x {
                 case .span(let l, _): if first || (l.from <= a.to && d(now) <= l.to) { return .span(finish(l)) }
                 case .ask(let w, let k, let b, _): if first { return ask(w, k, b) }
+                }
+            }
+            // 토씨 없이 이름씨를 꾸미는 연대는 학년에도 진다 · 해를 채운 달은 학년에 붙은 달에 진다
+            if let x = lifeHit, case let reach = lifeReach(x, raw: raw, t: t),
+               (gradeMonthOf(x, in: t) && a.bare && !describes(reach, a, raw)) || (a.decade && SpanReader.isGrade(x) && decadeYields(a, to: reach, raw)) {
+                switch x {
+                case .span(let l, _): return .span(finish(l))
+                case .ask(let w, let k, let b, _): return ask(w, k, b)
                 }
             }
             if case .span(let l, let r)? = lifeHit, a.from <= l.to, l.from <= a.to {
@@ -304,6 +326,7 @@ struct SpanReader: Sendable {
     /// 끝 없는 때 · 방향만 있는 말 — 있으면 낱말이 품은 방향(앞 · 뒤 낱말이 함께 서거나 「언젠가 · 그때」면 없음 — 부르는 쪽의 몫).
     struct Vague { let direction: SpokenReading.Direction? }
     func vague(_ raw: String) -> Vague? {
+        let raw = words.may("thenNext", raw) ? Rx.replacing(raw, p.thenNext, with: SpanReader.gap) : raw   // 「그 다음에 · 그다음에」는 이음 낱말이다
         let t = Rx.strip(raw)
         let ahead = Rx.has(t, p.vagueFuture) || Rx.has(raw, p.futureWord), back = Rx.has(t, p.vaguePast) || Rx.has(raw, p.pastWord)
         guard ahead || back || Rx.has(t, p.vague) else { return nil }
@@ -397,10 +420,11 @@ struct SpanReader: Sendable {
         let r = h.day
         let x = d(r.date)
         // 날 단위 상대가 때를 정했으면 relative — 같은 문장의 달 표현은 대상
-        let absolute = !h.soft && day.dayRelative(raw, now: now) == nil
+        let absolute = !h.soft && !h.dayWord
             && (Rx.has(t, p.anyYear) || (Rx.has(t, p.anyMonth) && !Rx.has(t, p.yearWords)))
-        var rule = absolute ? "absolute" : "relative"
-        var soft = h.soft || day.isFuzzy(raw)
+        var rule = absolute && !h.ago ? "absolute" : "relative"
+        let near = h.tail ?? raw, close = h.tail.map(Rx.strip) ?? t   // 흐림을 볼 글
+        var soft = h.soft || day.isFuzzy(near)
         var span: (D, D)
         switch r.precision {
         case .exact, .period: span = (x, x)
@@ -408,16 +432,16 @@ struct SpanReader: Sendable {
         case .year: span = SpanReader.year(x.y)
         case .circa:
             soft = true
-            if let s = day.season(t), x.m == s.first {
+            if let s = day.season(close), x.m == s.first {
                 span = season(s.word, in: x.y); rule += "+season"
-            } else if t.contains(words.thisTime) {
+            } else if close.contains(words.thisTime) {
                 span = SpanReader.month(x.y, x.m)
             } else if Rx.has(t, p.monthOrPart) {
                 // 달의 초 · 중순 · 말 — 붙은 자리만
                 let (f, e) = SpanReader.month(x.y, x.m)
-                if Rx.has(raw, p.monthEarlySpaced) { span = (f, D(x.y, x.m, 10)) }
-                else if Rx.has(raw, p.monthMidSpaced) { span = (D(x.y, x.m, 11), D(x.y, x.m, 20)) }
-                else if Rx.has(raw, p.monthLateSpaced) { span = (D(x.y, x.m, 21), e) }
+                if Rx.has(near, p.monthEarlySpaced) { span = (f, D(x.y, x.m, 10)) }
+                else if Rx.has(near, p.monthMidSpaced) { span = (D(x.y, x.m, 11), D(x.y, x.m, 20)) }
+                else if Rx.has(near, p.monthLateSpaced) { span = (D(x.y, x.m, 21), e) }
                 else { span = (f, e) }
             } else if Rx.has(raw, p.yearEarlySpaced) { span = (D(x.y, 1, 1), D.last(x.y, 3)) }
             else if Rx.has(raw, p.yearEnd) { span = (D(x.y, 10, 1), D(x.y, 12, 31)) }
@@ -457,8 +481,14 @@ struct SpanReader: Sendable {
         for g in words.grades {
             guard let m = Rx.first(raw, g.pattern), let n = m.g.lazy.compactMap({ Int($0) }).first, (1...g.last).contains(n) else { continue }
             let r = SpanReader.stripped(raw, m.range, in: t)
-            guard let b = birth(c) else { return .ask(.needsBirth, nil, "grade", r) }
+            let month = gradeMonth(raw, after: m.range)
+            guard let b = birth(c) else { return .ask(.needsBirth, nil, "grade", month.map { r.lowerBound..<SpanReader.stripped(raw, $0.range, in: t).upperBound } ?? r) }
             let y = b.y + g.offset + n
+            // 바로 뒤에 맞닿은 해 없는 달 · 날은 그 학년의 것(한 해짜리 학년일 때)
+            if let month, !b.early, let x = absRel("\(month.number < 3 ? y + 1 : y)" + words.yearSuffix + " " + month.said, now: D.utc.date(from: DateComponents(year: y, month: 1, day: 1, hour: 12))!, decades: false) {
+                let whole = r.lowerBound..<SpanReader.stripped(raw, month.range, in: t).upperBound
+                return .span(S(from: x.from, to: x.to, rule: "grade", soft: x.soft, phrase: String(t[whole])), whole)
+            }
             return withSeason(t, r, year: y, base: b.widen(SpanReader.schoolYear(y)), rule: "grade", soft: b.early, b: b)
         }
         if let m = Rx.first(t, p.universityGrade) {
@@ -477,6 +507,27 @@ struct SpanReader: Sendable {
             return .span(S(from: s.0, to: s.1, rule: "grade", soft: true, phrase: String(t[m.range])), m.range)
         }
         return nil
+    }
+
+    /// 학년 바로 뒤에 맞닿은 해 없는 달 · 날 — 학년 바로 앞에 해가 서면(「2068년 고3 때 5월」) 그 해의 달이다 · 「고3 1월」(때 없이 1월)은 어느 쪽 학년도인지 몰라 보지 않는다.
+    func gradeMonth(_ raw: String, after r: Range<String.Index>) -> (range: Range<String.Index>, number: Int, said: String)? {
+        guard let m = Rx.first(String(raw[r.upperBound...].prefix(24)), p.gradeMonth), m.g.count >= 3, let n = Int(m.g[2]), (1...12).contains(n), n > 1 || !m.g[0].isEmpty,
+              !Rx.has(String(raw[..<r.lowerBound].suffix(12)), p.yearBefore) else { return nil }
+        let tail = String(raw[r.upperBound...].prefix(24))
+        let end = raw.index(r.upperBound, offsetBy: tail.distance(from: tail.startIndex, to: m.range.upperBound))
+        return (r.upperBound..<end, n, m.g[1])
+    }
+    /// 달이 붙은 학년인가.
+    func gradeMonthOf(_ x: Life, in t: String) -> Bool {
+        let r: Range<String.Index>
+        switch x { case .span(_, let x): r = x; case .ask(_, _, _, let x): r = x }
+        return SpanReader.isGrade(x) && t[r].contains(words.monthUnit)
+    }
+    static func isGrade(_ x: Life) -> Bool {
+        switch x {
+        case .span(let s, _): s.rule.hasPrefix("grade")
+        case .ask(_, _, let rule, _): rule == "grade"
+        }
     }
 
     /// 학년 · 나이 뒤의 계절 — 그 해(학년도) 안으로 좁힌다.
