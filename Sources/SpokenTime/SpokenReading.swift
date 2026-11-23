@@ -10,6 +10,8 @@ import Foundation
 //
 // 읽는 차례(좁은 것이 이긴다): 되풀이(「매주 · 마다」 — 문장의 끝 풀이말 마디에 걸린 것만 · 꾸미는 마디 · 다른 문장의 되풀이는 나머지를 읽는다 · 빈도 「N년에 한 번」(세 자리까지 · 뒤 풀이말이 지난 꼴이면 그 해) — 둘레 구간이 서지 않으면 시점이 아니다) → 「A부터 B까지」(A 의 처음 … B 의 끝) →
 // 생년 · 기준 사건으로 읽는 때(인생 사건 > 학년 > 나이 > 나잇대 > 학교급 > 시대)와 절대 · 상대 날짜 — 둘이 서면 겹치는 구간 → 최근 → 끝 없는 때(묻기).
+// 때가 아닌 것(세는 이름씨가 맞닿은 「차 30대」 · 뒤에 낱말이 이은 「40년 전통」 · 낫표 · 따옴표 안 · 「X라는」 앞)은 읽기 전에 거르고 · 말 고침(「4년 전 아니 6년 전」)은 나중 것 ·
+// 때가 둘이면 가른다(`SaidTimes` — 고름은 맞닿으면 합침 · 이름씨를 꾸미는 때는 짐 · 잇는 꼴 없이 한 마디에 선 겹치지 않는 둘은 고르지 않고 묻기 `conflict` + 후보).
 // 저장 꼴: 앵커 = 구간 첫 날 · 정밀도 = 하루 `exact` · 한 달 이하 `month` · 한 해 이하 `year`(흐리면 둘 다 `circa`) · 한 해 넘음 `period`(구간을 저장).
 // `day` 는 `read` 의 저장 꼴이다(같은 글 · 같은 방향 · 빈 맥락 — 셈은 `read` 한 벌) · 「A부터 B까지」만 `day` = A · `end` = B 의 제 꼴.
 // 연대(「90년대」)는 빈칸 있는 원문에서 때 표지와 함께일 때만 · 해가 선 다른 때 표현(날 단위 상대 · 해 · 해 낱말 · 수식 붙은 달)에 진다(해 없는 달 · 계절에는 아니다) ·
@@ -66,12 +68,13 @@ public enum SpokenReading: Sendable, Hashable {
 
     /// Whether the sentence speaks of something past or something ahead. The caller passes it from its own classification of the sentence;
     /// the reader does not guess it. A modifier the sentence states (last · next · this year …) always wins over the hint.
-    /// `future` changes three readings: a two-digit year or decade becomes the closest such year at or after the reference year
+    /// `future` changes four readings: a two-digit year or decade becomes the closest such year at or after the reference year
     /// (`past`, the default, puts it in the reference year's century and moves it back a century when that lands after the reference year);
     /// a month or a month and day with no modifier becomes the closest one from today on (today and this month included);
-    /// a season with no modifier becomes the closest one that has not ended yet (the current season included).
-    /// 방향은 부르는 쪽이 문장 분류로 넘긴다 — 문장의 수식어가 늘 힌트를 이긴다. 앞일이 바꾸는 것은 셋: 두 자리 해 · 연대(기준 해 이상 가장 가까운 해) ·
-    /// 수식 없는 달 · 달과 날(오늘 · 이번 달을 넣어 오늘 이후 가장 가까운 것) · 수식 없는 계절(아직 끝나지 않은 가장 가까운 것). 닫힌 열거다(갈래를 더하면 주 판).
+    /// a season with no modifier becomes the closest one that has not ended yet (the current season included);
+    /// and "within N years" (months · weeks · days) becomes the point N years ahead, vague (looking back it is a length of time, not a time).
+    /// 방향은 부르는 쪽이 문장 분류로 넘긴다 — 문장의 수식어가 늘 힌트를 이긴다. 앞일이 바꾸는 것은 넷: 두 자리 해 · 연대(기준 해 이상 가장 가까운 해) ·
+    /// 수식 없는 달 · 달과 날(오늘 · 이번 달을 넣어 오늘 이후 가장 가까운 것) · 수식 없는 계절(아직 끝나지 않은 가장 가까운 것) · 「N년 안에 · 이내에」(N년 뒤 · 흐림 — 지난 일이면 햇수라 때가 아니다). 닫힌 열거다(갈래를 더하면 주 판).
     public enum Direction: String, Sendable, Hashable, Codable, CaseIterable {
         /// 지난 일(기본).
         case past
@@ -120,8 +123,10 @@ public enum SpokenReading: Sendable, Hashable {
         public let rule: String
         /// 흐린 때인가(「쯤 · 무렵 · 초 · 말 · 계절 · 나이」 — 사람이 확인할 값).
         public let soft: Bool
-        /// 맞은 토막(빈칸을 뺀 글) — 가린 토막(꾸미는 마디 · 빈도 · 긴 수)은 빠진다 · 입력의 이어진 토막이 아닐 수 있다.
-        /// The matched text without spaces — set-aside parts (a describing clause, a frequency, a long number) are left out, so it may not be one contiguous piece of the input.
+        /// 맞은 토막만(빈칸을 뺀 글 · 문장 전체가 아니다) — 때로 읽은 글자를 나온 차례로 잇는다(「작년에 연못을 5월에 팠다」 = 「작년5월」) ·
+        /// 토씨 · 가린 토막(꾸미는 마디 · 빈도 · 긴 수 · 고친 말)은 빠진다 · 입력의 이어진 토막이 아닐 수 있다.
+        /// Only the text that matched as a time, without spaces and in the order said — particles and set-aside parts (a describing clause, a frequency,
+        /// a long number, a corrected time) are left out, so it may not be one contiguous piece of the input.
         public let phrase: String
     }
 
@@ -153,16 +158,46 @@ public enum SpokenReading: Sendable, Hashable {
             public static let needsBirth = Reason(rawValue: "needsBirth")
             /// 기준 사건이 있어야 정한다(`anchorKey`).
             public static let needsAnchor = Reason(rawValue: "needsAnchor")
+            /// 한 마디에 겹치지 않는 사건의 때가 둘 이상이다 — 고르지 않는다(`candidates`).
+            public static let conflict = Reason(rawValue: "conflict")
             /// 이 SDK 가 아는 낱말 — 차례 그대로.
-            public static let known: [Reason] = [.noExpression, .unbounded, .needsBirth, .needsAnchor]
+            public static let known: [Reason] = [.noExpression, .unbounded, .needsBirth, .needsAnchor, .conflict]
             public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
             public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(rawValue) }
         }
         public let reason: Reason
         /// `needsAnchor` 면 그 기준 사건의 키(`Context.Anchor.key` 와 같은 낱말).
         public let anchorKey: String?
-        /// 읽은 규칙의 이름(`Span.rule` 과 같은 낱말 · 때 표현이 없으면 `none` · 끝 없는 때는 `vague`).
+        /// 읽은 규칙의 이름(`Span.rule` 과 같은 낱말 · 때 표현이 없으면 `none` · 끝 없는 때는 `vague` · 때가 둘이면 `conflict`).
         public let rule: String
+        /// `conflict` 면 겹치지 않는 때들 — 문장에 나온 차례(읽는 차례 · 이른 차례가 아니다) · 그 밖의 까닭은 빈 목록.
+        /// The spans that do not overlap when the reason is `conflict`, in the order the sentence says them; empty for every other reason.
+        public let candidates: [Span]
+        /// `unbounded` 에서 낱말이 품은 방향(「미래에 · 나중에 · 훗날」 = 앞일 ⟂ 「과거에 · 예전에 · 옛날에」 = 지난 일) — 「언젠가 · 그때」처럼 품지 않거나 둘이 함께 서면 nil
+        /// (방향은 부르는 쪽의 힌트로). 날은 짓지 않는다.
+        /// The direction the words themselves carry when the reason is `unbounded`; nil when they carry none.
+        public let direction: Direction?
+
+        init(reason: Reason, anchorKey: String?, rule: String, candidates: [Span] = [], direction: Direction? = nil) {
+            self.reason = reason; self.anchorKey = anchorKey; self.rule = rule; self.candidates = candidates; self.direction = direction
+        }
+        enum CodingKeys: String, CodingKey { case reason, anchorKey, rule, candidates, direction }
+        /// 새 칸이 없는 글(5.2)도 읽는다.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(reason: try c.decode(Reason.self, forKey: .reason), anchorKey: try c.decodeIfPresent(String.self, forKey: .anchorKey),
+                      rule: try c.decode(String.self, forKey: .rule), candidates: try c.decodeIfPresent([Span].self, forKey: .candidates) ?? [],
+                      direction: try c.decodeIfPresent(Direction.self, forKey: .direction))
+        }
+        /// 빈 칸은 쓰지 않는다(5.2 와 같은 바이트).
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(reason, forKey: .reason)
+            try c.encodeIfPresent(anchorKey, forKey: .anchorKey)
+            try c.encode(rule, forKey: .rule)
+            if !candidates.isEmpty { try c.encode(candidates, forKey: .candidates) }
+            try c.encodeIfPresent(direction, forKey: .direction)
+        }
     }
 
     /// 생년 · 기준 사건 — 나이 · 학년 · 「결혼하고 나서」 같은 때를 날로 바꾸는 재료. 날은 읽는 손의 `zone` 으로 읽는다(그 시간대의 날).

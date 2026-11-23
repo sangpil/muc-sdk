@@ -501,7 +501,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
             #expect(f(s) == "nil", "\(s)")
         }
         // 낸 토막에 가름 글자가 남지 않는다 · 가른 자리는 빈칸을 뺀 글에서도 둘레가 붙지 않는다
-        if case .span(let s) = SpokenReading.read("그저께 매주 들르던 꽃집에 들렀다", now: now, zone: zone) { #expect(s.phrase == "그저께꽃집에들렀다") } else { Issue.record("span") }
+        if case .span(let s) = SpokenReading.read("그저께 매주 들르던 꽃집에 들렀다", now: now, zone: zone) { #expect(s.phrase == "그저께") } else { Issue.record("span") }
         #expect(!Rx.strip(SpanReader.gapped("12 매일 34", [3..<5])).contains("1234"))
     }
 
@@ -687,7 +687,7 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
     /// 저장 정밀도의 낱말 — 다섯이고 차례가 그대로다.
     @Test func precisionWords() {
         #expect(SpokenReading.Precision.allCases.map(\.rawValue) == ["exact", "month", "year", "circa", "period"])
-        #expect(SpokenReading.Ask.Reason.known.map(\.rawValue) == ["noExpression", "unbounded", "needsBirth", "needsAnchor"])
+        #expect(SpokenReading.Ask.Reason.known.map(\.rawValue) == ["noExpression", "unbounded", "needsBirth", "needsAnchor", "conflict"])
         #expect(SpokenReading.Ask.Reason(rawValue: "laterWord").rawValue == "laterWord")   // 열린 꼴 — 모르는 낱말도 그대로 든다
     }
 
@@ -733,13 +733,13 @@ func said(_ sentence: String, _ context: String = "none", now: String = "2040-10
         let lists: [Int] = [w.grades.count, w.anchored.count, w.modifiers.count, w.stages.count]
         let numbers: [Int] = [w.weekday.count, w.nativeCount.count, w.sinoCount.count, w.nativeTens.count, w.nativeOnes.count]
         let offsets: [Int] = [w.nativeDays.count, w.weekOffset.count, w.yearOffset.count, w.monthOffset.count, w.dayOffset.count]
-        let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count]
+        let seasons: [Int] = [w.seasonShift.count, w.seasons.count, w.parts.count, w.fixedDays.count, w.monthUnits.count, w.weekUnits.count]
         let shifts: [Int] = [w.monthShift.past.count, w.monthShift.future.count, w.school.entry.count, w.school.graduation.count]
-        #expect(patterns == 87)
-        #expect(lists == [3, 10, 8, 6])
+        #expect(patterns == 141)
+        #expect(lists == [3, 10, 9, 6])
         #expect(numbers == [7, 10, 10, 10, 13])
         #expect(offsets == [11, 6, 6, 6, 8])
-        #expect(seasons == [6, 6, 5, 1, 2])
+        #expect(seasons == [6, 6, 5, 1, 2, 2])
         #expect(shifts == [3, 3, 4, 4])
     }
 

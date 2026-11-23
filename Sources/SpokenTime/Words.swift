@@ -14,14 +14,18 @@ struct Words: Decodable, Sendable {
         let halfYear, count, unitsAgo: String
         let weekDay, thisWeekday, lastWeekday, weekAgo, agoAfterWord, daysAgo, dayWordGuard: String
         let fromUntil, nights, spanWords: String
-        let native, nativeAge, nativeAgeEo, recent, vague, frequency, frequencyModifies, pastAfter, recurringWhen, childhood, schoolDays, stage, others: String
+        let native, nativeAge, nativeAgeEo, recent, vague, vagueFuture, vaguePast, futureWord, pastWord, frequency, frequencyModifies, pastAfter, recurringWhen, childhood, schoolDays, stage, others: String
         let sentenceEnd, clauseLink, dependentNoun, recurringModifies, recurringModifiesWeak, numberLead, dateLead, topicStem, verbStemEnd: String
         let range, endMonthDay, endDay, endMonth: String
         let decade, decadeAsTime, twoDigitYear, plainWeek, anyYear, longNumberBlock, anyMonth, yearWords, monthOrPart: String
         let monthEarlySpaced, monthMidSpaced, monthLateSpaced, yearEarlySpaced: String
         let gradePre, gradePost, gradeSpaced, universityGrade, seasonAfter: String
-        let ageExact, firstBirthday, sixtieth, age, ageBand: String
+        let ageExact, firstBirthday, sixtieth, age, bandMark, bandTime, bandPart, counted, ageBand: String
         let bornYear, bornDay, school, examDay, gapYear: String
+        let ageRange, within, quotedWhole, quoted, timeWord, namedTime, agoTail, yearsCount: String
+        let correction, correctionBound, correctionNoun, correctionAfter, afterTime, inheritMonth, inheritDay: String
+        let dayPart, choiceBetween, choiceAhead, rangeTilde, rangeBetween, rangeAfter, comparing, timeEnd, ageTime, nounLink: String
+        let joinsTimes, joinedOnly, joinMark, openEnd, afterEvent, bareTime, notDescribed, withParticle, toward, plainAdverb, vagueHead, markedTime, adnominal, doer, reported, eventTime, commaTime, correctionClause, notModifying, plainTime, modifiesObject: String
     }
     struct Grade: Decodable, Sendable { let pattern: String; let offset: Int; let last: Int }
     struct Anchored: Decodable, Sendable {
@@ -60,8 +64,8 @@ struct Words: Decodable, Sendable {
     let seasons: [Season]
     let parts: [String: [Int]]
     let fixedDays: [FixedDay]
-    let thisTime, from, before, dayUnit, weekend, when, yearSuffix: String
-    let monthUnits: [String]
+    let thisTime, from, until, before, dayUnit, weekend, when, yearSuffix: String
+    let monthUnits, weekUnits: [String]
 
     /// 이 모듈의 자원 자리(번들 `muc-sdk_SpokenTime` 안).
     static var resourceURL: URL? { Bundle.module.url(forResource: "words", withExtension: "json") }
